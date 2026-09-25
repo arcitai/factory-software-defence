@@ -5,6 +5,7 @@
 - [Development queue](../todo.md): ordered, issue-backed work and dependencies.
 - [Repository readiness](../kit/repository.md): GitHub labels/forms, explicit issue admission and reviewed delivery.
 - [Dashboard design](../DESIGN.md): accepted project-focused visual direction and interface boundaries.
+- [CLI/dashboard capabilities](interfaces.md): current shared operations, gaps and parity work.
 
 - [Setup plan](setup.md): host access, application/CI, inference, autostart, reboot proof and handoff.
 - [Quickstart](quickstart.md): connect a repository, configure inference, run and inspect a task.

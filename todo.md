@@ -38,7 +38,7 @@ autonomous publisher is not a prerequisite for this scoped development path.
 [#37](https://github.com/arcitai/software-and-defence-factory/issues/37) owns full
 CLI/API/dashboard parity. Both interfaces must use the same execution owner,
 records, policy and stale-action guards. Deliver vertical slices against an
-explicit capability matrix:
+explicit [capability matrix](docs/interfaces.md):
 
 1. Read/status/artifacts and machine-readable CLI results, plus the existing
    task actions through the common API.
