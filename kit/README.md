@@ -18,6 +18,10 @@ The six skills cover triage, specification, implementation, review, security and
 
 ## First real task
 
+Follow [repository readiness](repository.md) to adopt issue forms and labels,
+verify CI/protection and explicitly admit a scoped task. Exporting this kit does
+not install GitHub labels, poll issues or start agents.
+
 Choose a small existing defect or improvement. Describe the intended user behavior, allowed scope and observable acceptance check. Implement a working vertical slice, exercise the app's relevant checks and obtain a separate review of the delivered revision. A demo or copied skill files alone do not qualify an application.
 
 A PR requires the configured GitHub authority. Otherwise hand back the branch/diff and evidence with an honest status. Unknown cost/time remain unknown. Automated starts require separate qualification of triggers, deduplication, stop/restart and actual resource limits; a skill does not create a scheduler.

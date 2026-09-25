@@ -17,7 +17,7 @@ if (args.length === 1 && args[0] === "--help") {
   const destination = resolve(args[0]);
   try {
     const sources = new Map();
-    for (const name of ["README.md", "policy.md", "installation.md", "delivery.md", "examples/github-checks.yml.example"])
+    for (const name of ["README.md", "policy.md", "installation.md", "delivery.md", "repository.md", "examples/github-checks.yml.example"])
       sources.set(`.factory-kit/${name}`, `kit/${name}`);
     for (const role of ["triage", "spec", "implement", "review", "security", "evaluate"]) {
       const path = `.agents/skills/factory-${role}/SKILL.md`;

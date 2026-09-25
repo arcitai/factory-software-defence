@@ -1,6 +1,7 @@
 name: Factory task
 description: Describe a business outcome and observable acceptance criteria.
 title: "[Factory] "
+labels: ["factory:triage"]
 body:
   - type: textarea
     id: need
@@ -20,7 +21,9 @@ body:
     id: scope
     attributes:
       label: Scope, constraints and recovery
-      description: Affected repository, relevant files, allowed changes and rollback.
+      description: Affected repository, allowed changes, non-goals, dependencies and rollback. Link blocking issues.
+    validations:
+      required: true
   - type: dropdown
     id: track
     attributes:
@@ -32,4 +35,4 @@ body:
     id: capabilities
     attributes:
       label: Required capabilities
-      description: For example browser, computer use, tests, web research or security review. Never paste credentials.
+      description: For example browser, tests, platform tools or security review. Name any external operator proof needed. Never paste credentials or sensitive findings into a public issue.

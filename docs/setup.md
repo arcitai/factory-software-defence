@@ -104,6 +104,9 @@ anything. Verify the canonical GitHub origin and main branch's tracking target;
 a fork may still track its upstream product. Move application sources into the
 chosen workspace, not into the npm package or private runtime state.
 
+Use [repository readiness](../kit/repository.md) for issue forms, labels, CI
+policy and the explicit issue-to-job handoff. A ready label does not start a job.
+
 Before admitting development work, establish:
 
 - Reproducible toolchain/dependency pins and an actual build/check command.

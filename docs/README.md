@@ -3,6 +3,8 @@
 - [Contributing](../CONTRIBUTING.md): source setup, checks and PR/release policy.
 - [Factory development](development.md): use the released runtime to develop this project on a worker.
 - [Development queue](../todo.md): ordered, issue-backed work and dependencies.
+- [Repository readiness](../kit/repository.md): GitHub labels/forms, explicit issue admission and reviewed delivery.
+- [Dashboard design](../DESIGN.md): accepted project-focused visual direction and interface boundaries.
 
 - [Setup plan](setup.md): host access, application/CI, inference, autostart, reboot proof and handoff.
 - [Quickstart](quickstart.md): connect a repository, configure inference, run and inspect a task.

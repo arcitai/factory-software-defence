@@ -4,7 +4,7 @@ This is an independent repository. Read README.md and the [documentation map](do
 
 ## Product
 
-The package owns a portable delivery method, six focused skills and an optional single-operator local runtime. The CLI is `software-defence-factory`; Arcitai is the publisher, not an umbrella CLI. Preserve the selected dashboard's existing layout and interaction model. Branding and runtime integration are factory-owned; preserve required third-party license notices.
+The package owns a portable delivery method, six focused skills and an optional single-operator local runtime. The CLI is `software-defence-factory`; Arcitai is the publisher, not an umbrella CLI. For dashboard changes, follow [DESIGN.md](DESIGN.md): the accepted direction is a project-focused work view inspired by Build by Warp. Preserve working actions, evidence and state semantics while improving the layout. Branding and runtime integration are factory-owned; preserve required third-party license notices.
 
 The native Node/SQLite controller is the sole execution owner. Jobs use bounded Docker containers and independent checkouts. Do not add another scheduler. Model quality, browser availability and live provider access require actual qualification; a configured skill does not install those capabilities. Keep incident investigation distinct from production recovery authority.
 
