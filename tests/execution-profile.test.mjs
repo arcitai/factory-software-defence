@@ -39,6 +39,7 @@ test('A-profile failure and B-profile retry remain distinct through controller r
   const {id}=controller.queue.submit({workflow:'software',repository:'app',spec:'Fixture'});
   async function wait(wanted){for(let i=0;i<100;i++){if(controller.queue.get(id).state===wanted&&!controller.queue.active)return;await new Promise(r=>setTimeout(r,5));}throw new Error('Timed out');}
   await wait('failed');const first=(await snapshot()).jobs[0].runs[0];assert.equal(first.executor,'pi');assert.equal(first.model,'model-a');
+  assert.deepEqual(first.usage,{status:'unknown',source:'unsupported_executor',coverage:'unknown'});assert.equal(first.token_usage,null);
   await controller.close();controller=null;save({...initial,agent:'codex',model:'model-b'});origin=await start();
   assert.deepEqual((await snapshot()).jobs[0].runs[0],first);
   failing=false;await controller.queue.action(id,'retry',{run_id:first.id});await wait('awaiting_approval');
@@ -46,6 +47,7 @@ test('A-profile failure and B-profile retry remain distinct through controller r
   assert.deepEqual(runs[0],first);assert.equal(runs[1].executor,'codex');assert.equal(runs[1].model,'model-b');
   assert.notEqual(runs[1].execution.policyHash,first.execution.policyHash);
   assert.equal(runs.find(r=>r.command==='verify').model,null);assert.equal(runs.find(r=>r.command==='verify').executor,'deterministic');
+  assert.deepEqual(runs.find(r=>r.command==='verify').usage,{status:'not_applicable',source:'not_applicable',coverage:'not_applicable'});
   assert.equal(runs.at(-1).provenance_status,'not_started');
   assert(!JSON.stringify(status).includes('PRIVATE_SENTINEL'));
   await controller.close();controller=null;origin=await start();assert.deepEqual((await snapshot()).jobs[0].runs,runs);

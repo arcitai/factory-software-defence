@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { existsSync, writeFileSync, rmSync } from 'node:fs';
+import { usageFields } from './usage.mjs';
 
 const workflows = { software: ['build', 'verify', 'review', 'handoff'], defence: ['defence'] };
 const id = prefix => prefix + '_' + randomBytes(12).toString('hex');
@@ -68,11 +69,15 @@ export class JobQueue {
         this.active = { jobId: job.id, runId: attempt.id };
         let outcome;
         try {
-          if (this.prepare) { attempt.execution = this.prepare(job, attempt); this.save(job); }
+          if (this.prepare) attempt.execution = this.prepare(job, attempt);
+          Object.assign(attempt, usageFields(undefined, attempt.execution, attempt.command));
+          this.save(job);
           outcome = await this.execute(job, attempt);
         }
         catch (error) { outcome = { outcome: 'blocked', summary: error.message }; }
         job = this.get(job.id); attempt = job.runs.find(run => run.id === attempt.id);
+        Object.assign(attempt, usageFields(outcome?.usage, attempt.execution, attempt.command));
+        this.save(job);
         if (job.state === 'running') {
           const succeeded = outcome?.outcome === 'complete';
           Object.assign(attempt, { state: succeeded ? 'succeeded' : 'failed', outcome: succeeded ? 'complete' : 'blocked', completed_at: now(), duration_millis: Date.now() - started, summary: outcome?.summary || 'No result', exit_code: succeeded ? 0 : 1 });
@@ -107,7 +112,7 @@ export class JobQueue {
   }
   async applyAction(jobId, action, input) {
     if (this.closing) throw new QueueError('Controller is stopping');
-    const job = this.get(jobId), attempt = job.runs.at(-1);
+    let job = this.get(jobId), attempt = job.runs.at(-1);
     if (input?.run_id !== attempt?.id) throw new QueueError('Job changed; reload before acting');
     if (action === 'approve') {
       if (job.state !== 'awaiting_approval') throw new QueueError('Job is not awaiting approval');
@@ -128,6 +133,7 @@ export class JobQueue {
       job.state = 'cancelling'; this.save(job);
       try { await this.stop(jobId); }
       catch (error) { job.state = 'interrupted'; this.save(job); throw error; }
+      job = this.get(jobId); attempt = job.runs.at(-1);
       job.state = 'cancelled';
       if (attempt) Object.assign(attempt, { state: 'cancelled', completed_at: now() });
       this.save(job);

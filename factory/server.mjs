@@ -41,7 +41,7 @@ export function createController(state, adapter = executors(state)) {
       const authenticated = equal(request.headers.authorization, `Bearer ${token}`) || equal(request.headers['x-factory-session'], csrf);
       if (request.method === 'GET' && url.pathname === '/api/v1/status') {
         const jobs = queue.all().map(job => ({ ...job, can_request_changes: queue.canRequestChanges(job), runs: job.runs.map(attempt => attemptPresentation({ ...attempt,
-          outcome: attempt.outcome || (attempt.state === 'succeeded' ? 'complete' : undefined) })) }));
+          outcome: attempt.outcome || (attempt.state === 'succeeded' ? 'complete' : undefined) }, adapter.usage?.(job, attempt))) }));
         return send(200, { version: 1, runtime_version: VERSION, maintenance: queue.maintenance, workflows: ['software', 'defence'], commands: [], triggers: [], jobs, csrf_token: csrf,
           workers: [{ name: hostname(), instance_id: 'local-executor', repositories: ['app'], connected: !queue.closing, last_seen_at: new Date().toISOString() }],
           repositories: ['app'], repo: config.repo, agent: config.agent });

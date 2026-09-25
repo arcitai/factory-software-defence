@@ -1,6 +1,7 @@
 import { hostname } from 'node:os';
 import { digest } from './lib.mjs';
 import { VERSION } from './updates.mjs';
+import { usageFields } from './usage.mjs';
 
 export function withRequestedModel(configuration, requestedModel) {
   const config = structuredClone(configuration);
@@ -29,10 +30,14 @@ export function executionProfile(config, phase) {
   };
 }
 
-export function attemptPresentation(attempt) {
+export function attemptPresentation(attempt, recoveredUsage) {
   const profile = attempt.execution;
+  const recordedUsage = attempt.usage?.status === 'unknown' || attempt.usage === undefined
+    ? recoveredUsage?.usage ?? attempt.usage : attempt.usage;
+  const usage = usageFields(recordedUsage, profile, attempt.command);
   return {
     ...attempt, executor: profile?.executor ?? 'unknown',
+    ...usage,
     model: profile?.requestedModel ?? null, worker_name: profile?.workerName ?? null,
     provenance_status: profile ? 'recorded' : attempt.started_at ? 'unknown' : 'not_started',
   };
