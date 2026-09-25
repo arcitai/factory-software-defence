@@ -45,13 +45,19 @@ commands and paths, not all prose. Prefer 4/8px spacing increments, 16–24px gr
 gaps and enough row padding to distinguish adjacent tasks.
 
 Light mode uses white/off-white surfaces, charcoal text and fine neutral borders;
-dark mode uses near-black and charcoal surfaces with light text. Use one
-restrained blue/violet accent for primary actions and selection. Green means
+dark mode uses near-black and charcoal surfaces with light text. The default
+brand palette is monochrome: black/white primary actions and neutral selection,
+matching the owner's preference for Build by Warp's restrained base. A project's
+reviewed `DESIGN.md` may supply an optional accent through the theme contract
+in #27. Missing, invalid or unreadable theme input keeps this complete default.
+Green means
 confirmed success, amber attention and red failure; always include text/icon
 meaning. Keep rounded corners modest (6–10px), shadows rare and surfaces flat.
 No decorative gradients, glowing machine cards or repeated equal-weight panels.
 These are product defaults, not a claim that an external Arcitai brand guide was
-provided. Optional project themes remain issue #27.
+provided. Optional project colors do not change shared controls, state meanings
+or contrast requirements. Project themes remain issue #27; prose in a Markdown
+file is not executable configuration or permission to load arbitrary CSS.
 
 ## Truthful states and actions
 
