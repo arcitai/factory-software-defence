@@ -124,11 +124,22 @@ protection requirements or grant merge authorization. See [GitHub's required
 status check guidance](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
 Repeating `publish` refreshes/reconciles the same branch and PR; it does not
 create a second PR or overwrite a changed branch. The CLI gives this bounded
-multi-request action ten minutes; other API calls keep their five-second
-deadline. If a client deadline expires, inspect status and repeat `publish` to
-reconcile. Delete issue stays disabled while delivery is unresolved, and the
-controller enforces the same guard on its API. Publication does not merge,
-integrate, release or deploy. See [delivery recovery](recovery.md#trusted-pr-delivery).
+multi-request action ten minutes; branch resolution uses the same bound and
+other API calls keep their five-second deadline. If a client deadline expires,
+inspect status and repeat `publish` to reconcile or recheck the reported branch
+identity before `abandon-delivery`. Delete issue stays disabled while delivery
+is unresolved, and the controller enforces the same guard on its API.
+Publication does not merge, integrate, release or deploy. See [delivery
+recovery](recovery.md#trusted-pr-delivery).
+
+If status reports a reserved branch collision at the untouched `intent` stage,
+inspect that branch in GitHub first. The task detail action **Abandon local
+delivery; keep remote branch** or `abandon-delivery JOB_ID --branch-sha SHA`
+records only a local resolution after the controller confirms the same branch
+head and no associated PR. It preserves the remote branch and accepted evidence,
+permits local issue removal, and permanently disables publication for that
+delivery record. Changed identities, PRs and uncertain provider effects remain
+blocked; see [recovery](recovery.md#trusted-pr-delivery).
 
 ## Remote access and operation
 

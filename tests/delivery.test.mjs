@@ -91,7 +91,7 @@ function testFixture(t, { delivery = true, port = 7331, harness = 'mock', model 
 function fakeGitHub(f, options = {}) {
   const state = { targetSha: options.targetSha || f.base, branch: options.branch || null, pull: null, commit: null, checks: { state: 'pending', check_runs: [], commit_statuses: [] },
     writes: { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 }, loseBranch: options.loseBranch === true,
-    losePull: options.losePull === true, failFindOnce: false, hidePullSearches: options.hidePullSearches || 0 };
+    losePull: options.losePull === true, failFindOnce: false, hidePullSearches: options.hidePullSearches || 0, pullSearchTargets: [] };
   const branchName = `factory/${jobID}-${f.head.slice(0, 12)}`;
   const provider = {
     supported: true, id: 'github',
@@ -102,6 +102,7 @@ function fakeGitHub(f, options = {}) {
       : state.commit?.sha === sha ? { ...state.commit } : null,
     createBlob: async (_repository, content) => {
       state.writes.blobs++;
+      if (options.branchAfterBlob && !state.branch) state.branch = { ...options.branchAfterBlob };
       if (options.slowBlobMs) await new Promise(resolve => setTimeout(resolve, options.slowBlobMs));
       if (state.holdBlob) {
         state.blobStarted?.();
@@ -124,7 +125,8 @@ function fakeGitHub(f, options = {}) {
       if (state.loseBranch) { state.loseBranch = false; throw new Error('response lost'); }
       return state.branch;
     },
-    findPulls: async () => {
+    findPulls: async (_repository, _branch, target) => {
+      state.pullSearchTargets.push(target);
       if (state.failFindOnce) { state.failFindOnce = false; throw new Error('read failed after ambiguous creation'); }
       if (state.hidePullSearches > 0) { state.hidePullSearches--; return []; }
       return state.pull ? [state.pull] : [];
@@ -294,6 +296,178 @@ test('unrelated branch collisions are preserved and repeated/concurrent actions 
   await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /unexpected remote collision/);
   assert.equal(gh.state.writes.branches, 0);
   assert.match(branch, /^factory\/job_/);
+});
+
+test('a pre-write branch collision can be explicitly abandoned after exact readback and remains removed only locally', async t => {
+  const foreignSha = '9'.repeat(40), f = testFixture(t);
+  const gh = fakeGitHub(f, { branch: { sha: foreignSha, node_id: 'foreign-branch-node' } });
+  const manager = service(f, gh.provider);
+  const evidencePaths = ['accepted.json', 'candidate.json', 'checks.json', 'review.json'];
+  const evidenceBefore = new Map(evidencePaths.map(name => [name, readFileSync(join(f.folder, name))]));
+  const historyBefore = structuredClone(f.queue.get(jobID).runs);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /unrelated branch/);
+
+  const collision = f.queue.get(jobID).delivery;
+  assert.equal(collision.state, 'conflict');
+  assert.equal(collision.stage, 'intent', 'the resolution is restricted to a collision found before provider writes');
+  assert.deepEqual(gh.state.branch, { sha: foreignSha, node_id: 'foreign-branch-node' });
+  const status = manager.summary(f.queue.get(jobID));
+  assert.equal(status.can_abandon, true);
+  assert.equal(status.remote_collision.sha, foreignSha);
+
+  const writes = structuredClone(gh.state.writes);
+  await assert.rejects(manager.abandonDelivery(jobID, {
+    run_id: f.run_id, delivery_identity: collision.identity, branch_sha: '8'.repeat(40),
+  }), /inspected branch identity/);
+  assert.deepEqual(gh.state.writes, writes, 'a wrong identity is refused without provider writes');
+
+  const resolved = await manager.abandonDelivery(jobID, {
+    run_id: f.run_id, delivery_identity: collision.identity, branch_sha: foreignSha,
+  });
+  assert.equal(resolved.state, 'abandoned');
+  assert.equal(resolved.can_abandon, false);
+  assert.equal(resolved.can_publish, false, 'abandonment never resumes publication');
+  assert.equal(f.queue.canRemove(f.queue.get(jobID)), true);
+  assert.equal(gh.state.branch.sha, foreignSha, 'the unexpected remote branch remains untouched');
+  assert.deepEqual(gh.state.writes, writes, 'resolution is read-only at the provider boundary');
+  assert.equal(f.queue.get(jobID).delivery.resolution.action, 'abandon_local_delivery');
+  assert.equal(f.queue.get(jobID).delivery.resolution.actor, 'operator');
+  assert.equal(f.queue.get(jobID).delivery.resolution.inspected.sha, foreignSha);
+  assert.ok(gh.state.pullSearchTargets.includes(null), 'resolution searches for PRs on every base target');
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /explicitly abandoned/);
+  assert.deepEqual(gh.state.writes, writes, 'a later publish click cannot restart an abandoned delivery');
+
+  await f.closeQueue();
+  const restartedQueue = new JobQueue(f.state, { execute: async () => ({ outcome: 'complete' }), stop: async () => {}, reconcile: async () => {}, sourceAdmission: f.sourceAdapter });
+  t.after(() => restartedQueue.close());
+  const restarted = new DeliveryService(restartedQueue, f.state, { config: () => configAt(f.state), sourceAdmission: f.sourceAdapter, provider: gh.provider });
+  const restartedJob = restartedQueue.get(jobID);
+  assert.equal(restarted.summary(restartedJob).state, 'abandoned', 'resolution survives controller restart');
+  assert.equal(restarted.summary(restartedJob).can_publish, false);
+  assert.equal(restartedQueue.removalBlockReason(restartedJob), null);
+  await assert.rejects(restarted.publish(jobID, { run_id: f.run_id }), /explicitly abandoned/);
+  await restartedQueue.remove(jobID);
+  const retained = JSON.parse(restartedQueue.db.prepare('SELECT data FROM jobs WHERE id=?').get(jobID).data);
+  assert.ok(retained.deleted_at, 'issue removal is a local tombstone');
+  assert.equal(retained.delivery.resolution.inspected.node_id, 'foreign-branch-node');
+  assert.deepEqual(retained.runs, historyBefore, 'local run history remains intact after removal');
+  for (const name of evidencePaths)
+    assert.deepEqual(readFileSync(join(f.folder, name)), evidenceBefore.get(name), `${name} remains immutable`);
+});
+
+test('branch-collision abandonment rejects stale identities, PR-backed collisions and uncertain delivery effects', async t => {
+  const f = testFixture(t), gh = fakeGitHub(f, { branch: { sha: '9'.repeat(40), node_id: 'foreign-node' } });
+  const manager = service(f, gh.provider);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /unrelated branch/);
+  const collision = f.queue.get(jobID).delivery, writes = structuredClone(gh.state.writes);
+  const baseInput = { run_id: f.run_id, delivery_identity: collision.identity, branch_sha: collision.remote_collision.sha };
+  await assert.rejects(manager.abandonDelivery(jobID, { ...baseInput, run_id: 'run_stale' }), /Job changed/);
+  await assert.rejects(manager.abandonDelivery(jobID, { ...baseInput, delivery_identity: 'another-delivery' }), /identity is stale or incorrect/);
+  await assert.rejects(manager.abandonDelivery(jobID, { ...baseInput, branch_sha: '8'.repeat(40) }), /identity is stale or incorrect/);
+  assert.deepEqual(gh.state.writes, writes, 'stale or wrong identities do not call provider writes');
+
+  gh.state.branch.sha = '7'.repeat(40);
+  await assert.rejects(manager.abandonDelivery(jobID, baseInput), /identity changed/);
+  assert.equal(manager.summary(f.queue.get(jobID)).remote_collision.sha, '7'.repeat(40), 'status refreshes after a detected stale remote head');
+  const freshInput = { ...baseInput, branch_sha: '7'.repeat(40) };
+  gh.state.pull = pullRecord('6'.repeat(40), f.base, gh.branchName);
+  gh.state.pull.base.ref = 'dev';
+  await assert.rejects(manager.abandonDelivery(jobID, freshInput), /pull request uses the colliding branch/);
+  assert.equal(gh.state.pullSearchTargets.at(-1), null, 'resolution searches branch PRs without filtering to one base target');
+  assert.equal(f.queue.get(jobID).delivery.state, 'conflict', 'a foreign PR is never accepted by local abandonment');
+  assert.deepEqual(gh.state.writes, writes, 'identity refresh and foreign PR detection remain read-only');
+
+  const later = testFixture(t), lateGH = fakeGitHub(later, {
+    branchAfterBlob: { sha: '6'.repeat(40), node_id: 'late-foreign-node' },
+  }), lateManager = service(later, lateGH.provider);
+  await assert.rejects(lateManager.publish(jobID, { run_id: later.run_id }), /changed unexpectedly/);
+  assert.equal(later.queue.get(jobID).delivery.stage, 'checking_commit');
+  assert.equal(lateManager.summary(later.queue.get(jobID)).can_abandon, false,
+    'a later-stage collision after provider writes is not eligible for abandonment');
+  const lateWrites = structuredClone(lateGH.state.writes);
+  await assert.rejects(lateManager.abandonDelivery(jobID, {
+    run_id: later.run_id, delivery_identity: later.queue.get(jobID).delivery.identity, branch_sha: '6'.repeat(40),
+  }), /Only a confirmed branch-only collision before provider writes/);
+  assert.deepEqual(lateGH.state.writes, lateWrites);
+
+  const ready = testFixture(t), readyManager = service(ready, fakeGitHub(ready).provider);
+  await assert.rejects(readyManager.abandonDelivery(jobID, {
+    run_id: ready.run_id, delivery_identity: 'unrelated', branch_sha: '9'.repeat(40),
+  }), /Only a confirmed branch-only collision/);
+
+  const uncertain = testFixture(t), uncertainGH = fakeGitHub(uncertain, { losePull: true }), uncertainManager = service(uncertain, uncertainGH.provider);
+  await assert.rejects(uncertainManager.publish(jobID, { run_id: uncertain.run_id }), /uncertain/);
+  const uncertainWrites = structuredClone(uncertainGH.state.writes);
+  assert.equal(uncertainManager.summary(uncertain.queue.get(jobID)).can_abandon, false);
+  await assert.rejects(uncertainManager.abandonDelivery(jobID, {
+    run_id: uncertain.run_id, delivery_identity: uncertain.queue.get(jobID).delivery.identity, branch_sha: uncertainGH.finalSha,
+  }), /Only a confirmed branch-only collision/);
+  assert.deepEqual(uncertainGH.state.writes, uncertainWrites, 'uncertain PR effects remain blocked from local abandonment');
+});
+
+test('authenticated dashboard and CLI abandon the same inspected branch-only collision contract', async t => {
+  async function reservePort() {
+    const server = createNetServer();
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+    await new Promise(resolve => server.close(resolve));
+    return port;
+  }
+
+  const apiFixture = testFixture(t, { port: await reservePort() });
+  const apiGH = fakeGitHub(apiFixture, { branch: { sha: '9'.repeat(40), node_id: 'api-foreign-node' } });
+  await assert.rejects(service(apiFixture, apiGH.provider).publish(jobID, { run_id: apiFixture.run_id }), /unrelated branch/);
+  const apiWrites = structuredClone(apiGH.state.writes);
+  await apiFixture.closeQueue();
+  const apiController = createController(apiFixture.state, { execute: async () => ({ outcome: 'complete' }), stop: async () => {}, reconcile: async () => {} }, { deliveryProvider: apiGH.provider });
+  await new Promise(resolve => apiController.server.listen(apiFixture.config.port, '127.0.0.1', resolve));
+  t.after(() => apiController.close());
+  const apiOrigin = `http://127.0.0.1:${apiFixture.config.port}`;
+  const status = await (await fetch(`${apiOrigin}/api/v1/status`)).json();
+  const apiJob = status.jobs[0], collision = apiJob.delivery_status.remote_collision;
+  assert.equal(apiJob.delivery_status.can_abandon, true);
+  assert.equal(apiJob.can_remove, false);
+  assert.equal(apiJob.delivery_removal_blocked, true);
+  const request = (headers, body) => fetch(`${apiOrigin}/api/v1/jobs/${jobID}/abandon-delivery`, {
+    method: 'POST', headers, body: JSON.stringify(body),
+  });
+  assert.equal((await request({ 'Content-Type': 'application/json' }, {
+    run_id: apiFixture.run_id, delivery_identity: apiJob.delivery_status.identity, branch_sha: collision.sha,
+  })).status, 403, 'the dashboard resolution still requires its controller session');
+  const resolved = await request({ 'Content-Type': 'application/json', 'X-Factory-Session': status.csrf_token }, {
+    run_id: apiFixture.run_id, delivery_identity: apiJob.delivery_status.identity, branch_sha: collision.sha,
+  });
+  assert.equal(resolved.status, 200);
+  assert.equal((await resolved.json()).state, 'abandoned');
+  const after = await (await fetch(`${apiOrigin}/api/v1/status`)).json();
+  assert.equal(after.jobs[0].delivery_status.can_publish, false);
+  assert.equal(after.jobs[0].delivery_removal_blocked, false);
+  assert.equal(after.jobs[0].can_remove, true);
+  const removed = await fetch(`${apiOrigin}/api/v1/jobs/${jobID}`, {
+    method: 'DELETE', headers: { 'X-Factory-Session': status.csrf_token },
+  });
+  assert.equal(removed.status, 200, 'the dashboard can remove the issue only after explicit resolution');
+  assert.deepEqual(await removed.json(), { id: jobID, deleted: true });
+  assert.deepEqual(apiGH.state.writes, apiWrites);
+  assert.equal(apiGH.state.branch.sha, collision.sha);
+
+  const cliFixture = testFixture(t, { port: await reservePort() });
+  const cliGH = fakeGitHub(cliFixture, { branch: { sha: '8'.repeat(40), node_id: 'cli-foreign-node' } });
+  await assert.rejects(service(cliFixture, cliGH.provider).publish(jobID, { run_id: cliFixture.run_id }), /unrelated branch/);
+  const cliWrites = structuredClone(cliGH.state.writes);
+  await cliFixture.closeQueue();
+  const cliController = createController(cliFixture.state, { execute: async () => ({ outcome: 'complete' }), stop: async () => {}, reconcile: async () => {} }, { deliveryProvider: cliGH.provider });
+  await new Promise(resolve => cliController.server.listen(cliFixture.config.port, '127.0.0.1', resolve));
+  t.after(() => cliController.close());
+  const { stdout } = await execFileAsync(process.execPath, [
+    'bin/software-defence-factory.mjs', 'abandon-delivery', jobID,
+    '--branch-sha', '8'.repeat(40), '--state', cliFixture.state,
+  ], { encoding: 'utf8', env: { ...process.env, SDF_AUTO_UPDATE: '0', SDF_BOOTSTRAPPED: '1' } });
+  assert.equal(JSON.parse(stdout).state, 'abandoned', 'the CLI consumes the shared controller result');
+  const cliStatus = await (await fetch(`http://127.0.0.1:${cliFixture.config.port}/api/v1/status`)).json();
+  assert.equal(cliStatus.jobs[0].can_remove, true);
+  assert.deepEqual(cliGH.state.writes, cliWrites);
+  assert.equal(cliGH.state.branch.sha, '8'.repeat(40));
 });
 
 test('a changed remote branch or PR head is never overwritten or duplicated', async t => {

@@ -189,7 +189,7 @@ export class JobQueue {
   }
   remove(jobId) { return this.exclusive(jobId, () => this.removeStopped(jobId)); }
   removalBlockReason(job) {
-    if (job.delivery && job.delivery.state !== 'published') {
+    if (job.delivery && !['published', 'abandoned'].includes(job.delivery.state)) {
       return 'Trusted PR delivery is unresolved. Reconcile the saved delivery or inspect its remote collision before deleting this issue.';
     }
     if (!['succeeded', 'failed', 'cancelled'].includes(job.state) || this.active?.jobId === job.id) {

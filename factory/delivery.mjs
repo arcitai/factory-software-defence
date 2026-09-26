@@ -16,6 +16,13 @@ const SHA1 = /^[a-f0-9]{40}$/;
 const PRIVATE_JSON_BYTES = 1024 * 1024;
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 
+class BranchCollisionError extends QueueError {
+  constructor(branch, message) {
+    super(message);
+    this.branch = branch;
+  }
+}
+
 function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
 function utcGitDate(value) {
   const parsed = new Date(value);
@@ -252,6 +259,12 @@ export class DeliveryService {
       : config.delivery?.provider ? 'patch_only_unsupported_provider' : 'patch_only');
     const recoverable = job.delivery && (['intent', 'publishing', 'uncertain', 'blocked', 'published'].includes(job.delivery.state)
       || (job.delivery.state === 'conflict' && Number.isSafeInteger(job.delivery.pull_request?.number)));
+    const collision = job.delivery?.remote_collision;
+    const canAbandon = Boolean(enabled && savedDestinationMatches && job.workflow?.name === 'software'
+      && job.state === 'succeeded' && job.delivery?.state === 'conflict' && job.delivery.stage === 'intent'
+      && collision?.kind === 'branch' && collision.repository === job.delivery.repository
+      && collision.target === job.delivery.target && collision.branch === job.delivery.branch
+      && SHA1.test(collision.sha || '') && !Number.isSafeInteger(job.delivery.pull_request?.number));
     return {
       state,
       provider: job.delivery?.provider || config.delivery?.provider || null,
@@ -264,11 +277,19 @@ export class DeliveryService {
       accepted_base_sha: job.delivery?.base || null,
       pull_request: job.delivery?.pull_request || null,
       checks: job.delivery?.checks || null,
+      identity: job.delivery?.identity || null,
+      remote_collision: collision ? {
+        kind: collision.kind, repository: collision.repository, target: collision.target,
+        branch: collision.branch, sha: collision.sha, node_id: collision.node_id || null,
+        observed_at: collision.observed_at,
+      } : null,
+      resolution: job.delivery?.resolution || null,
       error: job.delivery && !savedDestinationMatches
         ? 'Saved delivery belongs to a different trusted destination. Restore its original provider, repository and target to recover it.'
         : job.delivery?.error || acceptance.reason || null,
       can_publish: enabled && savedDestinationMatches && job.workflow?.name === 'software' && job.state === 'succeeded'
         && (recoverable || (!job.delivery && acceptance.state === 'ready')),
+      can_abandon: canAbandon,
       integration: 'separate',
       deployment: 'separate',
     };
@@ -280,10 +301,11 @@ export class DeliveryService {
       if (input?.run_id !== latest?.id) throw new QueueError('Job changed; reload before publishing.');
       if (Object.hasOwn(input || {}, 'repository') || Object.hasOwn(input || {}, 'target') || Object.hasOwn(input || {}, 'branch'))
         throw new QueueError('Publication destination is operator-configured and cannot be supplied with a job action.', 400);
+      const saved = job.delivery;
+      if (saved?.state === 'abandoned') throw new QueueError('This local delivery was explicitly abandoned; publishing remains disabled.');
       const config = this.currentConfig();
       if (config.delivery?.provider !== 'github' || this.provider?.supported !== true)
         throw new QueueError('Trusted GitHub delivery is not configured; the accepted patch remains available.', 409);
-      const saved = job.delivery;
       const savedEvidence = saved && { accepted: { head: saved.candidate, tree: saved.tree, base: saved.base }, expectedPolicy: saved.policyHash };
       if (saved?.state === 'published') {
         const intent = this.ensureIntent(job, config, savedEvidence);
@@ -305,6 +327,76 @@ export class DeliveryService {
       const evidence = this.validateEvidence(job, config);
       const intent = this.ensureIntent(job, config, evidence);
       return this.resume(job, config, evidence, intent);
+    });
+  }
+
+  abandonDelivery(jobId, input) {
+    return this.queue.exclusive(jobId, async () => {
+      const job = this.queue.get(jobId), latest = job.runs.at(-1), record = job.delivery;
+      if (input?.run_id !== latest?.id) throw new QueueError('Job changed; reload before abandoning local delivery.');
+      if (!input || typeof input !== 'object' || Array.isArray(input)
+        || Object.keys(input).some(key => !['run_id', 'delivery_identity', 'branch_sha'].includes(key)))
+        throw new QueueError('Local delivery resolution accepts only the current run and inspected identities.', 400);
+      if (!record || job.workflow?.name !== 'software' || job.state !== 'succeeded'
+        || record.state !== 'conflict' || record.stage !== 'intent'
+        || record.remote_collision?.kind !== 'branch'
+        || Number.isSafeInteger(record.pull_request?.number))
+        throw new QueueError('Only a confirmed branch-only collision before provider writes can be abandoned.');
+
+      const config = this.currentConfig(), collision = record.remote_collision;
+      if (config.delivery?.provider !== 'github' || this.provider?.supported !== true
+        || record.provider !== config.delivery.provider || record.repository !== config.delivery.repository
+        || record.target !== config.delivery.target)
+        throw new QueueError('Restore the original trusted delivery destination before resolving this collision.');
+      if (input?.delivery_identity !== record.identity || input?.branch_sha !== collision.sha
+        || !SHA1.test(collision.sha || ''))
+        throw new QueueError('The inspected branch identity is stale or incorrect; reload status and inspect the current branch before resolving.');
+      if (collision.repository !== record.repository || collision.target !== record.target
+        || collision.branch !== record.branch)
+        throw new QueueError('Saved collision identity does not match the original delivery intent.');
+
+      let repositoryInfo, currentBranch, pulls;
+      try {
+        repositoryInfo = await this.provider.inspectRepository(record.repository);
+        if (!sameRepository(repositoryInfo?.full_name, record.repository.slice('https://github.com/'.length)))
+          throw new QueueError('Configured GitHub identity cannot read the exact destination repository.');
+        currentBranch = await this.provider.readBranch(record.repository, record.branch);
+        if (!currentBranch || !SHA1.test(currentBranch.sha || ''))
+          throw new QueueError('The remote branch is missing or has an invalid identity; local delivery remains unresolved.');
+        if (currentBranch.sha !== collision.sha) {
+          const refreshedCollision = {
+            kind: 'branch', repository: record.repository, target: record.target, branch: record.branch,
+            sha: currentBranch.sha, node_id: typeof currentBranch.node_id === 'string' ? currentBranch.node_id : null,
+            observed_at: new Date().toISOString(),
+          };
+          this.persist(job, record, { remote_collision: refreshedCollision,
+            error: 'The remote branch changed since it was displayed. Inspect the refreshed branch identity before resolving.' });
+          throw new QueueError('The inspected branch identity changed; review the refreshed status before resolving.');
+        }
+        // Search every base target so a PR on this branch cannot be silently
+        // ignored simply because it was opened against another target.
+        pulls = await this.provider.findPulls(record.repository, record.branch, null);
+      } catch (error) {
+        if (error instanceof QueueError) throw error;
+        throw new QueueError('The remote branch or related pull request could not be confirmed; local delivery remains unresolved.');
+      }
+      if (!Array.isArray(pulls) || pulls.length !== 0)
+        throw new QueueError('A pull request uses the colliding branch or its status is unknown; inspect and reconcile it before resolving local delivery.');
+
+      const resolvedAt = new Date().toISOString();
+      this.persist(job, record, {
+        state: 'abandoned', stage: 'operator_resolved', error: null,
+        resolution: {
+          action: 'abandon_local_delivery', actor: 'operator', delivery_identity: record.identity, decided_at: resolvedAt,
+          inspected: {
+            provider: 'github', repository: repositoryInfo.full_name, target: record.target,
+            branch: record.branch, sha: currentBranch.sha,
+            node_id: typeof currentBranch.node_id === 'string' ? currentBranch.node_id : null,
+            pull_requests: 0, checked_at: resolvedAt,
+          },
+        },
+      });
+      return this.summary(job);
     });
   }
 
@@ -371,6 +463,8 @@ export class DeliveryService {
       if (job.delivery.identity !== identity || job.delivery.provider !== 'github' || job.delivery.repository !== deliveryConfig.repository
         || job.delivery.target !== deliveryConfig.target || job.delivery.branch !== branch)
         throw new QueueError('Saved delivery intent belongs to a different candidate or destination. Restore its original trusted configuration to recover it.');
+      if (job.delivery.state === 'abandoned')
+        throw new QueueError('This local delivery was explicitly abandoned; publication remains disabled.');
       if (job.delivery.state === 'conflict' && !allowConflict)
         throw new QueueError('Saved delivery intent has an unexpected remote collision. Inspect it before taking further action.');
       return job.delivery;
@@ -557,8 +651,9 @@ export class DeliveryService {
 
       const existingBranch = await this.provider.readBranch(repository, branch);
       if (existingBranch && record.final_sha && existingBranch.sha !== record.final_sha)
-        throw new QueueError('The delivery branch changed unexpectedly; it was preserved and will not be overwritten.');
-      if (existingBranch && !record.final_sha) throw new QueueError('An unrelated branch already uses the reserved delivery name; it was preserved.');
+        throw new BranchCollisionError(existingBranch, 'The delivery branch changed unexpectedly; it was preserved and will not be overwritten.');
+      if (existingBranch && !record.final_sha)
+        throw new BranchCollisionError(existingBranch, 'An unrelated branch already uses the reserved delivery name; it was preserved.');
 
       if (!record.tree_sha) {
         this.persist(job, record, { state: 'publishing', stage: 'creating_blobs' });
@@ -612,7 +707,7 @@ export class DeliveryService {
       // create-only; an unexpected existing branch is never force-updated.
       const branchNow = await this.provider.readBranch(repository, branch);
       if (branchNow && branchNow.sha !== record.final_sha)
-        throw new QueueError('The delivery branch changed unexpectedly; it was preserved and will not be overwritten.');
+        throw new BranchCollisionError(branchNow, 'The delivery branch changed unexpectedly; it was preserved and will not be overwritten.');
       if (!branchNow) {
         this.persist(job, record, { state: 'publishing', stage: 'creating_branch' });
         try { await this.provider.createBranch(repository, branch, record.final_sha); }
@@ -687,7 +782,13 @@ export class DeliveryService {
       const message = error instanceof QueueError ? error.message : 'GitHub delivery is uncertain. Inspect the saved intent and reconcile before retrying.';
       const state = error instanceof QueueError && /collision|unrelated|changed unexpectedly|multiple pull|readback differs|changed while its checks|does not match the approved|differs from the deterministic/i.test(message) ? 'conflict'
         : error instanceof QueueError && /moved|stale|current Factory policy|retained admission|evidence|source path changed/i.test(message) ? 'blocked' : 'uncertain';
-      this.persist(job, record, { state, error: message });
+      const remoteCollision = error instanceof BranchCollisionError ? {
+        kind: 'branch', repository: record.repository, target: record.target, branch: record.branch,
+        sha: SHA1.test(error.branch?.sha || '') ? error.branch.sha : null,
+        node_id: typeof error.branch?.node_id === 'string' ? error.branch.node_id : null,
+        observed_at: new Date().toISOString(),
+      } : undefined;
+      this.persist(job, record, { state, error: message, ...(remoteCollision ? { remote_collision: remoteCollision } : {}) });
       if (error instanceof QueueError) throw error;
       throw new QueueError(message, 409);
     }

@@ -476,7 +476,7 @@ function TaskActions({ job, result, deliveryActionError = "", onAction }) {
           )}
         </div>
       )}
-      {(delivery?.can_publish || deliveryActionError) && delivery && (
+      {(delivery?.can_publish || delivery?.can_abandon || deliveryActionError) && delivery && (
         <section className="trusted-delivery-action space-y-2 rounded-lg border border-border p-3" aria-label="Trusted PR delivery action">
           <p className="text-sm font-medium">Optional PR delivery</p>
           <p className="text-xs text-muted-foreground">{delivery.repository} · target {delivery.target}. Publishing uses the accepted patch and current evidence. Merge, integration and deployment remain separate.</p>
@@ -490,6 +490,19 @@ function TaskActions({ job, result, deliveryActionError = "", onAction }) {
           >
             {busy ? "Reconciling…" : delivery.state === "published" ? "Refresh PR readback and checks" : ["intent", "uncertain", "publishing", "blocked"].includes(delivery.state) ? "Reconcile PR delivery" : "Publish accepted candidate as draft PR"}
           </Button>}
+          {delivery.can_abandon && delivery.remote_collision && <div className="space-y-2 border-t border-border pt-2">
+            <p className="text-xs text-muted-foreground">Inspect this GitHub branch and confirm it is unrelated. Factory will recheck this exact head and confirm no pull request is attached; this action records local abandonment only and leaves the remote branch unchanged.</p>
+            <p className="break-all text-xs font-mono">{delivery.remote_collision.repository}/{delivery.remote_collision.branch} · {delivery.remote_collision.sha || "identity unavailable"}</p>
+            <Button
+              className="delivery-action-button"
+              variant="outline"
+              disabled={busy}
+              aria-describedby={(deliveryActionError || delivery.error) ? `delivery-action-error-${job.id}` : undefined}
+              onClick={() => action("abandon-delivery")}
+            >
+              {busy ? "Checking branch…" : "Abandon local delivery; keep remote branch"}
+            </Button>
+          </div>}
         </section>
       )}
       {job.state === "blocked" && hasRetainedSource && (
@@ -553,6 +566,7 @@ function DeliveryDetails({ delivery }) {
     uncertain: "PR delivery response is uncertain; reconcile the same PR before deleting this issue",
     blocked: "PR delivery is blocked; restore current evidence or inspect the saved delivery before deleting this issue",
     conflict: "PR delivery has a remote collision; inspect it before deleting this issue",
+    abandoned: "Local delivery was abandoned by the operator; the remote branch is preserved and publishing is disabled",
     legacy_unverified: "Legacy acceptance has no bound publication evidence",
     unverified: "Candidate evidence is unavailable; PR delivery is blocked",
   };
@@ -563,6 +577,11 @@ function DeliveryDetails({ delivery }) {
         ? <p className="text-sm text-muted-foreground">Patch-only handoff · no trusted PR destination is enabled.</p>
         : <p className="text-sm text-muted-foreground">{delivery.state === "published" ? "PR created or reconciled" : delivery.state === "ready" ? "Ready for explicit draft PR delivery" : deliveryState[delivery.state] || delivery.state.replaceAll("_", " ")} · {delivery.repository} · target {delivery.target}</p>}
       {delivery.error && <p role="alert" className="text-sm text-danger">{delivery.error}</p>}
+      {delivery.remote_collision && <dl className="grid gap-1 text-xs sm:grid-cols-2">
+        <div><dt className="text-muted-foreground">Conflicting remote branch</dt><dd className="break-all font-mono">{delivery.remote_collision.branch} · {delivery.remote_collision.sha || "identity unavailable"}</dd></div>
+        <div><dt className="text-muted-foreground">Remote repository and target</dt><dd className="break-all">{delivery.remote_collision.repository} → {delivery.remote_collision.target}</dd></div>
+      </dl>}
+      {delivery.resolution && <p role="status" className="text-sm text-muted-foreground">Local delivery abandoned after confirming {delivery.resolution.inspected.repository}/{delivery.resolution.inspected.branch} at {delivery.resolution.inspected.sha}; no provider write was made and the branch remains untouched.</p>}
       {(delivery.source_ref || (!pull && delivery.branch)) && <dl className="grid gap-1 text-xs sm:grid-cols-2">
         {!pull && delivery.branch && <div><dt className="text-muted-foreground">Delivery branch</dt><dd className="break-all font-mono">{delivery.branch}</dd></div>}
         {delivery.source_ref && <div><dt className="text-muted-foreground">Source ref at admission</dt><dd className="break-all font-mono">{delivery.source_ref}</dd></div>}

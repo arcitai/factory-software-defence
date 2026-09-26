@@ -174,12 +174,32 @@ delivery record is blocked in the dashboard and controller API; inspect or
 reconcile the saved remote effect before removing the job. A confirmed
 `published` receipt is no longer unresolved.
 
-The CLI publication request has a ten-minute deadline because a delivery can
-require multiple provider requests. Other CLI API requests keep their
-five-second deadline. If the client reaches its deadline, the remote action may
-still have completed: inspect `status` and repeat `publish` after the active
-controller action finishes. The controller reads the exact branch and PR before
-any repeated write, so this retry reconciles instead of creating a duplicate.
+A collision found while the record is still at `intent` is known to precede
+provider writes. Inspect the exact branch in GitHub, then use the task action
+**Abandon local delivery; keep remote branch**, or confirm its current head with
+the CLI:
+
+```sh
+software-defence-factory status --state /private/state/project
+software-defence-factory abandon-delivery JOB_ID --branch-sha INSPECTED_SHA --state /private/state/project
+```
+
+The controller checks the latest run, saved delivery identity, current branch
+head and exact repository/target, then confirms that no PR is attached. It
+records the inspected identity and local resolution in the job row. It does not
+write, update or delete the remote branch or create/accept a PR. The `abandoned`
+state disables later publication and permits local issue removal while retaining
+the delivery record, run history and evidence. A stale or changed branch, any
+associated/unknown PR, changed destination, later delivery stage or uncertain
+provider effect remains blocked; reconcile or inspect it before taking another
+action.
+
+CLI publication and branch-resolution requests have a ten-minute deadline
+because they can require multiple provider requests. Other CLI API requests
+keep their five-second deadline. If the client reaches its deadline, inspect
+`status` after the controller action finishes. Repeat `publish` to reconcile a
+publication; repeat `abandon-delivery` only after inspecting the currently
+reported branch identity.
 
 The receipt reads the exact PR head's check runs and commit statuses. Raw
 conclusions are retained. `success`, `skipped` and `neutral` do not make the

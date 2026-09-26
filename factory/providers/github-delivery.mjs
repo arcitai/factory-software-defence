@@ -128,10 +128,10 @@ export function githubDeliveryProvider({ request = requestGitHub } = {}) {
     },
     async findPulls(repository, branch, target) {
       const owner = slug(repository).split('/')[0];
-      const head = encodeURIComponent(`${owner}:${branch}`), base = encodeURIComponent(target);
+      const head = encodeURIComponent(`${owner}:${branch}`), base = typeof target === 'string' ? `&base=${encodeURIComponent(target)}` : '';
       const matches = [];
       for (let page = 1; page <= 10; page++) {
-        const value = await get(`${apiRoot}/${slug(repository)}/pulls?state=all&head=${head}&base=${base}&per_page=100&page=${page}`);
+        const value = await get(`${apiRoot}/${slug(repository)}/pulls?state=all&head=${head}${base}&per_page=100&page=${page}`);
         if (!Array.isArray(value)) throw new Error('GitHub returned an invalid pull request list.');
         matches.push(...value);
         if (value.length < 100) return matches;

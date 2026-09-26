@@ -784,3 +784,9 @@ this executor repair. No real provider credentials, Docker daemon qualification
 of the changed executor, or browser inspection was performed by this Build.
 Browser qualification remains external pending. Factory Verify and independent
 Review must consume the exact final worktree after Build returns.
+
+## #29 branch-only collision resolution — 26 September 2026
+
+This follow-up repairs unaccepted checkpoint `b3632bb039e32e95fd63a2905918d9436266a95f` while retaining `0.8.0` and the full review baseline `b2643a8b67b748e9f0bf99a66e7cdd091bda3a71`. Before the change, the new controlled collision regression failed because status had no explicit resolution action. It now covers a pre-write foreign branch, exact readback, local removal, restart persistence, rejected stale/changed identities, PRs on any base target, later-stage collisions and uncertain effects. Provider write counters stay unchanged. Authenticated API, CLI and visible dashboard action/result/error behavior use the same controller state.
+
+The focused delivery suite passed 22/22 and dashboard suite passed 52/52. These use disposable local repositories and a fake provider; they do not qualify live GitHub behavior. The previous installed candidate's Docker/account/PR qualification remains prior-candidate evidence. No browser inspection was performed because the Mac browser is locked; lead-owned installed, provider and browser qualification, plus Native Factory Verify and independent Review, remain pending.

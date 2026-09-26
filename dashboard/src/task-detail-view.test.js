@@ -138,6 +138,26 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   assert.equal(deliveryAlert.textContent,deliveryActionError,'delivery failure is placed beside the delivery action');
   assert.equal(button('Reconcile PR delivery').getAttribute('aria-describedby'),deliveryAlert.id,'the action references its accessible error');
 
+  const foreignSha='9'.repeat(40);
+  job.delivery_status={...job.delivery_status,state:'conflict',can_publish:false,can_abandon:true,identity:'delivery-intent-fixture',
+    remote_collision:{kind:'branch',repository:'https://github.com/example/project',target:'dev',branch:'factory/job_fixture-candidate',sha:foreignSha,node_id:'foreign-node'}};
+  deliveryActionError='';await render();
+  assert.match(document.body.textContent,new RegExp(foreignSha),'the exact conflicting remote identity is visible before resolution');
+  assert(button('Abandon local delivery; keep remote branch'));
+  await click(button('Abandon local delivery; keep remote branch'));
+  assert.equal(captured[1],'abandon-delivery','the dashboard calls the explicit shared resolution action');
+  assert.equal(captured[0].delivery_status.identity,'delivery-intent-fixture');
+  assert.equal(captured[0].delivery_status.remote_collision.sha,foreignSha,'the action is bound to the displayed remote head');
+  deliveryActionError='The inspected branch identity changed; review the refreshed status before resolving.';await render();
+  assert.equal(document.querySelector('[aria-label="Trusted PR delivery action"] [role="alert"]').textContent,deliveryActionError,
+    'a stale resolution result is visible beside its action');
+  job.delivery_status={...job.delivery_status,state:'abandoned',can_abandon:false,can_publish:false,
+    resolution:{inspected:{repository:'example/project',branch:'factory/job_fixture-candidate',sha:foreignSha}}};
+  deliveryActionError='';await render();
+  assert.match(document.querySelector('[aria-label="Delivery status"]').textContent,/Local delivery was abandoned/);
+  assert.match(document.querySelector('[aria-label="Delivery status"]').textContent,/no provider write was made/);
+  assert(!button('Abandon local delivery; keep remote branch'));
+
   job.state='failed';delete job.source_admission;job.can_request_changes=false;await render();
   assert.match(document.body.textContent,/legacy job has no admission-time source record and cannot be retried or revised/);
   assert(![...document.querySelectorAll('button')].some(b=>b.textContent.trim().startsWith('Retry ')));

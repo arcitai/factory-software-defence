@@ -133,6 +133,21 @@ async function publishJob(jobId) {
   console.log(JSON.stringify(receipt,null,2));
 }
 
+async function abandonDeliveryJob(jobId) {
+  if (!/^job_[a-f0-9]{24}$/.test(jobId || '')) throw new Error('abandon-delivery requires a Factory JOB_ID');
+  const branchSha = flags['branch-sha'];
+  if (!/^[a-f0-9]{40}$/.test(branchSha || '')) throw new Error('abandon-delivery requires --branch-sha with the inspected remote SHA');
+  const snapshot=await api(state,'/api/v1/status'),job=snapshot.jobs.find(item=>item.id===jobId);
+  if(!job)throw new Error('Job not found');
+  const delivery=job.delivery_status;
+  if(!delivery?.can_abandon)throw new Error('This job has no resolvable pre-write branch collision; inspect status and reconcile unresolved provider effects.');
+  if(branchSha!==delivery.remote_collision?.sha)throw new Error('The supplied branch SHA differs from current status; inspect the current remote branch before resolving.');
+  const result=await api(state,`/api/v1/jobs/${jobId}/abandon-delivery`,{
+    run_id:job.runs.at(-1)?.id,delivery_identity:delivery.identity,branch_sha:branchSha,
+  },undefined,{timeoutMs:PUBLICATION_API_TIMEOUT_MS});
+  console.log(JSON.stringify(result,null,2));
+}
+
 try {
   if(command==='init') {
     if(!flags.repo)throw new Error('init requires --repo /path/to/existing/git/repo');
@@ -239,6 +254,7 @@ try {
     console.log(JSON.stringify(await admitIncident(state,json(resolve(flags.file)),submit)));
   } else if(['approve','cancel','retry'].includes(command))await jobAction(command);
   else if(command==='publish')await publishJob(positional[0]);
+  else if(command==='abandon-delivery')await abandonDeliveryJob(positional[0]);
   else if(command==='revise')await jobAction('request_changes');
   else if(command==='demo') {
     state=resolve(flags.state || DEFAULT_DEMO_STATE);
@@ -300,6 +316,7 @@ try {
   incident --file incident.json            Submit a private, read-only incident draft
   approve JOB_ID | cancel JOB_ID           Review gate / stop this attempt
   publish JOB_ID                          Publish/reconcile the accepted candidate as one draft PR
+  abandon-delivery JOB_ID --branch-sha SHA Resolve an inspected pre-write collision; keep the remote branch
   retry JOB_ID                            Prove stop; retain old checkout and retry
   revise JOB_ID --file feedback.md [--source-ref REF]
                                           New build/check/review; source stays pinned unless a new ref is explicit

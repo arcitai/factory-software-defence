@@ -161,12 +161,15 @@ function App() {
   }
 
   async function workflowAction(job, action, stopped = false, feedback = "", sourceRef = "") {
-    if (action === "publish") setDeliveryActionError("");
+    const deliveryAction = ["publish", "abandon-delivery"].includes(action);
+    if (deliveryAction) setDeliveryActionError("");
     else setTaskActionError("");
     try {
       const body = action === "publish"
         ? { run_id: job.runs.at(-1)?.id }
-        : { run_id: job.runs.at(-1)?.id, previous_process_stopped: stopped, feedback, ...(sourceRef.trim()?{source_ref:sourceRef.trim()}:{}) };
+        : action === "abandon-delivery"
+          ? { run_id: job.runs.at(-1)?.id, delivery_identity: job.delivery_status?.identity, branch_sha: job.delivery_status?.remote_collision?.sha }
+          : { run_id: job.runs.at(-1)?.id, previous_process_stopped: stopped, feedback, ...(sourceRef.trim()?{source_ref:sourceRef.trim()}:{}) };
       const response = await fetch(`/api/v1/jobs/${encodeURIComponent(job.id)}/${action}`, {
         method: "POST", headers: { "Content-Type": "application/json", "X-Factory-Session": status.csrf_token },
         body: JSON.stringify(body),
@@ -174,7 +177,7 @@ function App() {
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || "Unable to update job"); }
       await statusLoader.current.refresh();
     } catch (error) {
-      if (action === "publish") setDeliveryActionError(error.message);
+      if (deliveryAction) setDeliveryActionError(error.message);
       else setTaskActionError(error.message);
     }
   }

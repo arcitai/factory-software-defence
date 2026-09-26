@@ -59,7 +59,7 @@ export function createController(state, adapter = executors(state), integrations
         const jobs = queue.all().map(job => ({ ...job, source_admission: publicSourceAdmission(job.source_admission),
           source_history: (job.source_history || []).map(publicSourceAdmission), can_request_changes: queue.canRequestChanges(job),
           can_remove: queue.canRemove(job), removal_block_reason: queue.removalBlockReason(job),
-          delivery_removal_blocked: Boolean(job.delivery && job.delivery.state !== 'published'),
+          delivery_removal_blocked: Boolean(job.delivery && !['published', 'abandoned'].includes(job.delivery.state)),
           delivery_status: delivery.summary(job), runs: job.runs.map(attempt => attemptPresentation({ ...attempt,
           outcome: attempt.outcome || (attempt.state === 'succeeded' ? 'complete' : undefined) }, adapter.usage?.(job, attempt))) }));
         return send(200, { version: 1, runtime_version: VERSION, maintenance: queue.maintenance, workflows: Object.keys(definitions.workflows), commands: [], triggers: [], jobs, csrf_token: csrf,
@@ -126,10 +126,12 @@ export function createController(state, adapter = executors(state), integrations
           const created = queue.submit(input);
           return send(201, { id: created.id, source_admission: publicSourceAdmission(created.source_admission) });
         }
-        const action = url.pathname.match(/^\/api\/v1\/jobs\/(job_[a-f0-9]+)\/(approve|cancel|retry|request_changes|publish)$/);
+        const action = url.pathname.match(/^\/api\/v1\/jobs\/(job_[a-f0-9]+)\/(approve|cancel|retry|request_changes|publish|abandon-delivery)$/);
         if (action) return send(200, action[2] === 'publish'
           ? await delivery.publish(action[1], input)
-          : await queue.action(action[1], action[2], input));
+          : action[2] === 'abandon-delivery'
+            ? await delivery.abandonDelivery(action[1], input)
+            : await queue.action(action[1], action[2], input));
       }
       const removal = url.pathname.match(/^\/api\/v1\/jobs\/(job_[a-f0-9]+)$/);
       if (request.method === 'DELETE' && removal) {
