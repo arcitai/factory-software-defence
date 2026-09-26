@@ -790,3 +790,25 @@ Review must consume the exact final worktree after Build returns.
 This follow-up repairs unaccepted checkpoint `b3632bb039e32e95fd63a2905918d9436266a95f` while retaining `0.8.0` and the full review baseline `b2643a8b67b748e9f0bf99a66e7cdd091bda3a71`. Before the change, the new controlled collision regression failed because status had no explicit resolution action. It now covers a pre-write foreign branch, exact readback, local removal, restart persistence, rejected stale/changed identities, PRs on any base target, later-stage collisions and uncertain effects. Provider write counters stay unchanged. Authenticated API, CLI and visible dashboard action/result/error behavior use the same controller state.
 
 The focused delivery suite passed 22/22 and dashboard suite passed 52/52. These use disposable local repositories and a fake provider; they do not qualify live GitHub behavior. The previous installed candidate's Docker/account/PR qualification remains prior-candidate evidence. No browser inspection was performed because the Mac browser is locked; lead-owned installed, provider and browser qualification, plus Native Factory Verify and independent Review, remain pending.
+
+## #29 synthetic-evidence publication guard — 26 September 2026
+
+The before-fix regression showed the mock acceptance could publish: the fake
+provider recorded one blob, tree, commit, branch and PR write. The shared
+delivery service now binds protected per-run execution profiles to the exact
+build, verify, review and handoff runs and requires candidate/check/review
+artifacts to explicitly state `synthetic: false`. Missing or inconsistent
+evidence blocks new writes in status, CLI, API and dashboard. Saved write-stage
+intents are revalidated; known PR receipts and PR-create checkpoints keep their
+read-only reconciliation path. Executor tests confirm the mock review artifact
+is marked synthetic.
+
+The passing contract fixtures model native Codex/Pi provenance but make no
+model calls; the provider remains fake. This repair did not refresh prior
+installed/provider qualification. Browser inspection remains external and
+pending, and the lead owns fresh candidate qualification after Native Verify
+and independent Review.
+
+For this worktree, `npm ci --ignore-scripts`, `npm run build:dashboard` and
+`npm run check` passed. The complete check reported 137 root/runtime/package
+test cases and 52 dashboard tests.

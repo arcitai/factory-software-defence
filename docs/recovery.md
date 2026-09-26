@@ -136,11 +136,16 @@ uncertain write. See [provider ownership and recovery limits](integrations.md).
 ## Trusted PR delivery
 
 Delivery is available only for an accepted software job with current source,
-candidate, check, independent review and approval records. The private operator
-configuration pins the GitHub repository and target; task text and worker
-reports cannot provide either. The controller stores the intent and remote
-branch/PR identifiers in the job row before it writes. Status and task details
-show the receipt separately from integration or deployment.
+candidate, check, independent review and approval records. Trusted publication
+also requires matching private per-run execution records: native Codex/Pi for
+build and review, deterministic verification and handoff, and explicitly
+non-synthetic bound candidate/check/review artifacts. Missing, unknown,
+synthetic or inconsistent evidence is not publication proof. Status, CLI, API
+and dashboard use the same guard. The private operator configuration pins the
+GitHub repository and target; task text and worker reports cannot provide
+either. The controller stores the intent and remote branch/PR identifiers in
+the job row before it writes. Status and task details show the receipt
+separately from integration or deployment.
 
 Inspect the same installation before recovery:
 
@@ -156,6 +161,12 @@ repository or collision is preserved and blocks recovery. It never force-pushes,
 rebases, creates a second PR to avoid an uncertain response, or merges. Restore
 the original trusted repository/target configuration if it changed; do not
 redirect a saved intent.
+
+Before any new content, branch or PR write, a saved intent is rechecked against
+the protected run profiles and linked artifacts. A mock/synthetic record cannot
+authorize a new write on retry. A known receipt or PR-creation checkpoint can
+still use read-only provider reconciliation; if that cannot establish the
+existing effect, the uncertain record remains blocked from further writes.
 
 After publication is confirmed, readback follows the saved PR identity and
 records its current open draft/ready, closed or merged state and checks. This

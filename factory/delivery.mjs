@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { isDeepStrictEqual } from 'node:util';
 import { VERSION } from './updates.mjs';
 import { configAt, digest } from './lib.mjs';
 import { effectiveExecutionConfig } from './execution-profile.mjs';
@@ -186,6 +187,37 @@ function remotePullReceipt(pull, repository, target, branch) {
   };
 }
 
+function trustedExecutionProfile(state, job, run, phase, expectedPolicy) {
+  if (!run || !/^run_[a-z0-9]+$/.test(run.id || '')) return false;
+  try {
+    const folder = join(state, 'jobs', job.id);
+    for (const path of [join(state, 'jobs'), folder, join(folder, 'artifacts'), join(folder, 'artifacts', run.id)])
+      assertPrivateDirectory(path);
+    const profile = readPrivateJson(join(folder, 'artifacts', run.id, 'execution.json'));
+    const agentPhase = phase === 'build' || phase === 'review';
+    const executorMatches = agentPhase
+      ? ['codex', 'pi'].includes(profile.executor)
+        && ['explicit', 'provider_default'].includes(profile.modelSelection)
+        && (profile.modelSelection === 'explicit' ? typeof profile.requestedModel === 'string' : profile.requestedModel === null)
+      : profile.executor === 'deterministic' && profile.modelSelection === 'not_applicable' && profile.requestedModel === null;
+    return profile.version === 1 && profile.phase === phase && executorMatches
+      && profile.runtimeVersion === VERSION && profile.policyHash === expectedPolicy
+      && isDeepStrictEqual(run.execution, profile);
+  } catch { return false; }
+}
+
+function trustedPhaseEvidence(state, job, expectedPolicy, runs, candidate, checks, review) {
+  const executionsMatch = trustedExecutionProfile(state, job, runs.build, 'build', expectedPolicy)
+    && trustedExecutionProfile(state, job, runs.verify, 'verify', expectedPolicy)
+    && trustedExecutionProfile(state, job, runs.review, 'review', expectedPolicy)
+    && trustedExecutionProfile(state, job, runs.handoff, 'handoff', expectedPolicy);
+  if (!executionsMatch)
+    return { trusted: false, reason: 'Protected phase execution provenance is missing, unknown or inconsistent; trusted PR publication is unavailable.' };
+  if (candidate.synthetic !== false || checks.synthetic !== false || review.synthetic !== false)
+    return { trusted: false, reason: 'Synthetic or unknown build, check or review evidence cannot authorize trusted PR publication.' };
+  return { trusted: true };
+}
+
 function acceptanceSummary(job, state, config) {
   const handoff = job.runs?.at(-1);
   if (job.workflow?.name !== 'software' || job.state !== 'succeeded'
@@ -216,6 +248,10 @@ function acceptanceSummary(job, state, config) {
   catch { return { state: 'blocked', reason: 'Trusted inference configuration is invalid or ambiguous; publication is unavailable.' }; }
   const byID = id => job.runs.find(run => run.id === id);
   const buildRun = byID(accepted.build_run_id), checkRun = byID(accepted.checks_run_id), reviewRun = byID(accepted.review_run_id);
+  const handoffRun = byID(accepted.handoff_run_id);
+  const phaseEvidence = trustedPhaseEvidence(state, job, expectedPolicy,
+    { build: buildRun, verify: checkRun, review: reviewRun, handoff: handoffRun }, candidate, checks, review);
+  if (!phaseEvidence.trusted) return { state: 'blocked', reason: phaseEvidence.reason };
   const validRun = (run, command) => run?.command === command && run.state === 'succeeded' && run.outcome === 'complete'
     && run.execution?.runtimeVersion === VERSION && run.execution?.policyHash === expectedPolicy;
   const bound = handoff.id === accepted.handoff_run_id && validRun(buildRun, 'build')
@@ -250,15 +286,18 @@ export class DeliveryService {
       && job.delivery.provider === config.delivery.provider
       && job.delivery.repository === config.delivery.repository
       && job.delivery.target === config.delivery.target);
-    const acceptance = enabled && !job.delivery ? acceptanceSummary(job, this.state, config) : { state: 'not_ready' };
+    const acceptance = enabled ? acceptanceSummary(job, this.state, config) : { state: 'not_ready' };
     const state = job.delivery?.state || (enabled
       ? acceptance.state === 'ready' ? 'ready'
         : acceptance.state === 'legacy_unverified' ? 'legacy_unverified'
           : acceptance.state === 'blocked' ? 'blocked'
             : acceptance.state === 'unverified' ? 'unverified' : 'not_started'
       : config.delivery?.provider ? 'patch_only_unsupported_provider' : 'patch_only');
-    const recoverable = job.delivery && (['intent', 'publishing', 'uncertain', 'blocked', 'published'].includes(job.delivery.state)
-      || (job.delivery.state === 'conflict' && Number.isSafeInteger(job.delivery.pull_request?.number)));
+    const savedDelivery = job.delivery;
+    const readOnlyRecovery = savedDelivery && (savedDelivery.state === 'published'
+      || (savedDelivery.state === 'conflict' && Number.isSafeInteger(savedDelivery.pull_request?.number))
+      || (['publishing', 'uncertain', 'blocked'].includes(savedDelivery.state)
+        && ['creating_pull_request', 'pull_request_created', 'pull_request_found'].includes(savedDelivery.stage)));
     const collision = job.delivery?.remote_collision;
     const canAbandon = Boolean(enabled && savedDestinationMatches && job.workflow?.name === 'software'
       && job.state === 'succeeded' && job.delivery?.state === 'conflict' && job.delivery.stage === 'intent'
@@ -286,9 +325,9 @@ export class DeliveryService {
       resolution: job.delivery?.resolution || null,
       error: job.delivery && !savedDestinationMatches
         ? 'Saved delivery belongs to a different trusted destination. Restore its original provider, repository and target to recover it.'
-        : job.delivery?.error || acceptance.reason || null,
+        : readOnlyRecovery ? job.delivery?.error || null : acceptance.reason || job.delivery?.error || null,
       can_publish: enabled && savedDestinationMatches && job.workflow?.name === 'software' && job.state === 'succeeded'
-        && (recoverable || (!job.delivery && acceptance.state === 'ready')),
+        && savedDelivery?.state !== 'abandoned' && (Boolean(readOnlyRecovery) || acceptance.state === 'ready'),
       can_abandon: canAbandon,
       integration: 'separate',
       deployment: 'separate',
@@ -423,6 +462,9 @@ export class DeliveryService {
       && run.execution?.runtimeVersion === VERSION && run.execution?.policyHash === expectedPolicy;
     if (!validRun(buildRun, 'build') || !validRun(checkRun, 'verify') || !validRun(reviewRun, 'review') || !validRun(handoff, 'handoff'))
       throw new QueueError('Build, checks, review and approval do not match the current Factory policy.');
+    const phaseEvidence = trustedPhaseEvidence(this.state, job, expectedPolicy,
+      { build: buildRun, verify: checkRun, review: reviewRun, handoff }, candidate, checks, review);
+    if (!phaseEvidence.trusted) throw new QueueError(phaseEvidence.reason);
     if (candidate.build_run_id !== buildRun.id || candidate.build_policy_hash !== expectedPolicy
       || accepted.handoff_run_id !== handoff.id || accepted.policyHash !== expectedPolicy
       || accepted.base !== job.source_admission.resolved_sha || candidate.base !== accepted.base

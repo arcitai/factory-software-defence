@@ -83,6 +83,11 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   await render();
   assert.match(document.body.textContent,/Patch-only handoff/);
   assert(!button('Publish accepted candidate as draft PR'),'patch-only mode has no publish action');
+  job.delivery_status={state:'blocked',repository:'https://github.com/example/project',target:'dev',can_publish:false,
+    error:'Synthetic or unknown build, check or review evidence cannot authorize trusted PR publication.',integration:'separate',deployment:'separate'};
+  await render();
+  assert(!button('Publish accepted candidate as draft PR'),'synthetic or unknown evidence has no dashboard publish action');
+  assert.match(document.body.textContent,/Synthetic or unknown build, check or review evidence/);
   job.delivery_status={state:'ready',repository:'https://github.com/example/project',target:'dev',can_publish:true,integration:'separate',deployment:'separate'};
   await render();
   assert.match(document.body.textContent,/Ready for explicit draft PR delivery/);

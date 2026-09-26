@@ -12,7 +12,7 @@ import { DeliveryService } from '../factory/delivery.mjs';
 import { SourceAdmissionStore, publicSourceAdmission, restoreRetainedCheckout } from '../factory/source-admission.mjs';
 import { runCandidateGit } from '../factory/git-environment.mjs';
 import { API_TIMEOUT_MS, PUBLICATION_API_TIMEOUT_MS, configAt, digest } from '../factory/lib.mjs';
-import { effectiveExecutionConfig } from '../factory/execution-profile.mjs';
+import { effectiveExecutionConfig, executionProfile } from '../factory/execution-profile.mjs';
 import { VERSION } from '../factory/updates.mjs';
 import { githubDeliveryProvider } from '../factory/providers/github-delivery.mjs';
 import { createController } from '../factory/server.mjs';
@@ -23,7 +23,7 @@ const runIDs = { build: `run_${'b'.repeat(24)}`, verify: `run_${'c'.repeat(24)}`
 const git = (repo, ...args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).trim();
 const save = (path, value) => { mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 }); writeFileSync(path, JSON.stringify(value), { mode: 0o600 }); };
 
-function testFixture(t, { delivery = true, port = 7331, harness = 'mock', model = null, taskModel = null, modelEnv = '' } = {}) {
+function testFixture(t, { delivery = true, port = 7331, harness = 'codex', model = null, taskModel = null, modelEnv = '' } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'sdf-delivery-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const repo = join(root, 'repo'), state = join(root, 'state');
@@ -58,10 +58,13 @@ function testFixture(t, { delivery = true, port = 7331, harness = 'mock', model 
   const patch = patchText ? `${patchText}\n` : '';
   const policyHash = digest(JSON.stringify(effectiveExecutionConfig(config, taskModel, join(state, 'model.env'))));
   const patchHash = digest(Buffer.from(patch));
+  // Success fixtures model the private protected provenance for native Codex/Pi
+  // phases; they exercise the delivery contract without making model calls.
+  const synthetic = harness === 'mock';
   const candidate = { base, head, tree, parent: git(checkout, 'rev-parse', 'HEAD^'), build_run_id: runIDs.build,
-    build_policy_hash: policyHash, source_admission: publicSourceAdmission(admission), synthetic: true };
-  const checks = { run_id: runIDs.verify, head, tree, policyHash, command: config.check, passed: true, synthetic: true };
-  const review = { run_id: runIDs.review, verdict: 'pass', summary: 'Candidate reviewed.', findings: [], head, tree, policyHash };
+    build_policy_hash: policyHash, source_admission: publicSourceAdmission(admission), synthetic };
+  const checks = { run_id: runIDs.verify, head, tree, policyHash, command: config.check, passed: true, synthetic };
+  const review = { run_id: runIDs.review, verdict: 'pass', summary: synthetic ? 'Synthetic fixture review; no model judgment.' : 'Candidate reviewed.', findings: [], head, tree, policyHash, synthetic };
   const accepted = { base, head, tree, patch_sha256: patchHash, build_run_id: runIDs.build, checks_run_id: runIDs.verify,
     review_run_id: runIDs.review, handoff_run_id: runIDs.handoff, policyHash, source_admission: publicSourceAdmission(admission), acceptedAt: '2026-09-26T12:00:00.000Z' };
   const folder = join(state, 'jobs', jobID), input = join(folder, 'delivery-input');
@@ -69,12 +72,15 @@ function testFixture(t, { delivery = true, port = 7331, harness = 'mock', model 
   writeFileSync(join(input, 'candidate.patch'), patch, { mode: 0o600 });
   save(join(folder, 'candidate.json'), candidate); save(join(folder, 'checks.json'), checks);
   save(join(folder, 'review.json'), review); save(join(folder, 'accepted.json'), accepted);
-  const execution = { runtimeVersion: VERSION, policyHash };
+  const effective = effectiveExecutionConfig(config, taskModel, join(state, 'model.env'));
+  const executions = Object.fromEntries(['build', 'verify', 'review', 'handoff'].map(phase => [phase, executionProfile(effective, phase)]));
+  for (const phase of ['build', 'verify', 'review', 'handoff'])
+    save(join(folder, 'artifacts', runIDs[phase], 'execution.json'), executions[phase]);
   const runs = [
-    { id: runIDs.build, command: 'build', state: 'succeeded', outcome: 'complete', execution },
-    { id: runIDs.verify, command: 'verify', state: 'succeeded', outcome: 'complete', execution },
-    { id: runIDs.review, command: 'review', state: 'succeeded', outcome: 'complete', review_verdict: 'pass', execution },
-    { id: runIDs.handoff, command: 'handoff', state: 'succeeded', outcome: 'complete', execution },
+    { id: runIDs.build, command: 'build', state: 'succeeded', outcome: 'complete', execution: executions.build },
+    { id: runIDs.verify, command: 'verify', state: 'succeeded', outcome: 'complete', execution: executions.verify },
+    { id: runIDs.review, command: 'review', state: 'succeeded', outcome: 'complete', review_verdict: 'pass', execution: executions.review },
+    { id: runIDs.handoff, command: 'handoff', state: 'succeeded', outcome: 'complete', execution: executions.handoff },
   ];
   const job = { id: jobID, state: 'succeeded', model: taskModel, task: { title: 'Delivery fixture', source_url: 'https://github.com/example/project/issues/29' },
     workflow: { name: 'software', steps: ['build', 'verify', 'review', 'handoff'], current_step: 3 }, repository: 'app',
@@ -160,6 +166,112 @@ function pullRecord(sha, base, branch) {
     head: { ref: branch, sha, repo: { full_name: 'example/project' } } };
 }
 function service(f, provider) { return new DeliveryService(f.queue, f.state, { config: () => configAt(f.state), sourceAdmission: f.sourceAdapter, provider }); }
+
+test('synthetic mock acceptance cannot advertise or perform trusted PR publication', async t => {
+  const f = testFixture(t, { harness: 'mock' }), gh = fakeGitHub(f), manager = service(f, gh.provider);
+  const summary = manager.summary(f.queue.get(jobID));
+  let failure;
+  try { await manager.publish(jobID, { run_id: f.run_id }); } catch (error) { failure = error; }
+  assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 },
+    `synthetic evidence must not reach a provider write; publish result: ${failure?.message || 'published'}`);
+  assert.equal(summary.can_publish, false, 'mock phase evidence is local exploration, not publication proof');
+  assert.match(summary.error, /synthetic|execution provenance/i);
+  assert.ok(failure, 'the shared publisher rejects synthetic phase evidence');
+});
+
+test('synthetic publication refusal is shared by status, authenticated API and CLI', async t => {
+  const reservation = createNetServer();
+  await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
+  const port = reservation.address().port;
+  await new Promise(resolve => reservation.close(resolve));
+  const f = testFixture(t, { harness: 'mock', port }), gh = fakeGitHub(f);
+  await f.closeQueue();
+  const controller = createController(f.state, { execute: async () => ({ outcome: 'complete' }), stop: async () => {}, reconcile: async () => {} }, { deliveryProvider: gh.provider });
+  await new Promise(resolve => controller.server.listen(port, '127.0.0.1', resolve));
+  t.after(() => controller.close());
+  const origin = `http://127.0.0.1:${port}`;
+  const status = await (await fetch(`${origin}/api/v1/status`)).json();
+  assert.equal(status.jobs[0].delivery_status.can_publish, false);
+  assert.match(status.jobs[0].delivery_status.error, /synthetic|execution provenance/i);
+  const headers = { 'Content-Type': 'application/json', 'X-Factory-Session': status.csrf_token };
+  const response = await fetch(`${origin}/api/v1/jobs/${jobID}/publish`, {
+    method: 'POST', headers, body: JSON.stringify({ run_id: f.run_id }),
+  });
+  assert.equal(response.status, 409, 'the dashboard action reaches the same shared rejection');
+  assert.match((await response.json()).error, /synthetic|execution provenance/i);
+  let cliFailure;
+  try {
+    await execFileAsync(process.execPath, ['bin/software-defence-factory.mjs', 'publish', jobID, '--state', f.state], {
+      encoding: 'utf8', env: { ...process.env, SDF_AUTO_UPDATE: '0', SDF_BOOTSTRAPPED: '1' },
+    });
+  } catch (error) { cliFailure = error; }
+  assert.match(cliFailure?.stderr || '', /synthetic|execution provenance/i);
+  assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
+});
+
+test('saved pre-write intents revalidate synthetic evidence and unknown protected provenance before writing', async t => {
+  const noWrites = { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 };
+  const f = testFixture(t), gh = fakeGitHub(f), manager = service(f, gh.provider);
+  const config = configAt(f.state), job = f.queue.get(jobID);
+  manager.ensureIntent(job, config, manager.validateEvidence(job, config));
+  const reviewPath = join(f.folder, 'review.json');
+  const review = JSON.parse(readFileSync(reviewPath, 'utf8'));
+  writeFileSync(reviewPath, JSON.stringify({ ...review, synthetic: true }), { mode: 0o600 });
+  const summary = manager.summary(f.queue.get(jobID));
+  let failure;
+  try { await manager.publish(jobID, { run_id: f.run_id }); } catch (error) { failure = error; }
+  assert.equal(summary.can_publish, false, 'a saved intent cannot make synthetic evidence publishable');
+  assert.ok(failure, 'the saved intent is revalidated before any new provider write');
+  assert.deepEqual(gh.state.writes, noWrites);
+  assert.match(failure.message, /synthetic|execution provenance/i);
+  await f.closeQueue();
+
+  for (const defect of ['missing protected profile', 'inconsistent run profile']) {
+    const broken = testFixture(t), provider = fakeGitHub(broken), delivery = service(broken, provider.provider);
+    if (defect === 'missing protected profile') {
+      rmSync(join(broken.state, 'jobs', jobID, 'artifacts', runIDs.review, 'execution.json'));
+    } else {
+      const changed = broken.queue.get(jobID);
+      changed.runs.find(run => run.id === runIDs.review).execution.executor = 'pi';
+      broken.queue.save(changed);
+    }
+    const status = delivery.summary(broken.queue.get(jobID));
+    let rejected;
+    try { await delivery.publish(jobID, { run_id: broken.run_id }); } catch (error) { rejected = error; }
+    assert.equal(status.can_publish, false, `${defect} cannot be advertised as trusted proof`);
+    assert.ok(rejected, `${defect} is rejected by the shared publisher`);
+    assert.deepEqual(provider.state.writes, noWrites, `${defect} blocks all GitHub content/ref/PR writes`);
+    await broken.closeQueue();
+  }
+});
+
+test('synthetic evidence cannot resume writes but known PR readback remains read-only', async t => {
+  const noWrites = { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 };
+  const pending = testFixture(t), pendingGH = fakeGitHub(pending), pendingManager = service(pending, pendingGH.provider);
+  const config = configAt(pending.state), pendingJob = pending.queue.get(jobID);
+  pendingManager.ensureIntent(pendingJob, config, pendingManager.validateEvidence(pendingJob, config));
+  pendingJob.delivery.state = 'uncertain'; pendingJob.delivery.stage = 'creating_pull_request';
+  pending.queue.save(pendingJob);
+  const pendingReviewPath = join(pending.folder, 'review.json');
+  const pendingReview = JSON.parse(readFileSync(pendingReviewPath, 'utf8'));
+  writeFileSync(pendingReviewPath, JSON.stringify({ ...pendingReview, synthetic: true }), { mode: 0o600 });
+  assert.equal(pendingManager.summary(pending.queue.get(jobID)).can_publish, true,
+    'the displayed action is limited to read-only reconciliation of a saved PR-create checkpoint');
+  await assert.rejects(pendingManager.publish(jobID, { run_id: pending.run_id }), /not yet confirmed/);
+  assert(pendingGH.state.pullSearchTargets.includes('main'), 'the saved PR checkpoint receives its read-only lookup');
+  assert.deepEqual(pendingGH.state.writes, noWrites, 'an absent PR is not created from synthetic evidence');
+  await pending.closeQueue();
+
+  const published = testFixture(t), publishedGH = fakeGitHub(published), publishedManager = service(published, publishedGH.provider);
+  assert.equal((await publishedManager.publish(jobID, { run_id: published.run_id })).state, 'published');
+  const writes = structuredClone(publishedGH.state.writes);
+  const reviewPath = join(published.folder, 'review.json'), review = JSON.parse(readFileSync(reviewPath, 'utf8'));
+  writeFileSync(reviewPath, JSON.stringify({ ...review, synthetic: true }), { mode: 0o600 });
+  assert.equal(publishedManager.summary(published.queue.get(jobID)).can_publish, true,
+    'a known receipt remains available for read-only refresh');
+  assert.equal((await publishedManager.publish(jobID, { run_id: published.run_id })).state, 'published');
+  assert.deepEqual(publishedGH.state.writes, writes, 'published readback remains read-only');
+});
 
 test('explicit trusted config publishes one draft PR, records pending checks, reconciles lost responses and survives restart', async t => {
   const f = testFixture(t), gh = fakeGitHub(f, { loseBranch: true, losePull: true }), manager = service(f, gh.provider);

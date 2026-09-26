@@ -112,6 +112,14 @@ use **Publish accepted candidate as draft PR** in task details or run:
 software-defence-factory publish JOB_ID --state /private/state/my-app
 ```
 
+Trusted publication requires protected per-run execution records for native
+Codex/Pi build and review plus deterministic verification and handoff, bound to
+non-synthetic candidate, check and review artifacts. Mock qualification remains
+local exploration and cannot be published; missing or inconsistent provenance
+keeps the action unavailable in status, CLI, API and dashboard. A saved intent
+is checked again before new provider writes. Known PR receipts and PR-creation
+checkpoints still allow read-only reconciliation.
+
 The controller uses its existing `gh` identity. GitHub credentials are never
 copied to `model.env` or mounted into jobs. The intent, generated branch, PR
 identity, actual base/head/tree and triggered PR check results appear in the

@@ -12,7 +12,7 @@ const job = `job_${'c'.repeat(24)}`;
 const attempt = `run_${'d'.repeat(24)}`;
 const inertAuth = 'inert-executor-auth-sentinel';
 
-function fixture(t, mode, phase = 'review') {
+function fixture(t, mode, phase = 'review', harness = 'codex') {
   const rootDir = mkdtempSync(join(tmpdir(), 'sdf-executor-container-recovery-'));
   t.after(() => rmSync(rootDir, { recursive: true, force: true }));
   const dockerRoot = mkdtempSync(join(root, '.sdf-controlled-docker-'));
@@ -34,11 +34,13 @@ function fixture(t, mode, phase = 'review') {
   const tree = execFileSync('git', ['-C', workspace, 'rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim();
 
   const config = {
-    harness: 'codex', command: ['fixture-agent'], image: 'fixture/image:latest',
+    harness, command: harness === 'mock' ? ['fixture-mock'] : ['fixture-agent'], image: 'fixture/image:latest',
     memoryMiB: 512, cpus: 1, network: 'none', timeoutSeconds: 30, check: 'true',
   };
   const policyHash = digest(JSON.stringify(config));
-  const execution = { phase, executor: 'codex', runtimeVersion: 'fixture', policyHash, requestedModel: 'fixture-model' };
+  const execution = { phase, executor: harness, runtimeVersion: 'fixture', policyHash,
+    requestedModel: harness === 'mock' ? null : 'fixture-model',
+    modelSelection: harness === 'mock' ? 'not_applicable' : 'explicit' };
   writeFileSync(join(attemptFolder, 'execution-config.json'), JSON.stringify(config));
   writeFileSync(join(artifacts, 'execution.json'), JSON.stringify(execution));
   writeFileSync(join(folder, 'candidate.json'), JSON.stringify({ base: head, head, tree }));
@@ -221,6 +223,14 @@ test('confirmed successful removal cleans the selected file and fence', t => {
   assert.equal(existsSync(f.selectedEnvironment), false);
   assert.equal(existsSync(f.lock), false);
   assert.doesNotMatch(execution.stdout + execution.stderr, new RegExp(inertAuth));
+});
+
+test('mock review artifact is explicitly marked synthetic by the host executor', t => {
+  const f = fixture(t, 'success', 'review', 'mock');
+  const execution = runExecutor(f);
+  assert.equal(execution.status, 0, execution.stderr || execution.stdout);
+  assert.equal(JSON.parse(readFileSync(join(f.folder, 'review.json'), 'utf8')).synthetic, true);
+  assert.equal(JSON.parse(readFileSync(join(f.output, 'review.json'), 'utf8')).synthetic, true);
 });
 
 test('outer stopContainers cleanup owns file and fence removal after inner uncertainty', t => {

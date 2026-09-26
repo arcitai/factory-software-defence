@@ -166,8 +166,9 @@ try {
     const review = JSON.parse(safeRead(join(reports,'review.json')));
     if (!['pass','changes','blocked'].includes(review.verdict) || typeof review.summary !== 'string' || !review.summary.trim() || !Array.isArray(review.findings)) throw new Error('Invalid independent review');
     reviewVerdict = review.verdict;
-    save(join(folder,'review.json'), { ...review, run_id: attempt, head: meta.head, tree: meta.tree, policyHash });
-    save(join(output,'review.json'), { ...review, run_id: attempt, head: meta.head, tree: meta.tree, policyHash });
+    const reviewEvidence = { ...review, run_id: attempt, head: meta.head, tree: meta.tree, policyHash, synthetic: harnessOf(config) === 'mock' };
+    save(join(folder,'review.json'), reviewEvidence);
+    save(join(output,'review.json'), reviewEvidence);
     candidate();
     if (review.verdict !== 'pass') throw new Error(`Review requires attention: ${review.summary}`);
   } else if (phase === 'handoff') {
