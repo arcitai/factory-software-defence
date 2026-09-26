@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { VERSION } from './updates.mjs';
 import { configAt, digest } from './lib.mjs';
-import { withRequestedModel } from './execution-profile.mjs';
+import { effectiveExecutionConfig } from './execution-profile.mjs';
 import { publicSourceAdmission } from './source-admission.mjs';
 import { QueueError } from './queue.mjs';
 import { readProjectLinks } from './project-links.mjs';
@@ -164,6 +164,21 @@ function sameRepository(actual, expected) {
   return typeof actual === 'string' && actual.toLowerCase() === expected.toLowerCase();
 }
 
+function remotePullReceipt(pull, repository, target, branch) {
+  const ownerName = repository.slice('https://github.com/'.length);
+  if (!Number.isSafeInteger(pull?.number) || pull.number < 1
+    || !sameRepository(pull.base?.repo?.full_name, ownerName) || !sameRepository(pull.head?.repo?.full_name, ownerName)
+    || pull.base?.ref !== target || pull.head?.ref !== branch
+    || pull.html_url !== `https://github.com/${pull.base.repo.full_name}/pull/${pull.number}`) return null;
+  return {
+    id: pull.id || null, node_id: pull.node_id || null, number: pull.number, url: pull.html_url,
+    state: typeof pull.state === 'string' ? pull.state : 'unknown', draft: pull.draft === true,
+    repository: pull.base.repo.full_name, branch: pull.head.ref, target: pull.base.ref,
+    base_sha: SHA1.test(pull.base.sha || '') ? pull.base.sha : null,
+    head_sha: SHA1.test(pull.head.sha || '') ? pull.head.sha : null, tree: null,
+  };
+}
+
 function acceptanceSummary(job, state, config) {
   const handoff = job.runs?.at(-1);
   if (job.workflow?.name !== 'software' || job.state !== 'succeeded'
@@ -189,7 +204,9 @@ function acceptanceSummary(job, state, config) {
     return { state: 'legacy_unverified', reason: 'This legacy acceptance does not bind the candidate, checks, review and approval required for PR delivery.' };
   }
 
-  const expectedPolicy = digest(JSON.stringify(withRequestedModel(config, job.model)));
+  let expectedPolicy;
+  try { expectedPolicy = digest(JSON.stringify(effectiveExecutionConfig(config, job.model, join(state, 'model.env')))); }
+  catch { return { state: 'blocked', reason: 'Trusted inference configuration is invalid or ambiguous; publication is unavailable.' }; }
   const byID = id => job.runs.find(run => run.id === id);
   const buildRun = byID(accepted.build_run_id), checkRun = byID(accepted.checks_run_id), reviewRun = byID(accepted.review_run_id);
   const validRun = (run, command) => run?.command === command && run.state === 'succeeded' && run.outcome === 'complete'
@@ -222,6 +239,10 @@ export class DeliveryService {
     let config;
     try { config = this.currentConfig(); } catch { config = {}; }
     const enabled = config.delivery?.provider === 'github' && this.provider?.supported === true;
+    const savedDestinationMatches = !job.delivery || (enabled
+      && job.delivery.provider === config.delivery.provider
+      && job.delivery.repository === config.delivery.repository
+      && job.delivery.target === config.delivery.target);
     const acceptance = enabled && !job.delivery ? acceptanceSummary(job, this.state, config) : { state: 'not_ready' };
     const state = job.delivery?.state || (enabled
       ? acceptance.state === 'ready' ? 'ready'
@@ -229,20 +250,23 @@ export class DeliveryService {
           : acceptance.state === 'blocked' ? 'blocked'
             : acceptance.state === 'unverified' ? 'unverified' : 'not_started'
       : config.delivery?.provider ? 'patch_only_unsupported_provider' : 'patch_only');
-    const recoverable = job.delivery && ['intent', 'publishing', 'uncertain', 'blocked', 'published'].includes(job.delivery.state);
+    const recoverable = job.delivery && (['intent', 'publishing', 'uncertain', 'blocked', 'published'].includes(job.delivery.state)
+      || (job.delivery.state === 'conflict' && Number.isSafeInteger(job.delivery.pull_request?.number)));
     return {
       state,
-      provider: config.delivery?.provider || null,
-      repository: enabled ? config.delivery.repository : null,
-      target: enabled ? config.delivery.target : null,
+      provider: job.delivery?.provider || config.delivery?.provider || null,
+      repository: job.delivery?.repository || (enabled ? config.delivery.repository : null),
+      target: job.delivery?.target || (enabled ? config.delivery.target : null),
       candidate_sha: job.delivery?.candidate || null,
       source_ref: job.delivery?.source_ref || null,
       source_issue: job.delivery?.issue || null,
       branch: job.delivery?.branch || null,
       pull_request: job.delivery?.pull_request || null,
       checks: job.delivery?.checks || null,
-      error: job.delivery?.error || acceptance.reason || null,
-      can_publish: enabled && job.workflow?.name === 'software' && job.state === 'succeeded'
+      error: job.delivery && !savedDestinationMatches
+        ? 'Saved delivery belongs to a different trusted destination. Restore its original provider, repository and target to recover it.'
+        : job.delivery?.error || acceptance.reason || null,
+      can_publish: enabled && savedDestinationMatches && job.workflow?.name === 'software' && job.state === 'succeeded'
         && (recoverable || (!job.delivery && acceptance.state === 'ready')),
       integration: 'separate',
       deployment: 'separate',
@@ -258,6 +282,25 @@ export class DeliveryService {
       const config = this.currentConfig();
       if (config.delivery?.provider !== 'github' || this.provider?.supported !== true)
         throw new QueueError('Trusted GitHub delivery is not configured; the accepted patch remains available.', 409);
+      const saved = job.delivery;
+      const savedEvidence = saved && { accepted: { head: saved.candidate, tree: saved.tree, base: saved.base }, expectedPolicy: saved.policyHash };
+      if (saved?.state === 'published') {
+        const intent = this.ensureIntent(job, config, savedEvidence);
+        return this.refreshSavedPull(job, intent);
+      }
+      if (saved?.state === 'conflict' && Number.isSafeInteger(saved.pull_request?.number)) {
+        const intent = this.ensureIntent(job, config, savedEvidence, { allowConflict: true });
+        return this.refreshSavedPull(job, intent);
+      }
+      if (saved && ['publishing', 'uncertain', 'blocked'].includes(saved.state)
+        && ['creating_pull_request', 'pull_request_created', 'pull_request_found'].includes(saved.stage)) {
+        const intent = this.ensureIntent(job, config, savedEvidence);
+        const reconciled = await this.discoverPendingPull(job, intent);
+        if (reconciled) return reconciled;
+        const message = 'Saved PR creation is not yet confirmed. Retry read-only reconciliation before any new write.';
+        this.persist(job, intent, { state: 'uncertain', error: message });
+        throw new QueueError(message, 409);
+      }
       const evidence = this.validateEvidence(job, config);
       const intent = this.ensureIntent(job, config, evidence);
       return this.resume(job, config, evidence, intent);
@@ -270,7 +313,9 @@ export class DeliveryService {
     if (handoff?.command !== 'handoff' || handoff.state !== 'succeeded') throw new QueueError('The operator handoff has not completed.');
     if (job.source_admission?.status !== 'retained' || typeof this.sourceAdmission?.validate !== 'function')
       throw new QueueError('This job has no valid admission-time source revision.');
-    const expectedPolicy = digest(JSON.stringify(withRequestedModel(config, job.model)));
+    let expectedPolicy;
+    try { expectedPolicy = digest(JSON.stringify(effectiveExecutionConfig(config, job.model, join(this.state, 'model.env')))); }
+    catch { throw new QueueError('Trusted inference configuration is invalid or ambiguous; publication is blocked.'); }
     const folder = join(this.state, 'jobs', job.id);
     let accepted, candidate, checks, review;
     try {
@@ -316,7 +361,7 @@ export class DeliveryService {
     return { accepted, candidate, checks, review, expectedPolicy, patch, issue: sourceIssue(job, config.delivery.repository) };
   }
 
-  ensureIntent(job, config, evidence) {
+  ensureIntent(job, config, evidence, { allowConflict = false } = {}) {
     const deliveryConfig = config.delivery;
     const branch = branchIdentity(job, evidence.accepted);
     const identity = digest(JSON.stringify({ job: job.id, candidate: evidence.accepted.head, tree: evidence.accepted.tree,
@@ -325,7 +370,8 @@ export class DeliveryService {
       if (job.delivery.identity !== identity || job.delivery.provider !== 'github' || job.delivery.repository !== deliveryConfig.repository
         || job.delivery.target !== deliveryConfig.target || job.delivery.branch !== branch)
         throw new QueueError('Saved delivery intent belongs to a different candidate or destination. Restore its original trusted configuration to recover it.');
-      if (job.delivery.state === 'conflict') throw new QueueError('Saved delivery intent has an unexpected remote collision. Inspect it before taking further action.');
+      if (job.delivery.state === 'conflict' && !allowConflict)
+        throw new QueueError('Saved delivery intent has an unexpected remote collision. Inspect it before taking further action.');
       return job.delivery;
     }
     const record = {
@@ -347,11 +393,112 @@ export class DeliveryService {
     this.queue.save(job);
   }
 
+  async discoverPendingPull(job, record) {
+    let pulls;
+    try {
+      const repoInfo = await this.provider.inspectRepository(record.repository);
+      if (!sameRepository(repoInfo.full_name, record.repository.slice('https://github.com/'.length)))
+        throw new QueueError('Configured GitHub identity cannot read the exact destination repository.');
+      pulls = await this.provider.findPulls(record.repository, record.branch, record.target);
+    } catch (error) {
+      const message = error instanceof QueueError ? error.message : 'GitHub could not reconcile the saved PR creation checkpoint; retry readback before any new write.';
+      this.persist(job, record, { state: 'uncertain', error: message });
+      if (error instanceof QueueError) throw error;
+      throw new QueueError(message, 409);
+    }
+    if (pulls.length > 1) {
+      const message = 'Multiple pull requests use the saved delivery branch and target; inspect them before any further write.';
+      this.persist(job, record, { state: 'conflict', error: message });
+      throw new QueueError(message);
+    }
+    if (!pulls.length) return null;
+    const receipt = remotePullReceipt(pulls[0], record.repository, record.target, record.branch);
+    if (!receipt) {
+      const message = 'A pull request uses the saved delivery branch but its repository, target or URL could not be safely reconciled.';
+      this.persist(job, record, { state: 'conflict', error: message });
+      throw new QueueError(message);
+    }
+    this.persist(job, record, { state: 'publishing', stage: 'pull_request_found', pull_request: receipt });
+    return this.refreshSavedPull(job, record);
+  }
+
+  async refreshSavedPull(job, record) {
+    const priorState = record.state;
+    const { repository, target, branch } = record;
+    const receipt = record.pull_request;
+    try {
+      if (!Number.isSafeInteger(receipt?.number) || receipt.number < 1)
+        throw new QueueError('Saved delivery has no PR identity to refresh.');
+      const repoInfo = await this.provider.inspectRepository(repository);
+      if (!sameRepository(repoInfo.full_name, repository.slice('https://github.com/'.length)))
+        throw new QueueError('Configured GitHub identity cannot read the exact destination repository.');
+      const branchNow = await this.provider.readBranch(repository, branch);
+      if (!branchNow) throw new QueueError('Saved delivery branch is missing; readback will not recreate it.');
+      if (branchNow.sha !== record.final_sha)
+        throw new QueueError('The delivery branch changed unexpectedly; it was preserved and will not be overwritten.');
+      const pulls = await this.provider.findPulls(repository, branch, target);
+      if (!pulls.length) throw new QueueError('Saved pull request is missing; readback will not create another PR.');
+      if (pulls.length !== 1 || pulls[0]?.number !== receipt.number)
+        throw new QueueError('The saved PR no longer uniquely matches its branch and target.');
+      const pull = await this.provider.readPull(repository, receipt.number);
+      const ownerName = repository.slice('https://github.com/'.length);
+      if (pull?.number !== receipt.number || pull.state !== 'open' || pull.draft !== true
+        || !sameRepository(pull.base?.repo?.full_name, ownerName) || !sameRepository(pull.head?.repo?.full_name, ownerName)
+        || pull.base?.ref !== target || pull.head?.ref !== branch || pull.head?.sha !== record.final_sha
+        || pull.html_url !== `https://github.com/${pull.base.repo.full_name}/pull/${pull.number}`
+        || !SHA1.test(pull.base?.sha || ''))
+        throw new QueueError('A changed pull request differs from the saved repository, target, draft state or candidate; it was preserved.');
+
+      const targetBefore = await this.provider.readTarget(repository, target);
+      if (targetBefore.sha !== pull.base.sha)
+        throw new QueueError('PR target changed while readback was starting; retry the read-only refresh.');
+      const finalCommit = await this.provider.readCommit(repository, record.final_sha);
+      if (!finalCommit || finalCommit.sha !== record.final_sha || finalCommit.tree !== record.tree
+        || finalCommit.parents.length !== 1 || finalCommit.parents[0] !== record.base)
+        throw new QueueError('PR head no longer reads back as the accepted candidate commit and tree.');
+
+      const checks = await this.provider.readChecks(repository, record.final_sha, receipt.number);
+      const afterChecks = await this.provider.readPull(repository, receipt.number);
+      const targetAfter = await this.provider.readTarget(repository, target);
+      if (afterChecks?.number !== receipt.number || afterChecks.state !== 'open' || afterChecks.draft !== true
+        || !sameRepository(afterChecks.base?.repo?.full_name, ownerName) || !sameRepository(afterChecks.head?.repo?.full_name, ownerName)
+        || afterChecks.base.ref !== target || afterChecks.base.sha !== pull.base.sha
+        || afterChecks.head.ref !== branch || afterChecks.head.sha !== record.final_sha
+        || afterChecks.html_url !== `https://github.com/${afterChecks.base.repo.full_name}/pull/${afterChecks.number}`
+        || targetAfter.sha !== afterChecks.base.sha)
+        throw new QueueError('PR target or head changed while its checks were being refreshed.');
+
+      const updatedReceipt = {
+        id: afterChecks.id || null, node_id: afterChecks.node_id || null,
+        number: afterChecks.number, url: afterChecks.html_url, state: afterChecks.state, draft: afterChecks.draft === true,
+        repository: afterChecks.base.repo.full_name, branch: afterChecks.head.ref, target: afterChecks.base.ref,
+        base_sha: afterChecks.base.sha, head_sha: afterChecks.head.sha, tree: finalCommit.tree,
+      };
+      const baseAdvanced = afterChecks.base.sha !== record.base;
+      const state = baseAdvanced && priorState !== 'published' ? 'conflict' : 'published';
+      const error = baseAdvanced
+        ? 'The PR base advanced from the accepted base. Current PR and check readback reflects that base; fresh applicable checks and review are required before accepting a changed candidate.'
+        : null;
+      this.persist(job, record, { state, stage: 'readback_complete', pull_request: updatedReceipt, checks, error });
+      return this.summary(job);
+    } catch (error) {
+      const message = error instanceof QueueError ? error.message : 'GitHub PR readback is uncertain; the saved delivery remains visible.';
+      const state = priorState === 'published' ? 'published'
+        : Number.isSafeInteger(record.pull_request?.number) ? 'conflict'
+          : priorState === 'blocked' ? 'blocked' : 'uncertain';
+      this.persist(job, record, { state, error: message });
+      if (error instanceof QueueError) throw error;
+      throw new QueueError(message, 409);
+    }
+  }
+
   async resume(job, config, evidence, record) {
     const { repository, target, branch } = record;
     try {
       const repoInfo = await this.provider.inspectRepository(repository);
-      if (!sameRepository(repoInfo.full_name, repository.slice('https://github.com/'.length)) || repoInfo.archived || !repoInfo.push)
+      if (!sameRepository(repoInfo.full_name, repository.slice('https://github.com/'.length)))
+        throw new QueueError('Configured GitHub identity cannot read the exact destination repository.');
+      if (repoInfo.archived || !repoInfo.push)
         throw new QueueError('Configured GitHub identity cannot write the exact destination repository.');
 
       const remoteTarget = await this.provider.readTarget(repository, target);
@@ -455,7 +602,13 @@ export class DeliveryService {
         }
       }
       if (!Number.isSafeInteger(pull?.number) || pull.number < 1) throw new QueueError('GitHub did not return a valid pull request identity.');
+      const initialReceipt = remotePullReceipt(pull, repository, target, branch);
+      if (initialReceipt)
+        this.persist(job, record, { state: 'publishing', stage: 'pull_request_found', pull_request: initialReceipt });
       const readback = await this.provider.readPull(repository, pull.number);
+      const readbackReceipt = remotePullReceipt(readback, repository, target, branch);
+      if (readbackReceipt)
+        this.persist(job, record, { state: 'publishing', stage: 'pull_request_found', pull_request: readbackReceipt });
       const headSha = readback?.head?.sha;
       if (readback?.number !== pull.number || readback.state !== 'open' || readback.draft !== true
         || !sameRepository(readback?.base?.repo?.full_name, repository.slice('https://github.com/'.length))

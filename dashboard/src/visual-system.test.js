@@ -41,6 +41,8 @@ test("trusted delivery feedback stays with its action and the narrow action can 
   assert.match(detail, /role="alert" aria-live="assertive"/);
   assert.match(detail, /aria-describedby=\{\(deliveryActionError \|\| delivery\.error\)/);
   assert.match(detail, /job\.can_remove === false/);
+  assert.match(detail, /Delivery branch/);
+  assert.match(detail, /Source ref at admission/);
   assert.match(styles, /\.delivery-action-button \{[^}]*white-space: normal/);
   assert.match(styles, /\.delivery-action-button \{[^}]*height: auto/);
   assert.match(styles, /\.delivery-action-button \{[^}]*overflow-wrap: anywhere/);

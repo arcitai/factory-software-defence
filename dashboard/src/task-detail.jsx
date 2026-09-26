@@ -541,7 +541,7 @@ function TaskActions({ job, result, deliveryActionError = "", onAction }) {
 function DeliveryDetails({ delivery }) {
   const pull = delivery.pull_request;
   const checks = delivery.checks;
-  const status = value => ({success:"Passed",failure:"Failed",pending:"Pending",queued:"Queued",in_progress:"In progress",unknown:"Unknown",skipped:"Skipped",neutral:"Neutral",action_required:"Action required",timed_out:"Timed out",cancelled:"Cancelled"}[value] || "Unknown");
+  const status = value => ({success:"Passed",failure:"Failed",pending:"Pending",queued:"Queued",in_progress:"In progress",unknown:"Unknown",non_blocking:"Non-blocking results",skipped:"Skipped",neutral:"Neutral",action_required:"Action required",timed_out:"Timed out",cancelled:"Cancelled"}[value] || "Unknown");
   const checkResult = item => {
     if (item.kind !== "check_run" || item.status !== "completed") return status(item.status || "unknown");
     const conclusion = typeof item.conclusion === "string" ? item.conclusion : "unknown";
@@ -563,6 +563,10 @@ function DeliveryDetails({ delivery }) {
         ? <p className="text-sm text-muted-foreground">Patch-only handoff · no trusted PR destination is enabled.</p>
         : <p className="text-sm text-muted-foreground">{delivery.state === "published" ? "PR created or reconciled" : delivery.state === "ready" ? "Ready for explicit draft PR delivery" : deliveryState[delivery.state] || delivery.state.replaceAll("_", " ")} · {delivery.repository} · target {delivery.target}</p>}
       {delivery.error && <p role="alert" className="text-sm text-danger">{delivery.error}</p>}
+      {(delivery.source_ref || (!pull && delivery.branch)) && <dl className="grid gap-1 text-xs sm:grid-cols-2">
+        {!pull && delivery.branch && <div><dt className="text-muted-foreground">Delivery branch</dt><dd className="break-all font-mono">{delivery.branch}</dd></div>}
+        {delivery.source_ref && <div><dt className="text-muted-foreground">Source ref at admission</dt><dd className="break-all font-mono">{delivery.source_ref}</dd></div>}
+      </dl>}
       {pull && <dl className="grid gap-1 text-xs sm:grid-cols-2">
         <div><dt className="text-muted-foreground">Pull request</dt><dd><a className="underline" href={pull.url} target="_blank" rel="noreferrer">#{pull.number} · {pull.state}{pull.draft ? " · draft" : ""}</a></dd></div>
         <div><dt className="text-muted-foreground">Branch → target</dt><dd className="break-all">{pull.branch} → {pull.target}</dd></div>

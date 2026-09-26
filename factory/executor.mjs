@@ -62,11 +62,11 @@ function removeScratch(path) {
   }
   rmSync(path, { recursive: true, force: true });
 }
-async function container(mode, input, command, writable = false, credentials = false) {
+async function container(mode, input, command, writable = false) {
   const name = `sdf-${instanceLabel(state)}-${attempt}-${mode}`;
   const reportDir = join(folder, attempt, mode);
   mkdirSync(reportDir, { recursive: true, mode: 0o700 });
-  const modelEnvironmentPath = credentials ? join(folder, attempt, `.model-${mode}.env`) : null;
+  const modelEnvironmentPath = join(folder, attempt, `.model-${mode}.env`);
   // Native builds need disk-backed scratch space, not the small temporary RAM disk.
   // Only this attempt can write here; the candidate and its Git metadata stay read-only.
   const scratch = mode === 'verify' ? join(folder, attempt, 'check-workspace') : null;
@@ -87,8 +87,8 @@ async function container(mode, input, command, writable = false, credentials = f
   const logPath = join(folder, attempt, `${mode}.log`);
   const log = new BoundedLog(), usageParser = execution.executor === 'codex' ? new CodexUsageParser() : null; let exitSignal;
   try {
-    const hasModelEnvironment = credentials && writeSelectedModelEnvironment(join(state, 'model.env'), modelEnvironmentPath, {
-      executor: execution.executor, inferenceProvider: config.inferenceProvider,
+    const hasModelEnvironment = writeSelectedModelEnvironment(join(state, 'model.env'), modelEnvironmentPath, {
+      phase: mode, executor: execution.executor, inferenceProvider: config.inferenceProvider,
     });
     if (hasModelEnvironment) args.push('--env-file', modelEnvironmentPath);
     args.push('-i',config.image,'timeout','--signal=KILL',`${config.timeoutSeconds}s`,'sh','-c','mkdir -p "$HOME" && exec "$@"','factory',...command);
@@ -114,7 +114,7 @@ async function container(mode, input, command, writable = false, credentials = f
     if (cleanupError) throw cleanupError;
     return reportDir;
   } finally {
-    if (modelEnvironmentPath) rmSync(modelEnvironmentPath, { force: true });
+    rmSync(modelEnvironmentPath, { force: true });
   }
 }
 function brief(instruction) {
@@ -136,7 +136,7 @@ try {
     save(join(folder,'candidate.json'), { base: sourceAdmission.resolved_sha, head, tree: baseTree, source_admission: publicSourceAdmission(sourceAdmission), synthetic: harnessOf(config) === 'mock' });
   }
   if (phase === 'build') {
-    const reports = await container('build', brief('Implement the requested bounded change. Save /output/agent-report.md with actual changes and remaining uncertainty.'), config.command, true, true);
+    const reports = await container('build', brief('Implement the requested bounded change. Save /output/agent-report.md with actual changes and remaining uncertainty.'), config.command, true);
     git('add','-A');
     if (git('diff','--cached','--stat')) git('-c','user.name=Arcitai Factory','-c','user.email=factory@localhost','commit','--no-verify','-m','Factory candidate');
     // Checks must cover the committed tree, not ignored build products supplied by the agent.
@@ -164,7 +164,7 @@ try {
     const meta = candidate(), checks = json(join(folder,'checks.json'));
     if (!checks.passed || checks.head !== meta.head || checks.policyHash!==policyHash) throw new Error('Missing checks for candidate revision and current policy');
     const instruction = `Independently review the candidate at ${meta.head}. Consider this app's actual risk, regression, access and data consequences. Checks: ${JSON.stringify(checks)}. Read the diff with git diff ${meta.base} ${meta.head}. Do not change code. Write /output/review.json: {"verdict":"pass|changes|blocked","summary":"reason","findings":[]}. Write /output/agent-report.md. A process exit alone is not evidence of quality.`;
-    const reports = await container('review',brief(instruction),config.command,false,true);
+    const reports = await container('review',brief(instruction),config.command);
     const review = JSON.parse(safeRead(join(reports,'review.json')));
     if (!['pass','changes','blocked'].includes(review.verdict) || typeof review.summary !== 'string' || !review.summary.trim() || !Array.isArray(review.findings)) throw new Error('Invalid independent review');
     reviewVerdict = review.verdict;
@@ -193,7 +193,7 @@ try {
       build_run_id: meta.build_run_id, checks_run_id: checks.run_id, review_run_id: review.run_id,
       handoff_run_id: attempt, policyHash, source_admission: meta.source_admission || publicSourceAdmission(null), acceptedAt: new Date().toISOString() });
   } else if (phase === 'defence') {
-    const reports = await container('defence', brief('Read-only incident triage. Use supplied evidence only; distinguish observations, hypotheses and unknowns. No live production access is configured. A 500 error is not inherently a security incident. Missing or stale telemetry remains unknown. Write /output/incident-report.json with status needs_review or insufficient_evidence, summary, hypotheses array, recommended_actions array, unknowns array and production_action_taken:false. Write /output/agent-report.md. Never claim root cause or recovery without supporting evidence.'), config.command,false,true);
+    const reports = await container('defence', brief('Read-only incident triage. Use supplied evidence only; distinguish observations, hypotheses and unknowns. No live production access is configured. A 500 error is not inherently a security incident. Missing or stale telemetry remains unknown. Write /output/incident-report.json with status needs_review or insufficient_evidence, summary, hypotheses array, recommended_actions array, unknowns array and production_action_taken:false. Write /output/agent-report.md. Never claim root cause or recovery without supporting evidence.'), config.command);
     const report = JSON.parse(safeRead(join(reports,'incident-report.json')));
     const validated=validateReport(report,incident);
     save(join(folder,'incident-report.json'),validated);save(join(output,'incident-report.json'),validated);

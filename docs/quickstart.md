@@ -44,6 +44,18 @@ settings. Pi receives only the selected provider's settings. Set
 select a credential group. See the `inferenceProvider` entry in private
 `factory.json` when editing trusted installation configuration directly.
 
+Installations using the existing Codex account-auth command may also put its
+single-line JSON object in `FACTORY_CODEX_AUTH_JSON` in private `model.env`.
+Factory validates that value as JSON and gives it only to the selected Codex
+build/review/defence worker through a temporary private env file; the configured
+operator command that consumes this setting must materialize its temporary
+native `auth.json` before invoking Codex; the bundled stock `codex exec` does
+not do this by itself. Pi never receives this setting, including with the OpenAI provider, and
+deterministic checks and output artifacts do not receive it. Keep `model.env`
+private with mode `0600`; do not copy account folders or place the value in a
+task, source file or report. This setting does not replace provider API-key or
+local OpenAI-compatible endpoint configuration.
+
 Factory's Pi provider identifiers are `anthropic`, `azure-openai-responses`,
 `cerebras`, `cloudflare-ai-gateway`, `cloudflare-workers-ai`, `deepseek`,
 `google`, `groq`, `huggingface`, `kimi-coding`, `minimax`, `minimax-cn`,

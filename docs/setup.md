@@ -160,6 +160,10 @@ names such as deployment credentials. Codex receives its OpenAI setting group,
 and Pi receives only its operator-selected provider group. Use
 `--inference-provider` with `init` when Pi's provider is not encoded in the
 operator-configured model name or when multiple provider groups are stored.
+An installation already using Codex account auth may set the validated
+`FACTORY_CODEX_AUTH_JSON` single-line JSON value in private `model.env`; only
+Codex agent phases receive it. Pi and checks do not. See the [quickstart
+inference guidance](quickstart.md#connect-an-application) for constraints.
 
 Checkpoint: record the exact source revision, image ID, check command, resource
 limits, inference connectivity and CI result. Keep product controllers stopped

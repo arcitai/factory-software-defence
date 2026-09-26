@@ -67,8 +67,9 @@ function checkSummary(runs, status, pullRequestNumber) {
       && !['success', 'skipped', 'neutral', 'failure', 'action_required', 'timed_out', 'cancelled'].includes(item.conclusion)));
   const complete = Number.isSafeInteger(runs?.total_count) && runs.total_count === checkRuns.length
     && Number.isSafeInteger(status?.total_count) && status.total_count === contexts.length;
+  const onlyNonBlocking = rows.length > 0 && rows.every(item => item.non_blocking);
   const state = failed ? 'failure' : !complete || unknown ? 'unknown' : pending ? 'pending'
-    : rows.length && rows.every(item => item.non_blocking) ? 'success' : 'unknown';
+    : onlyNonBlocking ? (rows.some(item => item.passed) ? 'success' : 'non_blocking') : 'unknown';
   return { state, pagination_complete: complete, check_runs: checkRuns, commit_statuses: contexts };
 }
 

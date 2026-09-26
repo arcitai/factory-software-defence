@@ -12,7 +12,7 @@ import { DeliveryService } from '../factory/delivery.mjs';
 import { SourceAdmissionStore, publicSourceAdmission, restoreRetainedCheckout } from '../factory/source-admission.mjs';
 import { runCandidateGit } from '../factory/git-environment.mjs';
 import { API_TIMEOUT_MS, PUBLICATION_API_TIMEOUT_MS, configAt, digest } from '../factory/lib.mjs';
-import { withRequestedModel } from '../factory/execution-profile.mjs';
+import { effectiveExecutionConfig } from '../factory/execution-profile.mjs';
 import { VERSION } from '../factory/updates.mjs';
 import { githubDeliveryProvider } from '../factory/providers/github-delivery.mjs';
 import { createController } from '../factory/server.mjs';
@@ -23,7 +23,7 @@ const runIDs = { build: `run_${'b'.repeat(24)}`, verify: `run_${'c'.repeat(24)}`
 const git = (repo, ...args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).trim();
 const save = (path, value) => { mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 }); writeFileSync(path, JSON.stringify(value), { mode: 0o600 }); };
 
-function testFixture(t, { delivery = true, port = 7331 } = {}) {
+function testFixture(t, { delivery = true, port = 7331, harness = 'mock', model = null, taskModel = null, modelEnv = '' } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'sdf-delivery-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const repo = join(root, 'repo'), state = join(root, 'state');
@@ -33,11 +33,13 @@ function testFixture(t, { delivery = true, port = 7331 } = {}) {
   git(repo, 'add', 'source.txt');
   git(repo, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@localhost', 'commit', '--quiet', '-m', 'Source');
   git(repo, 'remote', 'add', 'origin', 'git@github.com:example/project.git');
-  const config = { version: 1, repo, sourceRef: 'main', harness: 'mock', command: ['mock'], port,
-    timeoutSeconds: 10, memoryMiB: 256, image: 'fixture:1', network: 'none', check: 'node --test', model: null,
+  const command = harness === 'codex' ? ['codex', 'exec', '-'] : harness === 'pi' ? ['pi'] : ['mock'];
+  const config = { version: 1, repo, sourceRef: 'main', harness, command, port,
+    timeoutSeconds: 10, memoryMiB: 256, image: 'fixture:1', network: 'none', check: 'node --test', model,
     scope: { project: 'fixture', service: 'app', environment: 'test', owner: 'operator' },
     ...(delivery ? { delivery: { provider: 'github', repository: 'https://github.com/example/project', target: 'main' } } : {}) };
   writeFileSync(join(state, 'factory.json'), JSON.stringify(config), { mode: 0o600 });
+  writeFileSync(join(state, 'model.env'), modelEnv, { mode: 0o600 });
   writeFileSync(join(state, 'worker.token'), 'fixture-token', { mode: 0o600 });
   const sourceAdmission = new SourceAdmissionStore(state, repo, 'main');
   const admission = sourceAdmission.admit(jobID, undefined);
@@ -54,7 +56,7 @@ function testFixture(t, { delivery = true, port = 7331 } = {}) {
   const head = git(checkout, 'rev-parse', 'HEAD'), tree = git(checkout, 'rev-parse', 'HEAD^{tree}');
   const patchText = runCandidateGit(checkout, '--no-pager', 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', base, head);
   const patch = patchText ? `${patchText}\n` : '';
-  const policyHash = digest(JSON.stringify(withRequestedModel(config, null)));
+  const policyHash = digest(JSON.stringify(effectiveExecutionConfig(config, taskModel, join(state, 'model.env'))));
   const patchHash = digest(Buffer.from(patch));
   const candidate = { base, head, tree, parent: git(checkout, 'rev-parse', 'HEAD^'), build_run_id: runIDs.build,
     build_policy_hash: policyHash, source_admission: publicSourceAdmission(admission), synthetic: true };
@@ -74,7 +76,7 @@ function testFixture(t, { delivery = true, port = 7331 } = {}) {
     { id: runIDs.review, command: 'review', state: 'succeeded', outcome: 'complete', review_verdict: 'pass', execution },
     { id: runIDs.handoff, command: 'handoff', state: 'succeeded', outcome: 'complete', execution },
   ];
-  const job = { id: jobID, state: 'succeeded', task: { title: 'Delivery fixture', source_url: 'https://github.com/example/project/issues/29' },
+  const job = { id: jobID, state: 'succeeded', model: taskModel, task: { title: 'Delivery fixture', source_url: 'https://github.com/example/project/issues/29' },
     workflow: { name: 'software', steps: ['build', 'verify', 'review', 'handoff'], current_step: 3 }, repository: 'app',
     source_admission: admission, runs, created_at: '2026-09-26T11:00:00.000Z' };
   const sourceAdapter = { admit: () => admission, validate: (id, value) => sourceAdmission.validate(id, value), release: () => {} };
@@ -89,7 +91,7 @@ function testFixture(t, { delivery = true, port = 7331 } = {}) {
 function fakeGitHub(f, options = {}) {
   const state = { targetSha: options.targetSha || f.base, branch: options.branch || null, pull: null, commit: null, checks: { state: 'pending', check_runs: [], commit_statuses: [] },
     writes: { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 }, loseBranch: options.loseBranch === true,
-    losePull: options.losePull === true, failFindOnce: false };
+    losePull: options.losePull === true, failFindOnce: false, hidePullSearches: options.hidePullSearches || 0 };
   const branchName = `factory/${jobID}-${f.head.slice(0, 12)}`;
   const provider = {
     supported: true, id: 'github',
@@ -124,14 +126,16 @@ function fakeGitHub(f, options = {}) {
     },
     findPulls: async () => {
       if (state.failFindOnce) { state.failFindOnce = false; throw new Error('read failed after ambiguous creation'); }
+      if (state.hidePullSearches > 0) { state.hidePullSearches--; return []; }
       return state.pull ? [state.pull] : [];
     },
     createPull: async (_repository, input) => {
       state.writes.pulls++;
       assert.equal(input.head, `example:${branchName}`); assert.equal(input.base, 'main'); assert.equal(input.draft, true);
       assert.match(input.body, new RegExp(jobID)); assert.match(input.body, /issues\/29/);
-      state.pull = pullRecord(state.commit.sha, f.base, branchName);
-      if (state.losePull) { state.losePull = false; state.failFindOnce = true; throw new Error('response lost'); }
+      if (options.advanceTargetOnPull) state.targetSha = '9'.repeat(40);
+      state.pull = pullRecord(state.commit.sha, state.targetSha, branchName);
+      if (state.losePull) { state.losePull = false; state.failFindOnce = options.failFindAfterLostPull !== false; throw new Error('response lost'); }
       return state.pull;
     },
     readPull: async () => ({ ...state.pull, base: { ...state.pull.base }, head: { ...state.pull.head } }),
@@ -173,11 +177,44 @@ test('explicit trusted config publishes one draft PR, records pending checks, re
   assert.equal(receipt.checks.state, 'pending');
   assert.equal(gh.state.writes.branches, 1, 'the branch response was reconciled without a duplicate ref write');
   assert.equal(gh.state.writes.pulls, 1, 'the uncertain PR response was reconciled without a duplicate PR');
+  const configPath = join(f.state, 'factory.json'), savedConfig = JSON.parse(readFileSync(configPath, 'utf8'));
+  writeFileSync(configPath, JSON.stringify({ ...savedConfig, delivery: { ...savedConfig.delivery, repository: 'https://github.com/example/other', target: 'dev' } }), { mode: 0o600 });
+  const movedDestination = restarted.summary(restartedQueue.get(jobID));
+  assert.equal(movedDestination.repository, 'https://github.com/example/project', 'the receipt keeps its recorded repository identity');
+  assert.equal(movedDestination.target, 'main', 'the receipt keeps its recorded target');
+  assert.equal(movedDestination.can_publish, false, 'changed trusted destination disables recovery until restored');
+  assert.match(movedDestination.error, /Restore its original provider, repository and target/);
+  writeFileSync(configPath, JSON.stringify(savedConfig), { mode: 0o600 });
   gh.state.checks = { state: 'success', check_runs: [{ name: 'check (22)', status: 'completed', conclusion: 'success' }], commit_statuses: [] };
   const refreshed = await restarted.publish(jobID, { run_id: f.run_id });
   assert.equal(refreshed.checks.state, 'success');
   assert.equal(gh.state.writes.pulls, 1);
   await restartedQueue.close();
+});
+
+test('delivery evidence uses the trusted inferred provider policy for Codex and Pi', async t => {
+  for (const options of [
+    { harness: 'codex', model: null, taskModel: 'task-selected-codex-model' },
+    { harness: 'pi', model: 'openai/configured-model', taskModel: 'anthropic/task-requested-model' },
+  ]) {
+    const f = testFixture(t, options), gh = fakeGitHub(f), manager = service(f, gh.provider);
+    assert.equal(configAt(f.state).inferenceProvider, undefined, 'provider choice remains derived from trusted installation config');
+    assert.equal(manager.summary(f.queue.get(jobID)).state, 'ready');
+    const receipt = await manager.publish(jobID, { run_id: f.run_id });
+    assert.equal(receipt.state, 'published');
+    assert.equal(receipt.pull_request.head_sha, gh.finalSha);
+    await f.closeQueue();
+  }
+
+  const f = testFixture(t, { harness: 'pi', model: null, taskModel: 'anthropic/task-requested-model', modelEnv: 'OPENAI_API_KEY=inert-openai-sentinel\n' });
+  const gh = fakeGitHub(f), manager = service(f, gh.provider), job = f.queue.get(jobID);
+  assert.equal(manager.summary(job).state, 'ready', 'the sole trusted provider group is included in accepted policy');
+  writeFileSync(join(f.state, 'model.env'), 'ANTHROPIC_API_KEY=inert-anthropic-sentinel\n', { mode: 0o600 });
+  assert.equal(manager.summary(job).state, 'blocked', 'changing the inferred provider invalidates old acceptance evidence');
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /current Factory policy/);
+  writeFileSync(join(f.state, 'model.env'), 'OPENAI_API_KEY=inert-openai-sentinel\n', { mode: 0o600 });
+  assert.equal((await manager.publish(jobID, { run_id: f.run_id })).state, 'published');
+  await f.closeQueue();
 });
 
 test('patch-only is the default and issue text cannot provide a destination', async t => {
@@ -279,6 +316,76 @@ test('a changed remote branch or PR head is never overwritten or duplicated', as
   await assert.rejects(manager3.publish(jobID, { run_id: f3.run_id }), /draft state/);
   assert.equal(gh3.state.pull.draft, false, 'an externally changed PR is preserved and not reopened or rewritten');
   assert.equal(gh3.state.writes.pulls, 1);
+});
+
+test('published delivery remains resolved when readback cannot refresh and never recreates missing remote records', async t => {
+  const f = testFixture(t), gh = fakeGitHub(f), manager = service(f, gh.provider);
+  await manager.publish(jobID, { run_id: f.run_id });
+  const originalWrites = structuredClone(gh.state.writes);
+  const configPath = join(f.state, 'factory.json'), config = JSON.parse(readFileSync(configPath, 'utf8'));
+  writeFileSync(configPath, JSON.stringify({ ...config, check: 'changed after publication' }), { mode: 0o600 });
+  gh.state.targetSha = '9'.repeat(40);
+  gh.state.pull.base.sha = gh.state.targetSha;
+  const refreshed = await manager.publish(jobID, { run_id: f.run_id });
+  assert.equal(refreshed.state, 'published');
+  assert.equal(refreshed.pull_request.base_sha, gh.state.targetSha);
+  assert.equal(refreshed.checks.state, 'pending');
+  assert.match(refreshed.error, /base advanced from the accepted base/);
+  assert.equal(f.queue.get(jobID).delivery.state, 'published');
+  assert.equal(f.queue.canRemove(f.queue.get(jobID)), true);
+  assert.deepEqual(gh.state.writes, originalWrites, 'advancing the base refreshes the existing PR without writes');
+
+  gh.state.targetSha = f.base;
+  gh.state.pull.base.sha = f.base;
+  gh.state.branch = null;
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /branch is missing/);
+  assert.equal(f.queue.get(jobID).delivery.state, 'published');
+  assert.equal(f.queue.canRemove(f.queue.get(jobID)), true);
+  assert.deepEqual(gh.state.writes, originalWrites, 'published readback does not recreate a deleted branch');
+
+  gh.state.branch = { sha: gh.finalSha, node_id: 'branch-node' };
+  gh.state.pull = null;
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /pull request is missing/);
+  assert.equal(f.queue.get(jobID).delivery.state, 'published');
+  assert.equal(f.queue.canRemove(f.queue.get(jobID)), true);
+  assert.deepEqual(gh.state.writes, originalWrites, 'published readback does not create a second pull request');
+});
+
+test('a target race after PR creation retains the remote identity for read-only recovery', async t => {
+  const f = testFixture(t), gh = fakeGitHub(f, { advanceTargetOnPull: true }), manager = service(f, gh.provider);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /readback differs/);
+  const checkpoint = f.queue.get(jobID).delivery;
+  assert.equal(checkpoint.state, 'conflict');
+  assert.equal(checkpoint.pull_request.number, 29);
+  assert.equal(checkpoint.pull_request.base_sha, '9'.repeat(40));
+  assert.equal(manager.summary(f.queue.get(jobID)).can_publish, true, 'the PR remains explicitly reconcilable');
+  assert.equal(f.queue.canRemove(f.queue.get(jobID)), false, 'the remote PR cannot be hidden by deletion');
+  const writes = structuredClone(gh.state.writes);
+
+  const refreshed = await manager.publish(jobID, { run_id: f.run_id });
+  assert.equal(refreshed.state, 'conflict', 'the changed base remains an unresolved candidate change');
+  assert.equal(refreshed.pull_request.number, 29);
+  assert.equal(refreshed.pull_request.base_sha, '9'.repeat(40));
+  assert.equal(refreshed.checks.state, 'pending');
+  assert.equal(gh.state.writes.pulls, 1, 'reconciliation reuses the found PR without a duplicate write');
+  assert.deepEqual(gh.state.writes, writes, 'reconciliation only reads the changed remote PR');
+});
+
+test('an empty PR search after ambiguous create never repeats the non-idempotent create', async t => {
+  const f = testFixture(t), gh = fakeGitHub(f, {
+    losePull: true, failFindAfterLostPull: false, hidePullSearches: 3,
+  }), manager = service(f, gh.provider);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /creation is uncertain/);
+  assert.equal(f.queue.get(jobID).delivery.stage, 'creating_pull_request');
+  assert.equal(gh.state.hidePullSearches, 1);
+  assert.equal(gh.state.writes.pulls, 1);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /not yet confirmed/);
+  assert.equal(gh.state.writes.pulls, 1, 'an empty reconciliation read cannot authorize a second PR write');
+
+  const reconciled = await manager.publish(jobID, { run_id: f.run_id });
+  assert.equal(reconciled.state, 'published');
+  assert.equal(reconciled.pull_request.number, 29);
+  assert.equal(gh.state.writes.pulls, 1, 'a later visible read reuses the original PR');
 });
 
 test('concurrent publish requests serialize on the accepted job', async t => {
@@ -417,6 +524,13 @@ test('GitHub adapter keeps unknown and pending PR checks visible without treatin
   assert.deepEqual(accepted.check_runs.map(item => item.conclusion), ['success', 'skipped', 'neutral'], 'raw provider conclusions remain available');
   assert.deepEqual(accepted.check_runs.map(item => item.passed), [true, false, false], 'skipped and neutral remain distinct from executed passing checks');
   assert.deepEqual(accepted.check_runs.map(item => item.non_blocking), [true, true, true]);
+  const skippedOnly = githubDeliveryProvider({ request: async (_method, path) => path.includes('/check-runs?')
+    ? { total_count: 2, check_runs: ['skipped', 'neutral'].map((conclusion, index) => ({ name: `non-run ${index}`, status: 'completed', conclusion,
+      pull_requests: [{ number: 29 }] })) }
+    : { state: 'success', total_count: 0, statuses: [] } });
+  const skippedOnlyResult = await skippedOnly.readChecks('https://github.com/example/project', 'a'.repeat(40), 29);
+  assert.equal(skippedOnlyResult.state, 'non_blocking', 'skipped/neutral-only results are not advertised as executed passing checks');
+  assert.deepEqual(skippedOnlyResult.check_runs.map(item => item.passed), [false, false]);
   for (const conclusion of ['failure', 'action_required', 'timed_out', 'cancelled']) {
     const failed = githubDeliveryProvider({ request: async (_method, path) => path.includes('/check-runs?')
       ? { total_count: 1, check_runs: [{ name: 'check', status: 'completed', conclusion, pull_requests: [{ number: 29 }] }] }

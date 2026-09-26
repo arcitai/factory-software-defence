@@ -106,12 +106,20 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   assert.match(document.body.textContent,/Passed · success/);
   assert.match(document.body.textContent,/Skipped · skipped/);
   assert.match(document.body.textContent,/Neutral · neutral/);
+  job.delivery_status.checks={state:'non_blocking',check_runs:[
+    {name:'Skipped publish job',kind:'check_run',status:'completed',conclusion:'skipped'},
+    {name:'Neutral cleanup job',kind:'check_run',status:'completed',conclusion:'neutral'},
+  ],commit_statuses:[]};
+  await render();
+  assert.match(document.querySelector('[aria-label="Delivery status"]').textContent,/Non-blocking results/);
 
-  job.delivery_status={...job.delivery_status,state:'uncertain',can_publish:true};
+  job.delivery_status={...job.delivery_status,state:'uncertain',can_publish:true,branch:'factory/job_fixture-candidate',source_ref:'release',pull_request:null};
   job.can_remove=false;job.delivery_removal_blocked=true;
   job.removal_block_reason='Trusted PR delivery is unresolved. Reconcile the saved delivery or inspect its remote collision before deleting this issue.';
   await render();
   assert(button('Reconcile PR delivery'),'an uncertain response remains recoverable in the task view');
+  assert.match(document.body.textContent,/Delivery branch\s*factory\/job_fixture-candidate/);
+  assert.match(document.body.textContent,/Source ref at admission\s*release/);
   await click(document.querySelector('[role="tab"][id$="details"]'));
   assert.equal(button('Delete issue').disabled,true,'the UI disables deletion while remote delivery is unresolved');
   assert.match(document.body.textContent,/Reconcile the saved delivery or inspect its remote collision before deleting this issue/);

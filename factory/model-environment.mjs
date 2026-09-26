@@ -30,8 +30,18 @@ const providerVariables = Object.freeze({
   'xiaomi-token-plan-sgp': ['XIAOMI_TOKEN_PLAN_SGP_API_KEY'],
 });
 
-const supportedVariables = new Set(Object.values(providerVariables).flat());
+const codexAuthVariable = 'FACTORY_CODEX_AUTH_JSON';
+const credentialedWorkerPhases = new Set(['build', 'review', 'defence']);
+const supportedVariables = new Set([...Object.values(providerVariables).flat(), codexAuthVariable]);
 const validName = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function validateCodexAuthJson(value) {
+  let parsed;
+  try { parsed = JSON.parse(value); }
+  catch { throw new Error(`${codexAuthVariable} must contain a single-line JSON object.`); }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+    throw new Error(`${codexAuthVariable} must contain a single-line JSON object.`);
+}
 
 export function isInferenceProvider(provider) {
   return typeof provider === 'string' && Object.hasOwn(providerVariables, provider);
@@ -75,6 +85,7 @@ function readModelEnvironment(path) {
     const name = line.slice(0, separator).trim(), value = line.slice(separator + 1).trim();
     if (!validName.test(name) || !supportedVariables.has(name) || /[\0\r\n]/.test(value) || values.has(name))
       throw new Error('model.env accepts supported inference settings only; remove unrelated configuration.');
+    if (name === codexAuthVariable) validateCodexAuthJson(value);
     values.set(name, value);
   }
   return values;
@@ -93,11 +104,22 @@ function soleConfiguredProvider(values) {
   return providers[0] || null;
 }
 
+// Pi may select the only configured provider group when installation config
+// omits one. Include that trusted choice in attempt policy without retaining
+// credential values in the execution profile.
+export function effectiveInferenceProvider(config, environmentPath) {
+  const configured = configuredInferenceProvider(config);
+  if (configured || (config.harness ?? config.agent) !== 'pi' || !environmentPath) return configured;
+  return soleConfiguredProvider(readModelEnvironment(environmentPath));
+}
+
 // Writes a private, short-lived Docker env file containing only the selected
 // provider's settings. The source file is never mounted into an agent job.
-export function writeSelectedModelEnvironment(sourcePath, destinationPath, { executor, inferenceProvider }) {
+// Checks and non-agent phases validate installation settings but receive no
+// credential env file. Provider selection is tied to the trusted executor.
+export function writeSelectedModelEnvironment(sourcePath, destinationPath, { phase, executor, inferenceProvider }) {
   const values = readModelEnvironment(sourcePath);
-  if (!['codex', 'pi'].includes(executor)) return false;
+  if (!credentialedWorkerPhases.has(phase) || !['codex', 'pi'].includes(executor)) return false;
 
   const provider = executor === 'codex' ? 'openai' : inferenceProvider || soleConfiguredProvider(values);
   if (provider && !isInferenceProvider(provider)) throw new Error('The configured inference provider is unsupported.');
@@ -105,6 +127,7 @@ export function writeSelectedModelEnvironment(sourcePath, destinationPath, { exe
     throw new Error('Codex can use only the configured OpenAI inference settings.');
 
   const selectedNames = provider ? new Set(providerVariables[provider]) : new Set();
+  if (executor === 'codex') selectedNames.add(codexAuthVariable);
   const lines = [...values].filter(([name]) => selectedNames.has(name)).map(([name, value]) => `${name}=${value}`);
   if (!lines.length) return false;
   writeFileSync(destinationPath, `${lines.join('\n')}\n`, { mode: 0o600, flag: 'wx' });

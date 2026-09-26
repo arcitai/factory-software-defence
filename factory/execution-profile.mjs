@@ -3,6 +3,7 @@ import { hostname } from 'node:os';
 import { digest } from './lib.mjs';
 import { VERSION } from './updates.mjs';
 import { usageFields } from './usage.mjs';
+import { effectiveInferenceProvider } from './model-environment.mjs';
 
 export function withRequestedModel(configuration, requestedModel) {
   const config = structuredClone(configuration);
@@ -13,6 +14,16 @@ export function withRequestedModel(configuration, requestedModel) {
     if (index >= 0) config.command[index + 1] = requestedModel;
     else config.command.splice(harnessOf(config) === 'codex' ? config.command.length - 1 : config.command.length, 0, '--model', requestedModel);
   }
+  return config;
+}
+
+// Derive the same trusted provider selection for attempt policy/evidence and
+// container setup. Provider choice comes from installation config before a
+// task-level model override is applied.
+export function effectiveExecutionConfig(configuration, requestedModel, modelEnvironmentPath) {
+  const inferenceProvider = effectiveInferenceProvider(configuration, modelEnvironmentPath);
+  const config = withRequestedModel(configuration, requestedModel);
+  if (inferenceProvider) config.inferenceProvider = inferenceProvider;
   return config;
 }
 

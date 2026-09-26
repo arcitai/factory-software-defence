@@ -685,3 +685,50 @@ This source diff inspection and test run are not an independent exact-head
 review or protected-policy verification. The lead owns those, plus the new
 isolated Docker qualification and any live-provider/browser proof before
 acceptance.
+
+## Codex account-auth compatibility on admitted checkpoint 64f4173 — 26 September 2026
+
+This uncommitted compatibility repair starts from admitted checkpoint
+`64f41737fa3735988a77926379a8ecae8263ea23`, preserves package version `0.8.0`,
+and retains original main `b2643a8b67b748e9f0bf99a66e7cdd091bda3a71` as the
+combined review baseline.
+
+The typed private `model.env` accepts `FACTORY_CODEX_AUTH_JSON` only when it is a
+single-line JSON object. The shared worker environment selector passes it only
+to the trusted Codex executor during build, review or defence. It remains
+excluded from Pi, including Pi with the OpenAI provider, deterministic checks
+and unrelated executors. Codex API-key and OpenAI-compatible endpoint settings
+remain available; the original `model.env` is not mounted into worker output.
+The selected temporary env file remains private and is removed after container
+completion.
+
+Inert-sentinel regressions cover account-auth validation and roundtrip, an
+auth-only Codex profile, Pi/OpenAI provider isolation, verification and custom
+executor exclusion, unrelated deployment-key rejection without value echo,
+and existing API-key/local-endpoint selection. A full combined-diff review
+also found that delivery's policy hash omitted the trusted inferred provider
+for ordinary Codex and provider/model-configured Pi jobs. Execution and
+delivery now use the same effective installation configuration, with Codex/Pi
+handoff regressions. Published readback is read-only after a confirmed
+receipt: a failed refresh preserves published state and does not recreate a
+missing commit, branch or PR. The delivery panel exposes the saved branch and
+admitted source ref at unresolved checkpoints; its regression asserts these
+fields remain rendered.
+
+After these repairs, `npm ci --ignore-scripts`,
+`npm run build:dashboard` and `npm run check` passed. The complete check
+reported 106 passing root tests and 52 passing dashboard tests. The focused
+`node --test tests/model-environment.test.mjs tests/execution-profile.test.mjs tests/delivery.test.mjs`
+reported 20/20 passing tests. The locked dashboard build completed after its
+delivery panel source change.
+
+The task context reports that the installed `64f417` package passed its 15
+Docker qualification paths. This worker did not rerun that installed
+qualification, inspect the actual private Codex profile, pack/install this
+modified worktree, call a real inference provider, or perform browser
+inspection. The preserved native `review.json` was not present in the worker's
+filesystem search; the supplied CRED-1 compatibility finding was addressed,
+but that missing artifact remains a review-input limitation. Independent
+review of the full original-main to final-worktree diff is in progress. The
+lead still owns private installed-profile/qualification checks and the final
+browser inspection before acceptance.
