@@ -133,3 +133,34 @@ export function writeSelectedModelEnvironment(sourcePath, destinationPath, { pha
   writeFileSync(destinationPath, `${lines.join('\n')}\n`, { mode: 0o600, flag: 'wx' });
   return true;
 }
+
+const credentialEnvironmentName = /(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)(?:_|$)/i;
+const credentialJsonField = /api[_-]?key|token|secret|password|credential/i;
+
+function collectCodexCredentialStrings(value, inheritedCredentialField, secrets) {
+  if (typeof value === 'string') {
+    if (inheritedCredentialField && value) secrets.add(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectCodexCredentialStrings(item, inheritedCredentialField, secrets);
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  for (const [key, item] of Object.entries(value))
+    collectCodexCredentialStrings(item, inheritedCredentialField || credentialJsonField.test(key), secrets);
+}
+
+// Read only the short-lived, already-selected phase file. These values are
+// kept in memory for output redaction and are never included in profiles,
+// logs, reports or action results.
+export function selectedInferenceSecrets(path) {
+  const values = readModelEnvironment(path);
+  const secrets = new Set();
+  for (const [name, value] of values) {
+    if (name === codexAuthVariable) {
+      collectCodexCredentialStrings(JSON.parse(value), false, secrets);
+    } else if (credentialEnvironmentName.test(name) && value) secrets.add(value);
+  }
+  return [...secrets];
+}

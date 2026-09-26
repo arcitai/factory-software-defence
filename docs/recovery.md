@@ -6,7 +6,7 @@ Use `status --state PATH` and the private supervisor.log to identify the active 
 - An unconfirmed running attempt becomes `interrupted` on controller restart. It is never silently considered successful.
 - Admission resolves the configured source ref or an explicit `--source-ref` in the configured repository, records its identity/ref/SHA in private job metadata and retains its Git objects under that job. Build and retry restore from this retained revision; moving or deleting the source ref does not select a new commit.
 - `retry JOB_ID` verifies retained objects and reconciles the previous process group and containers. A missing/corrupt retained source, live writer or unknown process blocks retry. For a new build/defence attempt, the prior checkout is retained as previous-checkout-*.
-- A forced host/controller stop can leave the selected inference env file in the private attempt directory. Normal executor cleanup removes it only after a Docker listing confirms the named container is absent. Retry/reconciliation removes a leftover copy only after the prior process group is confirmed stopped and a Docker listing confirms the labelled containers are absent; a `docker rm` or `docker stop` exit alone does not prove shutdown. If identity, a Docker probe or shutdown is uncertain, the recovery fence and file remain; do not clean it manually while a worker may still be active.
+- A forced host/controller stop can leave the selected inference env file in the private attempt directory. Normal executor cleanup removes it only after a Docker listing confirms the named container is absent. Retry/reconciliation removes a leftover copy only after the prior process group is confirmed stopped and a Docker listing confirms the labelled containers are absent; a `docker rm` or `docker stop` exit alone does not prove shutdown. If identity, a Docker probe or shutdown is uncertain, the recovery fence and file remain; do not clean it manually while a worker may still be active. After shutdown is confirmed, recovery also redacts the fixed phase reports and log using the selected environment values before removing the env file.
 - Retry repeats the stopped phase. A failed verification may retry the same candidate when its policy is unchanged and the check can now pass. If the check or execution policy changed after build, retrying verify/review cannot reuse the earlier build for handoff; handoff remains blocked. Preserve that failed attempt, then use an eligible requested revision or submit a replacement task to build under the current policy. Do not edit SQLite or acceptance evidence to bypass the guard.
 - A requested revision keeps the recorded source by default, retains previous evidence and starts a new build with accumulated feedback. Supplying a deliberate new `--source-ref` resolves and retains that base before the action; prior source metadata stays in history, and the new build gets fresh checks and review.
 - Removing a stopped task from the dashboard hides its queue record. Private artifacts and its deleted_at record remain on disk; this is not secure erasure.
@@ -72,6 +72,17 @@ A terminal log line is diagnostic evidence, not a replacement for required
 agent reports, passing checks or review. Nonzero exits and missing/malformed
 reports still fail closed. Process termination during a host crash can leave
 incomplete logs and an interrupted attempt; apply process reconciliation above.
+
+Before retention, Docker stdout/stderr logs have exact selected inference
+credential values replaced. Mounted reports (`agent-report.md`, `review.json`,
+`incident-report.json`) are sanitized after the phase container is confirmed
+absent; if shutdown is uncertain, they remain in the private attempt directory
+and ordinary recovery sanitizes them after confirming the stop. Filtering
+includes selected API-key, token, secret, password and credential settings plus
+credential fields inside selected Codex auth JSON. Reports are opened without
+following symlinks, and an unsafe or oversized report cannot be promoted. This
+bounded filter does not detect encoded or transformed values and does not rewrite
+candidate files or patches; it is not a general data loss prevention control.
 
 ## Recorded execution profiles
 

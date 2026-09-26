@@ -903,3 +903,27 @@ reported zero vulnerabilities. `npm run build:dashboard` passed, and
 `npm run check` passed with 177 root/runtime/package tests and 52 dashboard
 tests. These checks cover the final code and the new regressions; Native Factory
 Verify and independent full-baseline Review remain pending.
+
+## #29 mixed push filters and inference-output redaction — 26 September 2026
+
+The pre-fix controlled saved-intent regression reproduced the mixed-filter
+workflow error: publication wrote one blob, tree, commit, branch and PR despite
+`tags` plus `branches-ignore`. Qualification now evaluates either branch filter
+category alongside either tag filter category, while a tag-only workflow remains
+excluded from generated branch pushes. Both mixed forms, tag-only behavior and
+the unchanged current CI have shared status/publication coverage.
+
+Before output redaction, the controlled executor retained selected API-key and
+Codex auth token sentinels in split Docker output and raw reports. After the fix,
+executor-boundary tests confirm exact selected values are absent from retained
+logs, reports sanitized after confirmed shutdown, promoted review artifacts and
+the authenticated artifact API; ordinary report text and parsed Codex usage
+remain. Tests also cover nonzero Docker exit, uncertain shutdown followed by
+ordinary recovery, and a report symlink whose outside target is unchanged.
+Final `npm ci --ignore-scripts`,
+`npm run build:dashboard` and `npm run check` passed: 184 root/runtime/package
+tests and 52 dashboard tests. These use controlled Docker behavior and fake
+provider fixtures; no model or real provider was called. This filter does not
+detect encoded/derived values or rewrite candidate content/patches. No new
+installed qualification was performed; Native Factory Verify and independent
+full-baseline Review remain pending.

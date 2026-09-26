@@ -325,6 +325,49 @@ test('base workflow qualification rejects active write, secret, OIDC, self-hoste
   });
 });
 
+test('mixed tag and branches-ignore filters still qualify the generated branch push', async t => {
+  const mixed = `name: Release\non:\n  push:\n    tags: ['v*']\n    branches-ignore: ['main']\npermissions:\n  contents: write\njobs:\n  publish:\n    runs-on: ubuntu-latest\n    steps:\n      - run: 'true'\n`;
+  const f = testFixture(t, { baseWorkflows: { '.github/workflows/release.yml': mixed } });
+  const gh = fakeGitHub(f), manager = service(f, gh.provider), job = f.queue.get(jobID);
+  const accepted = JSON.parse(readFileSync(join(f.folder, 'accepted.json'), 'utf8'));
+  manager.ensureIntent(job, configAt(f.state), { accepted, expectedPolicy: f.policyHash, issue: null });
+  const summary = manager.summary(job);
+  let failure;
+  try { await manager.publish(jobID, { run_id: f.run_id }); } catch (error) { failure = error; }
+  assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 }, 'mixed filters must block all provider writes');
+  assert.equal(summary.can_publish, false, 'branches-ignore applies to generated branch push events even when tags are also filtered');
+  assert.match(summary.error, /contents:read\/none/);
+  assert.equal(failure?.message, summary.error, 'saved intent retry reports the same blocked qualification');
+  assert.equal(f.queue.get(jobID).delivery.state, 'intent', 'the blocked retry retains its local intent');
+  await f.closeQueue();
+});
+
+test('tags-ignore plus branches filters also evaluate the generated push', async t => {
+  const workflow = `name: Release\non:\n  push:\n    tags-ignore: ['v*']\n    branches: ['factory/**']\npermissions:\n  contents: write\njobs:\n  publish:\n    runs-on: ubuntu-latest\n    steps:\n      - run: 'true'\n`;
+  const f = testFixture(t, { baseWorkflows: { '.github/workflows/release.yml': workflow } });
+  const gh = fakeGitHub(f), manager = service(f, gh.provider), job = f.queue.get(jobID);
+  const accepted = JSON.parse(readFileSync(join(f.folder, 'accepted.json'), 'utf8'));
+  manager.ensureIntent(job, configAt(f.state), { accepted, expectedPolicy: f.policyHash, issue: null });
+  const summary = manager.summary(job);
+  let failure;
+  try { await manager.publish(jobID, { run_id: f.run_id }); } catch (error) { failure = error; }
+  assert.equal(summary.can_publish, false, 'branches applies even when a tag-ignore filter is also declared');
+  assert.match(summary.error, /contents:read\/none/);
+  assert.equal(failure?.message, summary.error);
+  assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
+  await f.closeQueue();
+});
+
+test('tag-only push filters do not activate a generated branch workflow', async t => {
+  const tagsOnly = `name: Release\non:\n  push:\n    tags: ['v*']\npermissions:\n  contents: write\njobs:\n  publish:\n    runs-on: self-hosted\n    steps:\n      - run: 'true'\n`;
+  const f = testFixture(t, { baseWorkflows: { '.github/workflows/release.yml': tagsOnly } });
+  const gh = fakeGitHub(f), manager = service(f, gh.provider);
+  assert.equal(manager.summary(f.queue.get(jobID)).can_publish, true, 'tag-only workflows do not run on the generated branch push');
+  assert.equal((await manager.publish(jobID, { run_id: f.run_id })).state, 'published');
+  assert.deepEqual(gh.state.writes, { blobs: 1, trees: 1, commits: 1, branches: 1, pulls: 1 });
+  await f.closeQueue();
+});
+
 test('supported current CI qualifies PR checks and a privileged main-only release guard', async t => {
   const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   const f = testFixture(t, { baseWorkflows: { '.github/workflows/ci.yml': ci } });

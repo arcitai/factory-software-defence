@@ -6,6 +6,8 @@ import { ROOT, configAt, run, json, save, stopContainers, sleep } from './lib.mj
 import { effectiveExecutionConfig, executionProfile } from './execution-profile.mjs';
 import { parseCodexJsonl, emptyUsage, usageFields } from './usage.mjs';
 import { removeScratch } from './scratch.mjs';
+import { selectedInferenceSecrets } from './model-environment.mjs';
+import { redactRetainedPhaseOutputs } from './inference-redaction.mjs';
 
 const MAX_LEGACY_LOG_BYTES = 1024 * 1024;
 const credentialedPhases = new Set(['build', 'review', 'defence']);
@@ -18,6 +20,10 @@ function clearStoppedFence(state, jobId, expectedPid) {
   if (!Number.isSafeInteger(previous.pid) || !Number.isSafeInteger(previous.pgid)
     || (expectedPid !== undefined && (previous.pid !== expectedPid || previous.pgid !== expectedPid)))
     throw new Error('Stopped executor identity does not match the retained recovery fence');
+  if (/^run_[a-z0-9]+$/.test(previous.attempt || '') && credentialedPhases.has(previous.phase)) {
+    const runFolder = join(folder, previous.attempt), modelEnvironment = join(runFolder, `.model-${previous.phase}.env`);
+    if (existsSync(modelEnvironment)) redactRetainedPhaseOutputs(runFolder, previous.phase, selectedInferenceSecrets(modelEnvironment));
+  }
   if (previous.phase === 'verify') {
     if (!/^run_[a-z0-9]+$/.test(previous.attempt || ''))
       throw new Error('Stopped verification attempt does not match the retained recovery fence');

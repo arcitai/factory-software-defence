@@ -126,6 +126,14 @@ Unsupported or candidate-changed workflows keep publication unavailable in
 status, CLI, API and dashboard; the accepted patch remains available for normal
 manual delivery.
 
+For `push`, the qualifier evaluates branch filters when either `branches` or
+`branches-ignore` is declared, even alongside tag filters; tag-only filters do
+not activate a generated branch push. Docker phase logs redact literal selected
+inference credential values before retention. Mounted worker reports are
+redacted after the container stops and before promotion; if shutdown is
+uncertain, recovery handles them after confirming the stop. This is a bounded
+output filter, not general protection against encoded or transformed values.
+
 The controller uses its existing `gh` identity. GitHub credentials are never
 copied to `model.env` or mounted into jobs. The intent, generated branch, PR
 identity, actual base/head/tree and triggered PR check results appear in the

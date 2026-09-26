@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { configuredInferenceProvider, validateModelEnvironment, writeSelectedModelEnvironment } from '../factory/model-environment.mjs';
+import { configuredInferenceProvider, selectedInferenceSecrets, validateModelEnvironment, writeSelectedModelEnvironment } from '../factory/model-environment.mjs';
 import { withRequestedModel } from '../factory/execution-profile.mjs';
 
 test('model.env accepts supported inference settings and rejects unrelated credentials without echoing values', t => {
@@ -86,6 +86,8 @@ test('Codex account auth roundtrips only to Codex while Pi and deterministic che
   assert(codexDelivered.includes('inert-codex-auth-sentinel'));
   assert(!codexDelivered.includes('ANTHROPIC_API_KEY'));
   assert(!codexDelivered.includes('anthropic-private-sentinel'));
+  assert.deepEqual(new Set(selectedInferenceSecrets(codexSelected)), new Set(['openai-private-sentinel', 'inert-codex-auth-sentinel']),
+    'output redaction reads only selected provider secrets and credential strings nested in selected Codex auth JSON');
 
   writeFileSync(authOnlySource, `FACTORY_CODEX_AUTH_JSON=${auth}\n`, { mode: 0o600 });
   assert.equal(writeSelectedModelEnvironment(authOnlySource, authOnlySelected, {

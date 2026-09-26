@@ -6,11 +6,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { digest } from '../factory/lib.mjs';
+import { createController } from '../factory/server.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const job = `job_${'c'.repeat(24)}`;
 const attempt = `run_${'d'.repeat(24)}`;
 const inertAuth = 'inert-executor-auth-sentinel';
+const inertApiKey = 'inert-executor-api-key-sentinel';
 
 function fixture(t, mode, phase = 'review', harness = 'codex') {
   const rootDir = mkdtempSync(join(tmpdir(), 'sdf-executor-container-recovery-'));
@@ -45,22 +47,25 @@ function fixture(t, mode, phase = 'review', harness = 'codex') {
   writeFileSync(join(artifacts, 'execution.json'), JSON.stringify(execution));
   writeFileSync(join(folder, 'candidate.json'), JSON.stringify({ base: head, head, tree }));
   writeFileSync(join(folder, 'checks.json'), JSON.stringify({ passed: true, head, policyHash }));
-  writeFileSync(join(state, 'model.env'), `FACTORY_CODEX_AUTH_JSON={"auth_mode":"fixture","tokens":{"access_token":"${inertAuth}"}}\n`, { mode: 0o600 });
+  const outsideReport = join(rootDir, 'outside-report.txt');
+  writeFileSync(outsideReport, `outside sentinel ${inertAuth}\n`, { mode: 0o600 });
+  writeFileSync(join(state, 'model.env'), `OPENAI_API_KEY=${inertApiKey}\nFACTORY_CODEX_AUTH_JSON={"auth_mode":"fixture","tokens":{"access_token":"${inertAuth}"}}\n`, { mode: 0o600 });
   writeFileSync(dockerState, JSON.stringify({
-    mode, present: false, running: false, id: 'fixture-container-id',
-    labels: {}, initialRemoveFailed: ['present', 'unknown', 'outer-cleanup', 'verify-present', 'verify-unknown', 'verify-outer-cleanup'].includes(mode),
-    outerRemoveFailed: ['present', 'success-still-present', 'verify-present'].includes(mode),
+    mode, present: false, running: false, id: 'fixture-container-id', outsideReport,
+    labels: {}, initialRemoveFailed: ['present', 'unknown', 'outer-cleanup', 'verify-present', 'verify-unknown', 'verify-outer-cleanup', 'redaction-uncertain'].includes(mode),
+    outerRemoveFailed: ['present', 'success-still-present', 'verify-present', 'redaction-uncertain'].includes(mode),
     listingUnknown: ['unknown', 'verify-unknown'].includes(mode),
     recoveryAllowed: false, launchSawSelectedEnvironment: false, launchAttempted: false,
     firstRmScratchExists: null, firstRmMarkerExists: null, firstRmRunning: null,
   }));
 
   const docker = join(bin, 'docker');
-  const dockerProgram = `#!/usr/bin/env node
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+const dockerProgram = `#!/usr/bin/env node
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 const statePath = process.env.SDF_DOCKER_STATE;
 const state = JSON.parse(readFileSync(statePath, 'utf8'));
 const [command, ...args] = process.argv.slice(2);
+const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const save = () => writeFileSync(statePath, JSON.stringify(state));
 const fail = (message) => { process.stderr.write(message + '\\n'); process.exit(1); };
 const output = value => process.stdout.write(value ? value + '\\n' : '');
@@ -73,6 +78,7 @@ if (command === 'run') {
   state.launchSawSelectedEnvironment = Boolean(envPath?.endsWith('.model-review.env')
     && selectedEnvironment.includes('FACTORY_CODEX_AUTH_JSON')
     && selectedEnvironment.includes('inert-executor-auth-sentinel')
+    && selectedEnvironment.includes('inert-executor-api-key-sentinel')
     && (statSync(envPath).mode & 0o777) === 0o600);
   const nameIndex = args.indexOf('--name');
   state.name = nameIndex >= 0 ? args[nameIndex + 1] : null;
@@ -93,6 +99,26 @@ if (command === 'run') {
   if (outputDir) {
     writeFileSync(outputDir + '/review.json', JSON.stringify({ verdict: 'pass', summary: 'Controlled executor fixture', findings: [] }));
     writeFileSync(outputDir + '/agent-report.md', 'Controlled executor fixture.\\n');
+  }
+  if (outputDir && state.mode.startsWith('redaction-')) {
+    writeFileSync(outputDir + '/review.json', JSON.stringify({ verdict: 'pass', summary: 'Useful review content with inert-executor-auth-sentinel', findings: [{ note: 'Key inert-executor-api-key-sentinel' }] }));
+    writeFileSync(outputDir + '/agent-report.md', 'Useful agent report. Auth: {"access_token":"inert-executor-auth-sentinel"}. Key: inert-executor-api-key-sentinel.\\n');
+    if (state.mode === 'redaction-symlink') {
+      unlinkSync(outputDir + '/agent-report.md');
+      symlinkSync(state.outsideReport, outputDir + '/agent-report.md');
+      state.symlinkCreated = true; save();
+    }
+  }
+  if (state.mode.startsWith('redaction-')) {
+    process.stdout.write('Useful stdout before inert-executor-auth-');
+    await delay(15);
+    process.stdout.write('sentinel\\n' + JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 12, output_tokens: 4, cached_input_tokens: 3 } }) + '\\n');
+    process.stderr.write('Useful stderr before inert-executor-api-');
+    await delay(15);
+    process.stderr.write('key-sentinel\\n');
+  }
+  if (state.mode === 'redaction-error') {
+    state.present = true; state.running = false; save(); process.stderr.write('controlled nonzero Docker completion\\n'); process.exit(42);
   }
   if (state.mode === 'client-failure-absent' || state.mode === 'verify-client-failure-absent') {
     save(); process.stderr.write('simulated Docker client failure\\n'); process.exit(42);
@@ -148,7 +174,7 @@ fail('unsupported controlled Docker operation');
   chmodSync(docker, 0o700);
 
   return {
-    rootDir, state, folder, attemptFolder, artifacts, output, dockerState, docker, dockerProgram,
+    rootDir, state, folder, attemptFolder, artifacts, output, dockerState, docker, dockerProgram, outsideReport,
     selectedEnvironment: join(attemptFolder, '.model-review.env'),
     verifyScratch: join(attemptFolder, 'check-workspace'),
     phase,
@@ -338,4 +364,108 @@ test('verify spawn failure retains scratch until ordinary recovery confirms abse
   assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
   assert.equal(existsSync(f.verifyScratch), false, 'confirmed recovery removes scratch after a spawn failure');
   assert.equal(existsSync(f.lock), false);
+});
+
+test('selected inference credentials are redacted from retained logs and reports after recovery confirms shutdown', t => {
+  const f = fixture(t, 'redaction-uncertain');
+  const execution = runExecutor(f);
+  assert.notEqual(execution.status, 0, 'the first removal remains uncertain');
+  assert.equal(existsSync(f.selectedEnvironment), true, 'selected credentials stay available behind the active fence');
+  assert.equal(existsSync(f.lock), true);
+  const logPath = join(f.attemptFolder, 'review.log');
+  const logBeforeRecovery = readFileSync(logPath, 'utf8');
+  assert.doesNotMatch(logBeforeRecovery, /inert-executor-(?:auth|api-key)-sentinel/);
+  assert.match(logBeforeRecovery, /Useful stdout/);
+  assert.match(logBeforeRecovery, /Useful stderr/);
+  assert.match(logBeforeRecovery, /turn\.completed/);
+  assert.match(logBeforeRecovery, /stdout=\d+ bytes stderr=\d+ bytes/);
+  assert.doesNotMatch(execution.stdout + execution.stderr, /inert-executor-(?:auth|api-key)-sentinel/);
+  const rawReport = join(f.attemptFolder, 'review', 'agent-report.md');
+  assert.match(readFileSync(rawReport, 'utf8'), /inert-executor-auth-sentinel/, 'the mounted output remains private while its container is still present');
+
+  enableRecovery(f);
+  const recovered = runOrdinaryRecovery(f);
+  assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
+  const reportAfterRecovery = readFileSync(rawReport, 'utf8');
+  assert.doesNotMatch(reportAfterRecovery, /inert-executor-(?:auth|api-key)-sentinel/);
+  assert.match(reportAfterRecovery, /Useful agent report/);
+  const reviewAfterRecovery = JSON.parse(readFileSync(join(f.attemptFolder, 'review', 'review.json'), 'utf8'));
+  assert.equal(reviewAfterRecovery.verdict, 'pass');
+  assert.match(reviewAfterRecovery.summary, /Useful review content/);
+  assert.doesNotMatch(JSON.stringify(reviewAfterRecovery), /inert-executor-(?:auth|api-key)-sentinel/);
+  assert.equal(existsSync(f.selectedEnvironment), false);
+  assert.equal(existsSync(f.lock), false);
+});
+
+async function reviewArtifactFromApi(f) {
+  writeFileSync(join(f.state, 'factory.json'), JSON.stringify({ version: 1, repo: join(f.folder, 'checkout'), harness: 'codex',
+    command: ['fixture-agent'], port: 7339, timeoutSeconds: 30, memoryMiB: 512, image: 'fixture/image:latest', network: 'none', check: 'true',
+    scope: { project: 'fixture', service: 'fixture', environment: 'test', owner: 'operator' } }));
+  writeFileSync(join(f.state, 'worker.token'), 'controlled-api-token', { mode: 0o600 });
+  const controller = createController(f.state, { execute: async () => ({ outcome: 'blocked' }), stop: async () => {}, reconcile: async () => {} });
+  await new Promise(resolve => controller.server.listen(0, '127.0.0.1', resolve));
+  controller.queue.save({ id: job, state: 'failed', runs: [], workflow: { name: 'software', steps: [], current_step: 0 } });
+  try {
+    const origin = `http://127.0.0.1:${controller.server.address().port}`;
+    const response = await fetch(`${origin}/api/v1/jobs/${job}/artifacts?file=${attempt}%2Freview.json`, {
+      headers: { Authorization: 'Bearer controlled-api-token' },
+    });
+    const text = await response.text();
+    assert.equal(response.status, 200, text);
+    return text;
+  } finally { await controller.close(); }
+}
+
+test('selected inference secrets are removed from raw and promoted review artifacts served by the API', async t => {
+  const f = fixture(t, 'redaction-success');
+  const execution = runExecutor(f);
+  assert.equal(execution.status, 0, execution.stderr || execution.stdout);
+  const rawReportPath = join(f.attemptFolder, 'review', 'agent-report.md');
+  const rawReviewPath = join(f.attemptFolder, 'review', 'review.json');
+  for (const path of [rawReportPath, rawReviewPath, join(f.attemptFolder, 'review.log'), join(f.folder, 'review.json'), join(f.output, 'review.json')]) {
+    const content = readFileSync(path, 'utf8');
+    assert.doesNotMatch(content, /inert-executor-(?:auth|api-key)-sentinel/, `${path} must not retain selected credential values`);
+  }
+  assert.match(readFileSync(rawReportPath, 'utf8'), /Useful agent report/);
+  const review = JSON.parse(readFileSync(join(f.output, 'review.json'), 'utf8'));
+  assert.equal(review.verdict, 'pass');
+  assert.match(review.summary, /Useful review content/);
+  assert.match(review.findings[0].note, /Key/);
+  const result = JSON.parse(readFileSync(join(f.output, 'result.json'), 'utf8'));
+  assert.deepEqual(result.usage, { input_tokens: '12', output_tokens: '4', cached_input_tokens: '3', source: 'codex_jsonl', coverage: 'complete' });
+  assert.equal(existsSync(f.selectedEnvironment), false);
+  assert.equal(existsSync(f.lock), false);
+
+  const apiArtifact = await reviewArtifactFromApi(f);
+  assert.doesNotMatch(apiArtifact, /inert-executor-(?:auth|api-key)-sentinel/);
+  assert.match(apiArtifact, /Useful review content/);
+  assert.equal(JSON.parse(apiArtifact).verdict, 'pass');
+});
+
+test('nonzero Docker completion still redacts reports and output before ordinary cleanup', t => {
+  const f = fixture(t, 'redaction-error');
+  const execution = runExecutor(f);
+  assert.notEqual(execution.status, 0, 'the controlled nonzero Docker exit fails the phase');
+  const log = readFileSync(join(f.attemptFolder, 'review.log'), 'utf8');
+  const report = readFileSync(join(f.attemptFolder, 'review', 'agent-report.md'), 'utf8');
+  assert.doesNotMatch(log + report + execution.stdout + execution.stderr, /inert-executor-(?:auth|api-key)-sentinel/);
+  assert.match(log, /Useful stdout/);
+  assert.match(log, /Useful stderr/);
+  assert.match(report, /Useful agent report/);
+  assert.match(log, /code=42/);
+  assert.equal(existsSync(f.selectedEnvironment), false, 'confirmed shutdown still permits env-file cleanup');
+  assert.equal(existsSync(f.lock), false, 'confirmed shutdown permits fence cleanup on an error exit');
+  assert.equal(existsSync(join(f.output, 'review.json')), false, 'a failed review is not promoted');
+});
+
+test('agent-created report symlinks are rejected without changing their outside target', t => {
+  const f = fixture(t, 'redaction-symlink');
+  const outsideBefore = readFileSync(f.outsideReport, 'utf8');
+  const execution = runExecutor(f);
+  assert.notEqual(execution.status, 0, 'a symlinked report blocks promotion');
+  assert.equal(stateOf(f).symlinkCreated, true, 'the controlled container created the untrusted output symlink');
+  assert.equal(readFileSync(f.outsideReport, 'utf8'), outsideBefore, 'sanitization does not follow or rewrite the symlink target');
+  assert.doesNotMatch(readFileSync(join(f.attemptFolder, 'review.log'), 'utf8'), /inert-executor-(?:auth|api-key)-sentinel/);
+  assert.equal(existsSync(join(f.output, 'review.json')), false);
+  assert.doesNotMatch(execution.stdout + execution.stderr, /inert-executor-(?:auth|api-key)-sentinel/);
 });

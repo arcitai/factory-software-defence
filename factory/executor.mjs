@@ -8,7 +8,8 @@ import { BoundedLog } from './bounded-log.mjs';
 import { CodexUsageParser, emptyUsage, usageFields } from './usage.mjs';
 import { assertRetainedSource, publicSourceAdmission, restoreRetainedCheckout } from './source-admission.mjs';
 import { runCandidateGit } from './git-environment.mjs';
-import { writeSelectedModelEnvironment } from './model-environment.mjs';
+import { selectedInferenceSecrets, writeSelectedModelEnvironment } from './model-environment.mjs';
+import { redactInferenceText, redactRetainedPhaseOutputs } from './inference-redaction.mjs';
 import { assertCurrentHandoffEvidence } from './execution-evidence.mjs';
 import { removeScratch } from './scratch.mjs';
 
@@ -85,12 +86,15 @@ async function container(mode, input, command, writable = false) {
   if (mode === 'verify') args.push('--env',`FACTORY_BASE_REVISION=${git('rev-parse',`${metadata().base}^{commit}`)}`);
   const logPath = join(folder, attempt, `${mode}.log`);
   const log = new BoundedLog(), usageParser = execution.executor === 'codex' ? new CodexUsageParser() : null;
-  let exitSignal, selectedModelEnvironment = false, code, cleanupError;
+  let exitSignal, selectedModelEnvironment = false, inferenceSecrets = [], code, cleanupError, reportError;
   try {
     selectedModelEnvironment = writeSelectedModelEnvironment(join(state, 'model.env'), modelEnvironmentPath, {
       phase: mode, executor: execution.executor, inferenceProvider: config.inferenceProvider,
     });
-    if (selectedModelEnvironment) args.push('--env-file', modelEnvironmentPath);
+    if (selectedModelEnvironment) {
+      inferenceSecrets = selectedInferenceSecrets(modelEnvironmentPath);
+      args.push('--env-file', modelEnvironmentPath);
+    }
     args.push('-i',config.image,'timeout','--signal=KILL',`${config.timeoutSeconds}s`,'sh','-c','mkdir -p "$HOME" && exec "$@"','factory',...command);
     console.log(JSON.stringify({ phase: mode, event: 'started', synthetic: harnessOf(config) === 'mock' }));
     code = await new Promise((ok, fail) => {
@@ -102,16 +106,19 @@ async function container(mode, input, command, writable = false) {
     });
     const parsedUsage = usageParser?.finish();
     if (parsedUsage) observedUsage = parsedUsage;
-    writeFileSync(logPath, log.finish({code,signal:exitSignal}), { mode: 0o600 });
+    writeFileSync(logPath, redactInferenceText(log.finish({code,signal:exitSignal}), inferenceSecrets), { mode: 0o600 });
   } finally {
     // A launch error can occur after Docker created the container. Keep the
     // selected inference file and mounted scratch until a host-side listing
     // proves the container is absent. A client exit alone is not that proof.
     removeContainerAndConfirmAbsence(name);
+    try { redactRetainedPhaseOutputs(join(folder, attempt), mode, inferenceSecrets); }
+    catch (error) { reportError = error; }
     try { if (scratch) removeScratch(scratch); } catch (error) { cleanupError = error; }
     if (selectedModelEnvironment) rmSync(modelEnvironmentPath, { force: true });
   }
-  if (code !== 0) throw new Error(`${mode} exited ${code}; private log: ${logPath}${cleanupError ? `; scratch cleanup requires recovery: ${cleanupError.message}` : ''}`);
+  if (code !== 0) throw new Error(`${mode} exited ${code}; private log: ${logPath}${cleanupError ? `; scratch cleanup requires recovery: ${cleanupError.message}` : ''}${reportError ? `; worker report retention failed: ${reportError.message}` : ''}`);
+  if (reportError) throw reportError;
   if (cleanupError) throw cleanupError;
   return reportDir;
 }
@@ -209,6 +216,11 @@ try {
   save(join(folder,`measurement-${attempt}.json`),measurement);save(join(output,`measurement-${attempt}.json`),measurement);
   // If cleanup cannot be confirmed, retain the lock and require explicit recovery.
   stopContainers(state,job);
+  const modelEnvironmentPath = join(folder, attempt, `.model-${phase}.env`);
+  if (['build', 'review', 'defence'].includes(phase) && existsSync(modelEnvironmentPath)) {
+    try { redactRetainedPhaseOutputs(join(folder, attempt), phase, selectedInferenceSecrets(modelEnvironmentPath)); }
+    catch { console.error('Worker output redaction could not be completed; retained files remain private.'); }
+  }
   if (phase === 'verify') removeScratch(join(folder, attempt, 'check-workspace'));
   if (['build', 'review', 'defence'].includes(phase))
     rmSync(join(folder, attempt, `.model-${phase}.env`), { force: true });

@@ -166,7 +166,11 @@ function triggerScenarios(root, branch, target, path) {
     }
     const config = triggerConfig(rawConfig, event);
     if (event === 'push') {
-      if (config.has('tags') && !config.has('branches')) continue;
+      const hasTagFilters = config.has('tags') || config.has('tags-ignore');
+      const hasBranchFilters = config.has('branches') || config.has('branches-ignore');
+      // Tag filters suppress branch pushes only when no branch category is
+      // declared. branches-ignore is just as significant here as branches.
+      if (hasTagFilters && !hasBranchFilters) continue;
       if (canMatchBranchFilter(config, branch)) scenarios.push({ event_name: 'push', ref: `refs/heads/${branch}`, head_ref: '', base_ref: '' });
       continue;
     }
