@@ -9,6 +9,7 @@ import { effectiveExecutionConfig } from './execution-profile.mjs';
 import { publicSourceAdmission } from './source-admission.mjs';
 import { QueueError } from './queue.mjs';
 import { readProjectLinks } from './project-links.mjs';
+import { qualifyGitHubActions } from './workflow-qualification.mjs';
 
 const MAX_PATCH_BYTES = 8 * 1024 * 1024;
 const MAX_CHANGED_FILES = 500;
@@ -120,7 +121,7 @@ function parseTree(bytes) {
   return entries;
 }
 
-function candidateTree(state, job, sourcePath, sourceAdmission, accepted) {
+function candidateTree(state, job, sourcePath, sourceAdmission, accepted, { branch, target }) {
   if (sourceAdmission.object_format !== 'sha1' || !SHA1.test(accepted.base || '') || !SHA1.test(accepted.tree || ''))
     throw new Error('GitHub delivery currently requires a SHA-1 candidate from the retained source repository.');
   const patchPath = join(state, 'jobs', job.id, 'delivery-input', 'candidate.patch');
@@ -150,6 +151,10 @@ function candidateTree(state, job, sourcePath, sourceAdmission, accepted) {
       return !oldEntry || !newEntry || oldEntry.mode !== newEntry.mode || oldEntry.type !== newEntry.type || oldEntry.sha !== newEntry.sha;
     });
     if (!changed.length || changed.length > MAX_CHANGED_FILES) throw new Error('Candidate change count is empty or exceeds the bounded GitHub delivery limit.');
+    const workflowQualification = qualifyGitHubActions({
+      baseEntries: before, candidateEntries: after, branch, target,
+      readBlob: sha => runGit(scratchRepo, ['cat-file', 'blob', sha], { binary: true }),
+    });
     const entries = [];
     let total = 0;
     for (const path of changed) {
@@ -165,7 +170,7 @@ function candidateTree(state, job, sourcePath, sourceAdmission, accepted) {
       if (total > MAX_TREE_BYTES) throw new Error('Candidate files exceed the bounded GitHub delivery size.');
       entries.push({ path, mode: next.mode, type: 'blob', content });
     }
-    return { patch, patch_sha256: accepted.patch_sha256, base_tree: baseTree, tree, entries };
+    return { patch, patch_sha256: accepted.patch_sha256, base_tree: baseTree, tree, entries, workflowQualification };
   } finally {
     rmSync(scratchRoot, { recursive: true, force: true });
   }
@@ -233,7 +238,7 @@ function trustedPhaseEvidence(state, job, expectedPolicy, runs, candidate, check
   return { trusted: true };
 }
 
-function acceptanceSummary(job, state, config) {
+function acceptanceSummary(job, state, config, sourceAdmission) {
   const handoff = job.runs?.at(-1);
   if (job.workflow?.name !== 'software' || job.state !== 'succeeded'
     || handoff?.command !== 'handoff' || handoff.state !== 'succeeded') return { state: 'not_ready' };
@@ -280,8 +285,19 @@ function acceptanceSummary(job, state, config) {
     && checks.tree === accepted.tree && checks.policyHash === expectedPolicy && checks.command === config.check
     && review.run_id === reviewRun.id && review.verdict === 'pass' && review.head === accepted.head
     && review.tree === accepted.tree && review.policyHash === expectedPolicy && reviewRun.review_verdict === 'pass';
-  return bound ? { state: 'ready' }
-    : { state: 'blocked', reason: 'Candidate, checks, review or approval evidence is stale or does not match the current Factory policy.' };
+  if (!bound) return { state: 'blocked', reason: 'Candidate, checks, review or approval evidence is stale or does not match the current Factory policy.' };
+  try {
+    const retained = sourceAdmission?.validate(job.id, job.source_admission);
+    if (!retained) throw new Error('The retained admission-time source is unavailable.');
+    const patch = candidateTree(state, job, retained.path, job.source_admission, accepted, {
+      branch: branchIdentity(job, accepted), target: config.delivery?.target,
+    });
+    if (!patch.workflowQualification.qualified)
+      return { state: 'blocked', reason: patch.workflowQualification.reason, workflow_qualification: patch.workflowQualification };
+    return { state: 'ready', workflow_qualification: patch.workflowQualification };
+  } catch (error) {
+    return { state: 'blocked', reason: error.message || 'The accepted Git trees could not be inspected for workflow qualification.' };
+  }
 }
 
 export class DeliveryService {
@@ -301,7 +317,7 @@ export class DeliveryService {
       && job.delivery.provider === config.delivery.provider
       && job.delivery.repository === config.delivery.repository
       && job.delivery.target === config.delivery.target);
-    const acceptance = enabled ? acceptanceSummary(job, this.state, config) : { state: 'not_ready' };
+    const acceptance = enabled ? acceptanceSummary(job, this.state, config, this.sourceAdmission) : { state: 'not_ready' };
     const state = job.delivery?.state || (enabled
       ? acceptance.state === 'ready' ? 'ready'
         : acceptance.state === 'legacy_unverified' ? 'legacy_unverified'
@@ -348,6 +364,7 @@ export class DeliveryService {
         : canReadOnlyRecover ? job.delivery?.error || null : acceptance.reason || job.delivery?.error || null,
       can_publish: actionMode !== null,
       action_mode: actionMode,
+      workflow_qualification: acceptance.workflow_qualification || null,
       can_abandon: canAbandon,
       integration: 'separate',
       deployment: 'separate',
@@ -512,8 +529,11 @@ export class DeliveryService {
     if (resolve(config.repo) !== job.source_admission.repository_path)
       throw new QueueError('Configured source path changed since admission.');
     let patch;
-    try { patch = candidateTree(this.state, job, retained.path, job.source_admission, accepted); }
+    try { patch = candidateTree(this.state, job, retained.path, job.source_admission, accepted, {
+      branch: branchIdentity(job, accepted), target: config.delivery?.target,
+    }); }
     catch (error) { throw new QueueError(error.message || 'Protected candidate patch is invalid.'); }
+    if (!patch.workflowQualification.qualified) throw new QueueError(patch.workflowQualification.reason);
     return { accepted, candidate, checks, review, expectedPolicy, patch, issue: sourceIssue(job, config.delivery.repository) };
   }
 

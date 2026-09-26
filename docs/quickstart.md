@@ -120,6 +120,12 @@ keeps the action unavailable in status, CLI, API and dashboard. A saved intent
 is checked again before new provider writes. Known PR receipts and PR-creation
 checkpoints still allow read-only reconciliation.
 
+New writes also require the shared GitHub Actions qualification described in
+[setup](setup.md#optional-trusted-pr-delivery) and [recovery](recovery.md#trusted-pr-delivery).
+Unsupported or candidate-changed workflows keep publication unavailable in
+status, CLI, API and dashboard; the accepted patch remains available for normal
+manual delivery.
+
 The controller uses its existing `gh` identity. GitHub credentials are never
 copied to `model.env` or mounted into jobs. The intent, generated branch, PR
 identity, actual base/head/tree and triggered PR check results appear in the

@@ -848,3 +848,31 @@ was performed. Browser inspection remains pending because the Mac browser is
 locked and there is no usable browser provider; no visual pass is claimed.
 Native Factory Verify and independent Review still own the full
 baseline-to-candidate assessment.
+
+## #29 GitHub Actions qualification — 26 September 2026
+
+The before-fix candidate-workflow regression published through the controlled
+fake provider: 2 blobs, 1 tree, 1 commit, 1 branch and 1 PR write. The shared
+delivery summary and publisher now reconstruct the admitted base and
+digest-bound accepted candidate tree, reject candidate workflow-definition
+changes, and qualify every base workflow that can run on the generated branch
+push, a branch-selected manual dispatch or a PR event. A workflow refusal has
+the same reason in status, CLI, API and the dashboard action contract; saved
+intents are rechecked. Existing exact target readback still verifies the remote
+base before writes, while known receipts remain read-only.
+
+Controlled regressions cover added/changed/deleted/symlinked workflow files,
+malformed and unsupported YAML/triggers, missing/dynamic/write/OIDC/deployment
+permissions, secrets and token contexts, environments, self-hosted/reusable
+jobs, ambiguous guards, non-main branch filters, PR lifecycle events,
+branch-selected `workflow_dispatch`, the unchanged current `ci.yml`, stale
+saved evidence and refusal with zero fake-provider writes. These local fixtures
+do not execute GitHub Actions, use a live provider, or inspect
+repository/organization rules, webhooks, external CI or action code. No browser
+or malicious live workflow was run. Existing installed/provider receipts remain
+bound to their prior candidates and do not qualify this change.
+
+Final `npm ci --ignore-scripts` completed with zero reported vulnerabilities;
+`npm run build:dashboard` passed; `npm run check` passed with 167 root/runtime/
+package tests and 52 dashboard tests. Factory Verify and independent Review
+still own subsequent verification and full-baseline review.

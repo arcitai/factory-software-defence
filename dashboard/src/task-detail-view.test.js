@@ -88,6 +88,13 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   await render();
   assert(!button('Publish accepted candidate as draft PR'),'synthetic or unknown evidence has no dashboard publish action');
   assert.match(document.body.textContent,/Synthetic or unknown build, check or review evidence/);
+  job.delivery_status={state:'blocked',repository:'https://github.com/example/project',target:'dev',can_publish:false,action_mode:null,
+    workflow_qualification:{state:'blocked',qualified:false,reason:'Base workflow .github/workflows/ci.yml can run with write permissions.'},
+    error:'Base workflow .github/workflows/ci.yml can run with write permissions. Trusted PR delivery is unavailable; keep the patch-only/manual path.',
+    integration:'separate',deployment:'separate'};
+  await render();
+  assert(!button('Publish accepted candidate as draft PR'),'workflow qualification blocks the dashboard action from shared status');
+  assert.match(document.body.textContent,/workflow.*write permissions/i,'the shared qualification reason remains visible in task details');
   job.delivery_status={state:'ready',repository:'https://github.com/example/project',target:'dev',can_publish:true,action_mode:'publish',integration:'separate',deployment:'separate'};
   await render();
   assert.match(document.body.textContent,/Ready for explicit draft PR delivery/);

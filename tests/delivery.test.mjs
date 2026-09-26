@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import { createServer as createNetServer } from 'node:net';
@@ -23,14 +23,20 @@ const runIDs = { build: `run_${'b'.repeat(24)}`, verify: `run_${'c'.repeat(24)}`
 const git = (repo, ...args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).trim();
 const save = (path, value) => { mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 }); writeFileSync(path, JSON.stringify(value), { mode: 0o600 }); };
 
-function testFixture(t, { delivery = true, port = 7331, harness = 'codex', model = null, taskModel = null, modelEnv = '' } = {}) {
+function testFixture(t, { delivery = true, port = 7331, harness = 'codex', model = null, taskModel = null, modelEnv = '',
+  baseWorkflows = {}, candidateFiles = {}, candidateDeletes = [], candidateSymlinks = {} } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'sdf-delivery-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const repo = join(root, 'repo'), state = join(root, 'state');
   mkdirSync(repo); mkdirSync(state, { mode: 0o700 });
   execFileSync('git', ['-C', repo, 'init', '--quiet', '-b', 'main']);
   writeFileSync(join(repo, 'source.txt'), 'source\n');
-  git(repo, 'add', 'source.txt');
+  for (const [path, content] of Object.entries(baseWorkflows)) {
+    const target = join(repo, path);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, content);
+  }
+  git(repo, 'add', '-A');
   git(repo, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@localhost', 'commit', '--quiet', '-m', 'Source');
   git(repo, 'remote', 'add', 'origin', 'git@github.com:example/project.git');
   const command = harness === 'codex' ? ['codex', 'exec', '-'] : harness === 'pi' ? ['pi'] : ['mock'];
@@ -51,6 +57,18 @@ function testFixture(t, { delivery = true, port = 7331, harness = 'codex', model
   const checkout = join(state, 'jobs', jobID, 'checkout');
   restoreRetainedCheckout(state, jobID, admission, checkout);
   writeFileSync(join(checkout, 'candidate.txt'), 'accepted content\n');
+  for (const [path, content] of Object.entries(candidateFiles)) {
+    const target = join(checkout, path);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, content);
+  }
+  for (const path of candidateDeletes) rmSync(join(checkout, path), { recursive: true, force: true });
+  for (const [path, target] of Object.entries(candidateSymlinks)) {
+    const link = join(checkout, path);
+    mkdirSync(dirname(link), { recursive: true });
+    rmSync(link, { recursive: true, force: true });
+    symlinkSync(target, link);
+  }
   runCandidateGit(checkout, 'add', '-A');
   runCandidateGit(checkout, '-c', 'user.name=Factory candidate', '-c', 'user.email=factory@localhost', 'commit', '--no-verify', '-m', 'Candidate');
   const head = git(checkout, 'rev-parse', 'HEAD'), tree = git(checkout, 'rev-parse', 'HEAD^{tree}');
@@ -166,6 +184,176 @@ function pullRecord(sha, base, branch) {
     head: { ref: branch, sha, repo: { full_name: 'example/project' } } };
 }
 function service(f, provider) { return new DeliveryService(f.queue, f.state, { config: () => configAt(f.state), sourceAdmission: f.sourceAdapter, provider }); }
+
+const safeWorkflow = `name: CI\non: pull_request\npermissions:\n  contents: read\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo check\n`;
+
+test('added, changed, deleted and symlinked candidate workflows refuse PR writes', async t => {
+  const maliciousWorkflow = `name: Candidate code\non: pull_request\npermissions:\n  contents: read\njobs:\n  run:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo untrusted\n`;
+  const scenarios = [
+    { name: 'added workflow', options: { candidateFiles: { '.github/workflows/candidate.yml': maliciousWorkflow } } },
+    { name: 'changed workflow', options: { baseWorkflows: { '.github/workflows/ci.yml': safeWorkflow }, candidateFiles: { '.github/workflows/ci.yml': maliciousWorkflow } } },
+    { name: 'deleted workflow', options: { baseWorkflows: { '.github/workflows/ci.yml': safeWorkflow }, candidateDeletes: ['.github/workflows/ci.yml'] } },
+    { name: 'symlinked workflow', options: { baseWorkflows: { '.github/workflows/ci.yml': safeWorkflow }, candidateSymlinks: { '.github/workflows/ci.yml': '../candidate.yml' } } },
+    { name: 'symlinked workflow directory', options: { baseWorkflows: { '.github/workflows/ci.yml': safeWorkflow }, candidateSymlinks: { '.github/workflows': '../candidate-workflows' } } },
+  ];
+  for (const scenario of scenarios) await t.test(scenario.name, async child => {
+    const f = testFixture(child, scenario.options), gh = fakeGitHub(f), manager = service(f, gh.provider);
+    const summary = manager.summary(f.queue.get(jobID));
+    let failure;
+    try { await manager.publish(jobID, { run_id: f.run_id }); } catch (error) { failure = error; }
+    assert.ok(failure, `unqualified candidate workflow reached provider writes: ${JSON.stringify(gh.state.writes)}`);
+    assert.equal(summary.can_publish, false, 'status must apply the same workflow qualification as publication');
+    assert.equal(summary.error, failure.message, 'status and publish must share the qualification reason');
+    assert.match(summary.error, /workflow/i);
+    assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
+    await f.closeQueue();
+  });
+});
+
+test('base workflow qualification rejects active write, secret, OIDC, self-hosted, reusable and dynamic cases', async t => {
+  const workflow = (job, permissions = '  contents: read\n') => `name: CI\non: pull_request\npermissions:\n${permissions}jobs:\n${job}`;
+  const unsafeCases = [
+    ['write permission', workflow(`  check:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n    steps:\n      - run: echo check\n`)],
+    ['secret context', workflow(`  check:\n    runs-on: ubuntu-latest\n    env:\n      DEPLOY_TOKEN: \u0024{{ secrets.DEPLOY_TOKEN }}\n    steps:\n      - run: echo check\n`)],
+    ['GitHub token context', workflow(`  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo \u0024{{ github.token }}\n`)],
+    ['OIDC permission', workflow(`  check:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      id-token: write\n    steps:\n      - run: echo check\n`)],
+    ['deployment permission', workflow(`  check:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      deployments: write\n    steps:\n      - run: echo deploy\n`)],
+    ['environment access', workflow(`  check:\n    runs-on: ubuntu-latest\n    environment: production\n    steps:\n      - run: echo deploy\n`)],
+    ['self-hosted runner', workflow(`  check:\n    runs-on: [self-hosted, linux]\n    steps:\n      - run: echo check\n`)],
+    ['reusable workflow', workflow(`  check:\n    uses: example/repo/.github/workflows/check.yml@${'a'.repeat(40)}\n`)],
+    ['dynamic permission', workflow(`  check:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: \u0024{{ vars.PERMISSION }}\n    steps:\n      - run: echo check\n`)],
+    ['implicit repository permissions', `name: CI\non: pull_request\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo check\n`],
+    ['dynamic trigger filter', `name: CI\non:\n  pull_request:\n    branches: ['\u0024{{ vars.BASE_BRANCH }}']\npermissions:\n  contents: read\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo check\n`],
+    ['pull request lifecycle trigger', `name: CI\non:\n  pull_request:\n    types: [closed]\npermissions:\n  contents: read\njobs:\n  release:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n    steps:\n      - run: echo release\n`],
+    ['unsupported workflow_run trigger', `name: CI\non:\n  workflow_run:\n    workflows: [CI]\n    types: [completed]\npermissions:\n  contents: read\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo check\n`],
+    ['malformed YAML', `name: CI\non: pull_request\npermissions:\n  contents: read\njobs:\n  check:\n    runs-on: ubuntu-latest\n    permissions: [contents: read]\n    steps: [not-a-step]\n`],
+    ['ambiguous privileged guard', workflow(`  release:\n    if: \u0024{{ github.ref == 'refs/heads/main' || vars.NPM_PUBLISH_ENABLED == 'true' }}\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      id-token: write\n    steps:\n      - run: echo publish\n`)],
+    ['pull_request_target privileged guard', `name: Release\non: pull_request_target\npermissions:\n  contents: read\njobs:\n  release:\n    if: \u0024{{ github.ref == 'refs/heads/main' && vars.RELEASE_ENABLED == 'true' }}\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      id-token: write\n    steps:\n      - run: echo publish\n`],
+  ];
+  for (const [name, source] of unsafeCases) await t.test(name, async child => {
+    const f = testFixture(child, { baseWorkflows: { '.github/workflows/ci.yml': source } });
+    const gh = fakeGitHub(f), manager = service(f, gh.provider), job = f.queue.get(jobID);
+    const accepted = JSON.parse(readFileSync(join(f.folder, 'accepted.json'), 'utf8'));
+    // Model a durable intent from an earlier version so retry must re-qualify
+    // the same immutable base and accepted tree before any provider write.
+    manager.ensureIntent(job, configAt(f.state), { accepted, expectedPolicy: f.policyHash, issue: null });
+    const summary = manager.summary(f.queue.get(jobID));
+    const repeat = manager.summary(f.queue.get(jobID));
+    assert.equal(summary.can_publish, false, `${name} must be unavailable in status`);
+    assert.deepEqual(repeat.workflow_qualification, summary.workflow_qualification, 'qualification is stable across status reads');
+    assert.match(summary.error, /workflow|permission|secret|runner|guard|expression/i);
+    let failure;
+    try { await manager.publish(jobID, { run_id: f.run_id }); } catch (error) { failure = error; }
+    assert.ok(failure, `${name} must block saved-intent retry`);
+    assert.equal(failure.message, summary.error, 'status and retry must report the same refusal');
+    assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
+    assert.equal(f.queue.get(jobID).delivery.state, 'intent', 'refusal retains the original local delivery record');
+    await f.closeQueue();
+  });
+});
+
+test('supported current CI qualifies PR checks and a privileged main-only release guard', async t => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const f = testFixture(t, { baseWorkflows: { '.github/workflows/ci.yml': ci } });
+  const gh = fakeGitHub(f), manager = service(f, gh.provider);
+  const summary = manager.summary(f.queue.get(jobID));
+  assert.equal(summary.can_publish, true);
+  assert.equal(summary.workflow_qualification?.state, 'qualified');
+  assert.match(summary.workflow_qualification?.reason || '', /unchanged/i);
+  assert.equal((await manager.publish(jobID, { run_id: f.run_id })).state, 'published');
+  assert.equal(gh.state.writes.pulls, 1);
+});
+
+test('generated non-main branch cannot activate an explicitly main-only push workflow', async t => {
+  const workflow = `name: Main release\non:\n  push:\n    branches: [main]\npermissions:\n  contents: read\njobs:\n  release:\n    runs-on: self-hosted\n    permissions:\n      contents: write\n    steps:\n      - run: echo release\n`;
+  const f = testFixture(t, { baseWorkflows: { '.github/workflows/release.yml': workflow } });
+  const gh = fakeGitHub(f), manager = service(f, gh.provider);
+  assert.equal(manager.summary(f.queue.get(jobID)).workflow_qualification?.state, 'qualified');
+  assert.equal((await manager.publish(jobID, { run_id: f.run_id })).state, 'published');
+});
+
+test('workflow_dispatch evaluates its selected generated branch before qualifying privileged jobs', async t => {
+  const active = `name: Manual release\non: workflow_dispatch\npermissions:\n  contents: read\njobs:\n  release:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n    steps:\n      - run: echo release\n`;
+  const blocked = testFixture(t, { baseWorkflows: { '.github/workflows/manual.yml': active } });
+  const blockedGithub = fakeGitHub(blocked), blockedManager = service(blocked, blockedGithub.provider);
+  const blockedSummary = blockedManager.summary(blocked.queue.get(jobID));
+  assert.equal(blockedSummary.can_publish, false, 'manual dispatch can select the generated branch ref');
+  assert.match(blockedSummary.workflow_qualification?.reason || '', /contents:read\/none/);
+  let blockedError;
+  try { await blockedManager.publish(jobID, { run_id: blocked.run_id }); } catch (error) { blockedError = error; }
+  assert.equal(blockedError?.message, blockedSummary.error);
+  assert.deepEqual(blockedGithub.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
+  await blocked.closeQueue();
+
+  const guarded = `name: Main-only manual release\non: workflow_dispatch\npermissions:\n  contents: read\njobs:\n  release:\n    if: \u0024{{ github.ref == 'refs/heads/main' }}\n    runs-on: self-hosted\n    permissions:\n      contents: write\n    steps:\n      - run: echo release\n`;
+  const safe = testFixture(t, { baseWorkflows: { '.github/workflows/manual.yml': guarded } });
+  const safeGithub = fakeGitHub(safe), safeManager = service(safe, safeGithub.provider);
+  assert.equal(safeManager.summary(safe.queue.get(jobID)).workflow_qualification?.state, 'qualified',
+    'a literal guard proven false on the generated ref leaves the main-only job outside scope');
+  assert.equal((await safeManager.publish(jobID, { run_id: safe.run_id })).state, 'published');
+  assert.equal(safeGithub.state.writes.pulls, 1);
+});
+
+test('literal release guard excludes privileged job from generated push and PR events', async t => {
+  const workflow = `name: CI and release\non:\n  push:\n  pull_request:\npermissions:\n  contents: read\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo check\n  release:\n    if: \u0024{{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.RELEASE_ENABLED == 'true' }}\n    runs-on: self-hosted\n    permissions:\n      contents: write\n      id-token: write\n    environment: production\n    env:\n      RELEASE_TOKEN: \u0024{{ secrets.RELEASE_TOKEN }}\n    steps:\n      - run: ./publish.sh\n`;
+  const f = testFixture(t, { baseWorkflows: { '.github/workflows/ci.yml': workflow } });
+  const gh = fakeGitHub(f), manager = service(f, gh.provider);
+  assert.equal(manager.summary(f.queue.get(jobID)).workflow_qualification?.state, 'qualified');
+  assert.equal((await manager.publish(jobID, { run_id: f.run_id })).state, 'published');
+});
+
+test('workflow refusal is shared by API, CLI status/publish and dashboard status contract', async t => {
+  const reservation = createNetServer();
+  await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
+  const port = reservation.address().port;
+  await new Promise(resolve => reservation.close(resolve));
+  const workflow = `name: CI\non: pull_request\npermissions:\n  contents: write\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo check\n`;
+  const f = testFixture(t, { port, baseWorkflows: { '.github/workflows/ci.yml': workflow } });
+  const gh = fakeGitHub(f);
+  await f.closeQueue();
+  const controller = createController(f.state, { execute: async () => ({ outcome: 'complete' }), stop: async () => {}, reconcile: async () => {} }, { deliveryProvider: gh.provider });
+  await new Promise(resolve => controller.server.listen(port, '127.0.0.1', resolve));
+  t.after(() => controller.close());
+  const origin = `http://127.0.0.1:${port}`;
+  const status = await (await fetch(`${origin}/api/v1/status`)).json();
+  const delivery = status.jobs[0].delivery_status;
+  assert.equal(delivery.can_publish, false);
+  assert.equal(delivery.workflow_qualification?.state, 'blocked');
+  assert.match(delivery.error, /contents:read\/none/);
+  const headers = { 'Content-Type': 'application/json', 'X-Factory-Session': status.csrf_token };
+  const response = await fetch(`${origin}/api/v1/jobs/${jobID}/publish`, {
+    method: 'POST', headers, body: JSON.stringify({ run_id: f.run_id }),
+  });
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, delivery.error, 'API action uses the status refusal reason');
+
+  const cliEnv = { ...process.env, SDF_AUTO_UPDATE: '0', SDF_BOOTSTRAPPED: '1' };
+  const cliStatus = await execFileAsync(process.execPath, ['bin/software-defence-factory.mjs', 'status', '--state', f.state], { encoding: 'utf8', env: cliEnv });
+  const cliJob = JSON.parse(cliStatus.stdout).jobs[0];
+  assert.equal(cliJob.delivery_status.can_publish, false);
+  assert.equal(cliJob.delivery_status.error, delivery.error, 'CLI status retains the shared qualification reason');
+  let cliFailure;
+  try { await execFileAsync(process.execPath, ['bin/software-defence-factory.mjs', 'publish', jobID, '--state', f.state], { encoding: 'utf8', env: cliEnv }); }
+  catch (error) { cliFailure = error; }
+  assert.ok(cliFailure?.stderr?.includes(delivery.error), 'CLI publish reports the shared refusal');
+  assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
+});
+
+test('saved delivery intent rechecks workflow evidence after its earlier qualification goes stale', async t => {
+  const f = testFixture(t, { baseWorkflows: { '.github/workflows/ci.yml': safeWorkflow } });
+  const gh = fakeGitHub(f), manager = service(f, gh.provider), job = f.queue.get(jobID);
+  assert.equal(manager.summary(job).workflow_qualification?.state, 'qualified');
+  const accepted = JSON.parse(readFileSync(join(f.folder, 'accepted.json'), 'utf8'));
+  manager.ensureIntent(job, configAt(f.state), { accepted, expectedPolicy: f.policyHash, issue: null });
+  writeFileSync(join(f.folder, 'delivery-input', 'candidate.patch'), 'stale changed workflow patch\n');
+  const summary = manager.summary(f.queue.get(jobID));
+  let failure;
+  try { await manager.publish(jobID, { run_id: f.run_id }); } catch (error) { failure = error; }
+  assert.equal(summary.can_publish, false);
+  assert.match(summary.error, /patch digest/i);
+  assert.equal(failure?.message, summary.error, 'saved-intent retry and status share the stale-evidence refusal');
+  assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
+});
 
 test('synthetic mock acceptance cannot advertise or perform trusted PR publication', async t => {
   const f = testFixture(t, { harness: 'mock' }), gh = fakeGitHub(f), manager = service(f, gh.provider);

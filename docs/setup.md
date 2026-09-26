@@ -190,6 +190,17 @@ base or changed Factory policy blocks delivery until fresh applicable evidence
 exists. Configure this before admitting work. Unknown providers remain
 patch-only.
 
+Before enabling trusted PR delivery, confirm the repository workflows fit the
+bounded qualification in [recovery](recovery.md#trusted-pr-delivery). Factory
+compares the immutable admitted base and accepted candidate trees, refuses any
+candidate change to a GitHub Actions workflow, and requires jobs that can run
+for generated-branch pushes, PR events or selected-ref manual dispatches to use
+explicit `contents: read` or `none`, a known GitHub-hosted runner, and no
+secrets, protected environments, OIDC or deploy permissions. Unsupported
+workflow syntax keeps the patch-only path available. Organization hooks and
+other external CI automation remain operator-owned and are not audited by this
+check.
+
 The operator's authenticated `gh` identity stays on the controller. Keep GitHub
 credentials out of `model.env`, project files and worker containers. Do not add
 deploy credentials or a Docker socket for PR delivery. Use only the existing

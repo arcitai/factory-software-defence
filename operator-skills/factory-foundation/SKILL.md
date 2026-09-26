@@ -38,7 +38,11 @@ Continue authorized repairs; ask only for decisions or authority actually missin
   repository instructions. Adapt the staged method to the
   project; do not overwrite its files. Reconcile the chosen provider’s issue forms/labels (where supported), CI triggers,
   required checks, protection rules and the intended PR/release path using
-  [repository readiness](../../kit/repository.md). File presence is not proof.
+  [repository readiness](../../kit/repository.md). Before trusted GitHub PR
+  delivery, confirm active candidate-triggered workflows fit the bounded
+  qualification in [recovery](../../docs/recovery.md#trusted-pr-delivery);
+  unsupported workflows keep delivery patch-only. Organization hooks and
+  external CI remain operator-owned. File presence is not proof.
 - **Infrastructure:** choose a private state directory, loopback port, host and
   unprivileged operator. Verify actual SSH authentication, host key, network,
   Docker and stable Node executable where needed. Factory needs no unrestricted

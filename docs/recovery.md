@@ -168,6 +168,48 @@ authorize a new write on retry. A known receipt or PR-creation checkpoint can
 still use read-only provider reconciliation; if that cannot establish the
 existing effect, the uncertain record remains blocked from further writes.
 
+Before advertising or attempting a new write, status and the shared publisher
+qualify the exact accepted Git trees again. Factory reads the immutable admitted
+base commit and reconstructs the accepted candidate tree from the protected,
+digest-bound patch. Added, changed, deleted or symlinked
+`.github/workflows/*.yml` and `*.yaml` definitions block trusted publication.
+Every base workflow must parse with the bundled YAML parser and use the
+supported literal `push`, `pull_request`, `pull_request_target` or
+`workflow_dispatch` trigger subset; dispatch inputs and other events such as
+`workflow_run` or `workflow_call` are unsupported. A manual dispatch is
+evaluated with the generated branch as its selected ref, as GitHub permits
+dispatching a workflow against a selected branch ([manual workflow runs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)).
+Any declared PR activity type is treated as potentially active for that
+candidate PR. Exact branch filters are checked against the generated branch
+and configured target.
+Globs and path filters are treated as possible matches. Conditions support only
+`&&`-joined `==`/`!=` comparisons against quoted strings using
+`github.ref`, `github.event_name`, `github.head_ref`, `github.base_ref` or
+`vars.NAME`; `||`, functions and other contexts are refused. Dynamic
+permissions, malformed YAML and ambiguous guards block publication with a
+reason while leaving patch delivery available.
+
+Each job that could run for the generated branch push, a branch-selected
+manual dispatch or a PR event must have explicit effective permissions limited
+to `contents: read` or `none`, a known GitHub-hosted runner, and no secret
+context, protected environment, reusable workflow call, OIDC permission or
+deployment permission. A privileged release job can qualify only when a simple
+literal conjunction proves it cannot run for each matching event. The current
+`ci.yml` main-only release guard is supported. Before any content, branch or PR
+write, the existing provider readback still confirms that the configured
+target commit and tree are the exact accepted base. Active jobs must use one of
+the supported literal runner labels (`ubuntu-latest`,
+`ubuntu-22.04`, `ubuntu-24.04`, `ubuntu-26.04`, `windows-latest`,
+`windows-2022`, `windows-2025`, `macos-latest`, `macos-14`, `macos-15` or
+`macos-26`). External action steps must be local or pinned to an immutable
+commit SHA or container digest.
+
+This bounded check does not establish that all CI is safe. It does not inspect
+repository/organization rules, webhooks, external CI or other organization
+automation, nor does it audit the behavior of referenced third-party actions.
+Unsupported cases refuse trusted publication and leave normal local checks,
+review, approval and manual patch delivery available.
+
 After publication is confirmed, readback follows the saved PR identity and
 records its current open draft/ready, closed or merged state and checks. This
 read-only refresh does not require the source branch to remain after closure or
