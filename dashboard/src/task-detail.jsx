@@ -24,6 +24,7 @@ export function TaskDetail({
   job,
   loaded,
   error,
+  deliveryActionError = "",
   deleting,
   onDelete,
   onWorkflowAction,
@@ -55,6 +56,8 @@ export function TaskDetail({
   const usage = tokenUsageSummary(job.runs || []);
   const terminal = ["succeeded", "failed", "cancelled"].includes(job.state);
   const latest = job.runs.at(-1);
+  const showDelivery = job.workflow?.name === "software" && job.delivery_status
+    && (job.state === "succeeded" || job.delivery_status.candidate_sha || job.delivery_removal_blocked);
   const lastCompleted = job.runs.findLast((run) => run.outcome === "complete");
   const sourceAdmission = job.source_admission || { status: "legacy_unknown", note: "Admission-time source revision was not recorded for this job." };
   const { result, history, stages } = taskPresentation(job);
@@ -154,7 +157,7 @@ export function TaskDetail({
                     {result.error}
                   </p>
                 )}
-                {job.delivery_status && <DeliveryDetails delivery={job.delivery_status} />}
+                {showDelivery && <DeliveryDetails delivery={job.delivery_status} />}
                 {result && job.task && (
                   <Artifacts
                     key={result.id}
@@ -168,6 +171,7 @@ export function TaskDetail({
                     key={`${job.id}:${latest?.id}:${job.state}`}
                     job={job}
                     result={result}
+                    deliveryActionError={deliveryActionError}
                     onAction={onWorkflowAction}
                   />
                 )}
@@ -286,11 +290,14 @@ export function TaskDetail({
                   </dl>
                   <Button
                     variant="outline"
-                    disabled={!terminal || deleting}
+                    disabled={!terminal || deleting || job.can_remove === false}
                     onClick={() => onDelete(job)}
                   >
                     {deleting ? "Deleting…" : "Delete issue"}
                   </Button>
+                  {job.delivery_removal_blocked && <p className="text-xs text-muted-foreground" role="note">
+                    {job.removal_block_reason || "Trusted PR delivery is unresolved. Reconcile it or inspect the remote collision before deleting this issue."}
+                  </p>}
                 </section>
               </div>
             ),
@@ -384,7 +391,7 @@ function RunMetric({ label, value, mono = false }) {
   );
 }
 
-function TaskActions({ job, result, onAction }) {
+function TaskActions({ job, result, deliveryActionError = "", onAction }) {
   const [stopped, setStopped] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -469,13 +476,20 @@ function TaskActions({ job, result, onAction }) {
           )}
         </div>
       )}
-      {delivery?.can_publish && (
-        <section className="space-y-2 rounded-lg border border-border p-3" aria-label="Trusted PR delivery action">
+      {(delivery?.can_publish || deliveryActionError) && delivery && (
+        <section className="trusted-delivery-action space-y-2 rounded-lg border border-border p-3" aria-label="Trusted PR delivery action">
           <p className="text-sm font-medium">Optional PR delivery</p>
           <p className="text-xs text-muted-foreground">{delivery.repository} · target {delivery.target}. Publishing uses the accepted patch and current evidence. Merge, integration and deployment remain separate.</p>
-          <Button variant={delivery.state === "published" ? "outline" : "default"} disabled={busy} onClick={() => action("publish")}>
-            {busy ? "Reconciling…" : delivery.state === "published" ? "Refresh PR readback and checks" : delivery.state === "uncertain" || delivery.state === "publishing" ? "Reconcile PR delivery" : "Publish accepted candidate as draft PR"}
-          </Button>
+          {(deliveryActionError || delivery.error) && <p id={`delivery-action-error-${job.id}`} role="alert" aria-live="assertive" className="text-sm text-danger">{deliveryActionError || delivery.error}</p>}
+          {delivery.can_publish && <Button
+            className="delivery-action-button"
+            variant={delivery.state === "published" ? "outline" : "default"}
+            disabled={busy}
+            aria-describedby={(deliveryActionError || delivery.error) ? `delivery-action-error-${job.id}` : undefined}
+            onClick={() => action("publish")}
+          >
+            {busy ? "Reconciling…" : delivery.state === "published" ? "Refresh PR readback and checks" : ["intent", "uncertain", "publishing", "blocked"].includes(delivery.state) ? "Reconcile PR delivery" : "Publish accepted candidate as draft PR"}
+          </Button>}
         </section>
       )}
       {job.state === "blocked" && hasRetainedSource && (
@@ -527,13 +541,27 @@ function TaskActions({ job, result, onAction }) {
 function DeliveryDetails({ delivery }) {
   const pull = delivery.pull_request;
   const checks = delivery.checks;
-  const status = value => ({success:"Passed",failure:"Failed",pending:"Pending",unknown:"Unknown"}[value] || value);
+  const status = value => ({success:"Passed",failure:"Failed",pending:"Pending",queued:"Queued",in_progress:"In progress",unknown:"Unknown",skipped:"Skipped",neutral:"Neutral",action_required:"Action required",timed_out:"Timed out",cancelled:"Cancelled"}[value] || "Unknown");
+  const checkResult = item => {
+    if (item.kind !== "check_run" || item.status !== "completed") return status(item.status || "unknown");
+    const conclusion = typeof item.conclusion === "string" ? item.conclusion : "unknown";
+    return `${status(conclusion)} · ${conclusion}`;
+  };
+  const deliveryState = {
+    intent: "Delivery intent saved; reconcile the same PR before deleting this issue",
+    publishing: "PR delivery is in progress; reconcile the same PR before deleting this issue",
+    uncertain: "PR delivery response is uncertain; reconcile the same PR before deleting this issue",
+    blocked: "PR delivery is blocked; restore current evidence or inspect the saved delivery before deleting this issue",
+    conflict: "PR delivery has a remote collision; inspect it before deleting this issue",
+    legacy_unverified: "Legacy acceptance has no bound publication evidence",
+    unverified: "Candidate evidence is unavailable; PR delivery is blocked",
+  };
   return (
     <section className="space-y-2 rounded-lg border border-border bg-muted/20 p-3" aria-label="Delivery status">
       <h3 className="text-sm font-semibold">Delivery</h3>
       {delivery.state === "patch_only" || delivery.state === "patch_only_unsupported_provider"
         ? <p className="text-sm text-muted-foreground">Patch-only handoff · no trusted PR destination is enabled.</p>
-        : <p className="text-sm text-muted-foreground">{delivery.state === "published" ? "PR created or reconciled" : delivery.state === "ready" ? "Ready for explicit draft PR delivery" : delivery.state.replaceAll("_", " ")} · {delivery.repository} · target {delivery.target}</p>}
+        : <p className="text-sm text-muted-foreground">{delivery.state === "published" ? "PR created or reconciled" : delivery.state === "ready" ? "Ready for explicit draft PR delivery" : deliveryState[delivery.state] || delivery.state.replaceAll("_", " ")} · {delivery.repository} · target {delivery.target}</p>}
       {delivery.error && <p role="alert" className="text-sm text-danger">{delivery.error}</p>}
       {pull && <dl className="grid gap-1 text-xs sm:grid-cols-2">
         <div><dt className="text-muted-foreground">Pull request</dt><dd><a className="underline" href={pull.url} target="_blank" rel="noreferrer">#{pull.number} · {pull.state}{pull.draft ? " · draft" : ""}</a></dd></div>
@@ -546,7 +574,7 @@ function DeliveryDetails({ delivery }) {
       {checks && <ul className="space-y-1 text-xs" aria-label="Actual PR check results">
         {[...(checks.check_runs || []), ...(checks.commit_statuses || [])].map((item, index) => <li key={`${item.kind || item.name}-${index}`} className="flex flex-wrap justify-between gap-2">
           {item.url && /^https:\/\//.test(item.url) ? <a className="underline" href={item.url} target="_blank" rel="noreferrer">{item.name}</a> : <span>{item.name}</span>}
-          <span>{item.status === "completed" ? status(item.conclusion || "unknown") : status(item.status || "unknown")}</span>
+          <span>{checkResult(item)}</span>
         </li>)}
         {checks.state === "unknown" && <li className="text-muted-foreground">No successful PR check result is recorded.</li>}
       </ul>}

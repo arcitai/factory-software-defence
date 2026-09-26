@@ -595,3 +595,50 @@ restart recovery, exact readback, and close without merge. No GitHub write or
 live fixture was attempted by this implementation worker. These checks are
 required before lead acceptance; delivery itself still does not merge,
 integrate or deploy.
+
+## #29 recovery repairs on the admitted 0.8.0 checkpoint — 26 September 2026
+
+This repair starts from admitted candidate
+`0f0012a13ff67a021fc51191042e77cdc9cd7631`; the repository main baseline for
+the combined review is `b2643a8b67b748e9f0bf99a66e7cdd091bda3a71`. Package and
+lockfile versions remain `0.8.0`.
+
+The controller now refuses to remove a stopped job while a saved delivery is
+not confirmed `published`. Status exposes the same removal decision and reason
+to the dashboard. The detail view disables Delete issue and explains how to
+reconcile or inspect the delivery. Saved `intent`, `publishing`, `uncertain`
+and retryable `blocked` checkpoints retain a guarded publish/reconcile action;
+legacy acceptance without candidate-bound phase evidence is labelled
+`legacy_unverified` and cannot be published.
+
+The shared CLI API keeps its five-second default and bounds trusted publication
+requests at ten minutes. A delayed local provider test holds one GitHub-shaped
+request for 5.2 seconds and verifies that CLI publication receives the final
+receipt. A controller API regression starts from a durable `intent`, rejects
+delete, simulates a lost branch/PR response, rejects delete again, then
+reconciles the same single branch and PR. These are local fake-provider and
+HTTP-controller checks, not live GitHub qualification.
+
+The provider retains each raw check-run conclusion. `success`, `skipped` and
+`neutral` are non-blocking in the aggregate; only `success` is an executed
+passing check. Known failure, action-required, timed-out and cancelled outcomes
+remain failures. Unknown conclusions, absent/incomplete pagination and
+unassociated PR checks remain unknown. The dashboard displays raw conclusions
+beside readable labels. The aggregate does not infer branch-protection
+completeness or merge authority.
+
+`npm run build:dashboard` passed. `npm run check` passed syntax/JSON checks,
+100 runtime/package tests and 52 dashboard tests. Focused regressions exercised
+legacy acceptance, intent and lost-response removal guards, the >5-second CLI
+request, conclusion aggregation, action-associated accessible failure
+feedback, and wrapping of the delivery button. The dashboard tests use JSDOM
+and source style assertions; this worker had no browser executable/tool and
+performed no rendered Safari inspection at 320/390px.
+
+No GitHub credential, live repository write or external fixture was used here.
+The implementer inspected the combined source diff from the original main
+baseline through this working tree; this is not a separate reviewer result. A
+protected exact-head/policy attestation was not supplied in this worker
+context. The lead owns the independent exact-final-diff review, protected
+verification, installed CLI/dashboard publication repeat/restart/readback, and
+desktop/narrow light/dark browser inspection before acceptance.

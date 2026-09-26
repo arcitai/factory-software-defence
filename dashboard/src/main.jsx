@@ -34,6 +34,7 @@ function App() {
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [taskActionError, setTaskActionError] = useState("");
+  const [deliveryActionError, setDeliveryActionError] = useState("");
   const [deletingJob, setDeletingJob] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -91,6 +92,7 @@ function App() {
       if (routeFromHash(previousHash.current).view === "task") returnTask.current = previousHash.current;
       previousHash.current = window.location.hash;
       setTaskActionError("");
+      setDeliveryActionError("");
       setRoute(routeFromHash(window.location.hash));
     };
     window.addEventListener("hashchange", updateView);
@@ -159,7 +161,8 @@ function App() {
   }
 
   async function workflowAction(job, action, stopped = false, feedback = "", sourceRef = "") {
-    setTaskActionError("");
+    if (action === "publish") setDeliveryActionError("");
+    else setTaskActionError("");
     try {
       const body = action === "publish"
         ? { run_id: job.runs.at(-1)?.id }
@@ -170,7 +173,10 @@ function App() {
       });
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || "Unable to update job"); }
       await statusLoader.current.refresh();
-    } catch (error) { setTaskActionError(error.message); }
+    } catch (error) {
+      if (action === "publish") setDeliveryActionError(error.message);
+      else setTaskActionError(error.message);
+    }
   }
 
   async function deleteJob(job) {
@@ -224,7 +230,7 @@ function App() {
 
       <main className="workshop min-w-0 flex-1">
         <ProjectContext identity={identity} links={status.project_links} compact={view === "task"} loaded={statusLoaded} error={statusError} showNewTask={view === "runs"} onNewTask={() => (setSubmitError(""), setComposerOpen(true))} />
-        {view === "task" ? <TaskDetail identity={identity} links={status.project_links} navigation={visibleJobs.map(job => ({ id: job.id, title: jobDisplayTitle(job) }))} csrfToken={status.csrf_token} job={selectedJob} loaded={statusLoaded} error={statusError || taskActionError} deleting={deletingJob === route.jobID} onDelete={deleteJob} onWorkflowAction={workflowAction} />
+        {view === "task" ? <TaskDetail identity={identity} links={status.project_links} navigation={visibleJobs.map(job => ({ id: job.id, title: jobDisplayTitle(job) }))} csrfToken={status.csrf_token} job={selectedJob} loaded={statusLoaded} error={statusError || taskActionError} deliveryActionError={deliveryActionError} deleting={deletingJob === route.jobID} onDelete={deleteJob} onWorkflowAction={workflowAction} />
           : view === "analytics" ? <Analytics jobs={status.jobs} workflows={status.workflows || []} loaded={statusLoaded} error={statusError} />
             : view === "infrastructure" ? <InfrastructurePage infrastructure={status.infrastructure} workers={status.workers} identity={identity} loaded={statusLoaded} error={statusError} />
               : view === "automations" ? <AutomationsPage control={status.automation_control} loaded={statusLoaded} error={statusError} />

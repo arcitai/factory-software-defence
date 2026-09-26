@@ -194,11 +194,16 @@ checks, independent review and approval must produce the disposable candidate.
 Give its issue a title beginning **[Factory PR handoff proof]**, then use the
 normal **Publish accepted candidate as draft PR** action. Record the job,
 candidate SHA/tree, generated unique branch, exact draft PR, base/head/tree and
-triggered check states. Restart the installed controller and repeat
-`publish JOB_ID`; verify the same branch and PR head are read back and no second
-PR appears. Leave pending/unknown checks labelled as such. After inspection,
-close the proof PR without merging its fixture change. Do not publish a worker
-candidate from inside its sandbox.
+triggered check states. The CLI allows up to ten minutes for this multi-request
+controller action; other CLI API requests retain their five-second deadline.
+If the client deadline expires, inspect status and repeat `publish JOB_ID` so
+the controller can reconcile its saved intent. Restart the installed controller
+and repeat `publish JOB_ID`; verify the same branch and PR head are read back
+and no second PR appears. Delete issue is disabled while the delivery is
+unresolved, and the controller rejects the same removal through its API. Leave
+pending/unknown checks labelled as such. After inspection, close the proof PR
+without merging its fixture change. Do not publish a worker candidate from
+inside its sandbox.
 
 Mocks exercise controller and receipt behavior only. They are not live GitHub
 publication or browser proof; record each separately in [qualification](proof.md).

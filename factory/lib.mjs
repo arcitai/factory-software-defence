@@ -26,6 +26,9 @@ export function stream(command, args, options = {}) {
 }
 export const digest = value => createHash('sha256').update(value).digest('hex');
 export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+export const API_TIMEOUT_MS = 5000;
+export const PUBLICATION_API_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_API_TIMEOUT_MS = 10 * 60 * 1000;
 export function harnessOf(config) {
   if (config.harness !== undefined && config.agent !== undefined && config.harness !== config.agent)
     throw new Error('harness conflicts with legacy agent; keep one harness setting');
@@ -65,12 +68,14 @@ export function configAt(state) {
   if (typeof config.check !== 'string' || !config.scope || !['project','service','environment','owner'].every(k=>typeof config.scope[k]==='string'&&config.scope[k].trim())) throw new Error('Missing check or installation scope');
   return config;
 }
-export async function api(state, path, body, method) {
+export async function api(state, path, body, method, { timeoutMs = API_TIMEOUT_MS } = {}) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_API_TIMEOUT_MS)
+    throw new Error(`API timeout must be between 1 and ${MAX_API_TIMEOUT_MS} milliseconds`);
   const config = configAt(state);
   const response = await fetch(`http://127.0.0.1:${config.port}${path}`, {
     method: method || (body === undefined ? 'GET' : 'POST'),
     headers: { Authorization: `Bearer ${readFileSync(join(state, 'worker.token'), 'utf8').trim()}`, 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(5000),
+    body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs),
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`Controller ${response.status}: ${text}`);

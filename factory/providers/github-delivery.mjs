@@ -34,14 +34,18 @@ function slug(repository) {
 
 function checkSummary(runs, status, pullRequestNumber) {
   const checkRuns = Array.isArray(runs?.check_runs) ? runs.check_runs.slice(0, 100).map(run => ({
+    kind: 'check_run',
     name: String(run.name || 'Unnamed check').slice(0, 200),
     status: pullRequestNumber && Array.isArray(run.pull_requests)
       && run.pull_requests.some(pull => pull.number === pullRequestNumber)
       ? ['queued', 'in_progress', 'completed'].includes(run.status) ? run.status : 'unknown'
       : 'unknown',
-    conclusion: pullRequestNumber && Array.isArray(run.pull_requests)
-      && run.pull_requests.some(pull => pull.number === pullRequestNumber) ? run.conclusion || null : null,
+    conclusion: typeof run.conclusion === 'string' ? run.conclusion : null,
     url: typeof run.html_url === 'string' ? run.html_url : null,
+    passed: run.status === 'completed' && run.conclusion === 'success'
+      && pullRequestNumber && Array.isArray(run.pull_requests) && run.pull_requests.some(pull => pull.number === pullRequestNumber),
+    non_blocking: run.status === 'completed' && ['success', 'skipped', 'neutral'].includes(run.conclusion)
+      && pullRequestNumber && Array.isArray(run.pull_requests) && run.pull_requests.some(pull => pull.number === pullRequestNumber),
   })) : [];
   const contexts = Array.isArray(status?.statuses) ? status.statuses.slice(0, 100).map(item => ({
     name: String(item.context || 'Unnamed status').slice(0, 200),
@@ -49,17 +53,23 @@ function checkSummary(runs, status, pullRequestNumber) {
     url: typeof item.target_url === 'string' ? item.target_url : null,
   })) : [];
   const rows = [
-    ...checkRuns.map(item => ({ ...item, kind: 'check_run', passed: item.status === 'completed' && item.conclusion === 'success' })),
-    ...contexts.map(item => ({ ...item, kind: 'commit_status', passed: item.status === 'success' })),
+    ...checkRuns.map(item => ({ ...item, kind: 'check_run',
+      passed: item.status === 'completed' && item.conclusion === 'success',
+      non_blocking: item.status === 'completed' && ['success', 'skipped', 'neutral'].includes(item.conclusion) })),
+    ...contexts.map(item => ({ ...item, kind: 'commit_status', passed: item.status === 'success', non_blocking: item.status === 'success' })),
   ];
-  const failed = rows.some(item => item.status === 'failure' || item.status === 'error'
-    || (item.status === 'completed' && item.conclusion !== 'success'));
+  const failed = rows.some(item => item.kind === 'check_run'
+    ? item.status === 'completed' && ['failure', 'action_required', 'timed_out', 'cancelled'].includes(item.conclusion)
+    : item.status === 'failure' || item.status === 'error');
   const pending = rows.some(item => item.status === 'pending' || item.status === 'queued' || item.status === 'in_progress');
-  const incomplete = (Number.isSafeInteger(runs?.total_count) && runs.total_count > checkRuns.length)
-    || (Number.isSafeInteger(status?.total_count) && status.total_count > contexts.length);
-  const state = failed ? 'failure' : pending ? 'pending' : incomplete ? 'unknown'
-    : rows.length && rows.every(item => item.passed) ? 'success' : 'unknown';
-  return { state, check_runs: checkRuns, commit_statuses: contexts };
+  const unknown = rows.some(item => item.status === 'unknown'
+    || (item.kind === 'check_run' && item.status === 'completed'
+      && !['success', 'skipped', 'neutral', 'failure', 'action_required', 'timed_out', 'cancelled'].includes(item.conclusion)));
+  const complete = Number.isSafeInteger(runs?.total_count) && runs.total_count === checkRuns.length
+    && Number.isSafeInteger(status?.total_count) && status.total_count === contexts.length;
+  const state = failed ? 'failure' : !complete || unknown ? 'unknown' : pending ? 'pending'
+    : rows.length && rows.every(item => item.non_blocking) ? 'success' : 'unknown';
+  return { state, pagination_complete: complete, check_runs: checkRuns, commit_statuses: contexts };
 }
 
 export function githubDeliveryProvider({ request = requestGitHub } = {}) {
@@ -139,7 +149,7 @@ export function githubDeliveryProvider({ request = requestGitHub } = {}) {
       try {
         const [runs, status] = await Promise.all([
           get(`${apiRoot}/${slug(repository)}/commits/${sha}/check-runs?per_page=100`),
-          get(`${apiRoot}/${slug(repository)}/commits/${sha}/status`),
+          get(`${apiRoot}/${slug(repository)}/commits/${sha}/status?per_page=100`),
         ]);
         return checkSummary(runs, status, pullRequestNumber);
       } catch {

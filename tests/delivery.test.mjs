@@ -11,7 +11,7 @@ import { JobQueue } from '../factory/queue.mjs';
 import { DeliveryService } from '../factory/delivery.mjs';
 import { SourceAdmissionStore, publicSourceAdmission, restoreRetainedCheckout } from '../factory/source-admission.mjs';
 import { runCandidateGit } from '../factory/git-environment.mjs';
-import { configAt, digest } from '../factory/lib.mjs';
+import { API_TIMEOUT_MS, PUBLICATION_API_TIMEOUT_MS, configAt, digest } from '../factory/lib.mjs';
 import { withRequestedModel } from '../factory/execution-profile.mjs';
 import { VERSION } from '../factory/updates.mjs';
 import { githubDeliveryProvider } from '../factory/providers/github-delivery.mjs';
@@ -100,6 +100,7 @@ function fakeGitHub(f, options = {}) {
       : state.commit?.sha === sha ? { ...state.commit } : null,
     createBlob: async (_repository, content) => {
       state.writes.blobs++;
+      if (options.slowBlobMs) await new Promise(resolve => setTimeout(resolve, options.slowBlobMs));
       if (state.holdBlob) {
         state.blobStarted?.();
         await new Promise(resolve => { state.releaseBlob = resolve; });
@@ -203,6 +204,15 @@ test('patch-only is the default and issue text cannot provide a destination', as
   assert.throws(() => configAt(configured.state), /target main or dev/);
 });
 
+test('legacy acceptance without candidate-bound approval evidence is not advertised as publishable', async t => {
+  const f = testFixture(t), gh = fakeGitHub(f), manager = service(f, gh.provider);
+  writeFileSync(join(f.folder, 'accepted.json'), JSON.stringify({ head: f.head, source_admission: publicSourceAdmission(f.admission), acceptedAt: '2026-09-26T12:00:00.000Z' }), { mode: 0o600 });
+  const summary = manager.summary(f.queue.get(jobID));
+  assert.equal(summary.state, 'legacy_unverified');
+  assert.equal(summary.can_publish, false);
+  assert.match(summary.error, /does not bind the candidate/);
+});
+
 test('stale evidence, changed source identity and changed remote base block before content writes', async t => {
   const f = testFixture(t), gh = fakeGitHub(f), manager = service(f, gh.provider);
   const checkFile = join(f.folder, 'checks.json'), checks = JSON.parse(readFileSync(checkFile, 'utf8'));
@@ -223,6 +233,9 @@ test('stale policy, approval and protected patch are rejected before publishing'
   const f = testFixture(t), gh = fakeGitHub(f), manager = service(f, gh.provider);
   const configPath = join(f.state, 'factory.json'), config = JSON.parse(readFileSync(configPath, 'utf8'));
   writeFileSync(configPath, JSON.stringify({ ...config, check: 'changed policy' }), { mode: 0o600 });
+  const staleSummary = manager.summary(f.queue.get(jobID));
+  assert.equal(staleSummary.state, 'blocked');
+  assert.equal(staleSummary.can_publish, false);
   await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /current Factory policy/);
   writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 });
   const acceptedPath = join(f.folder, 'accepted.json'), accepted = JSON.parse(readFileSync(acceptedPath, 'utf8'));
@@ -310,13 +323,78 @@ test('CLI and authenticated dashboard action use the same accepted delivery rece
   assert.equal(gh.state.writes.pulls, 1);
 });
 
+test('durable intent and lost-response delivery cannot be hidden before API reconciliation', async t => {
+  const reservation = createNetServer();
+  await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
+  const port = reservation.address().port;
+  await new Promise(resolve => reservation.close(resolve));
+  const f = testFixture(t, { port }), gh = fakeGitHub(f, { loseBranch: true, losePull: true });
+  const manager = service(f, gh.provider), config = configAt(f.state), job = f.queue.get(jobID);
+  manager.ensureIntent(job, config, manager.validateEvidence(job, config));
+  assert.equal(manager.summary(f.queue.get(jobID)).state, 'intent');
+  assert.equal(manager.summary(f.queue.get(jobID)).can_publish, true, 'a crash after the durable intent can be recovered');
+  assert.equal(f.queue.canRemove(f.queue.get(jobID)), false);
+  await assert.rejects(f.queue.remove(jobID), /delivery is unresolved/);
+  await f.closeQueue();
+
+  const controller = createController(f.state, { execute: async () => ({ outcome: 'complete' }), stop: async () => {}, reconcile: async () => {} }, { deliveryProvider: gh.provider });
+  await new Promise(resolve => controller.server.listen(port, '127.0.0.1', resolve));
+  t.after(() => controller.close());
+  const origin = `http://127.0.0.1:${port}`, statusURL = `${origin}/api/v1/status`;
+  let status = await (await fetch(statusURL)).json();
+  const csrf = status.csrf_token;
+  assert.equal(status.jobs[0].delivery_status.state, 'intent');
+  assert.equal(status.jobs[0].delivery_status.can_publish, true);
+  assert.equal(status.jobs[0].can_remove, false);
+  assert.match(status.jobs[0].removal_block_reason, /Reconcile the saved delivery/);
+  const headers = { 'Content-Type': 'application/json', 'X-Factory-Session': csrf };
+  const remove = () => fetch(`${origin}/api/v1/jobs/${jobID}`, { method: 'DELETE', headers: { 'X-Factory-Session': csrf } });
+  assert.equal((await remove()).status, 409, 'the controller rejects deletion while only the intent is recorded');
+  const publish = () => fetch(`${origin}/api/v1/jobs/${jobID}/publish`, { method: 'POST', headers, body: JSON.stringify({ run_id: f.run_id }) });
+  assert.equal((await publish()).status, 409, 'the fixture simulates a lost remote PR response and failed first reconciliation');
+  status = await (await fetch(statusURL)).json();
+  assert.equal(status.jobs[0].delivery_status.state, 'uncertain');
+  assert.equal(status.jobs[0].delivery_status.can_publish, true, 'lost response remains an explicit reconciliation action');
+  assert.equal(status.jobs[0].can_remove, false);
+  assert.equal((await remove()).status, 409, 'uncertain remote side effects remain visible and cannot be forgotten');
+  const recovered = await publish();
+  assert.equal(recovered.status, 200);
+  assert.equal((await recovered.json()).pull_request.number, 29);
+  assert.equal(gh.state.writes.branches, 1);
+  assert.equal(gh.state.writes.pulls, 1);
+  status = await (await fetch(statusURL)).json();
+  assert.equal(status.jobs[0].delivery_status.state, 'published');
+  assert.equal(status.jobs[0].can_remove, true, 'removal is available after confirmed readback');
+});
+
+test('CLI publication waits for bounded asynchronous delivery while ordinary API calls keep their default deadline', async t => {
+  const reservation = createNetServer();
+  await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
+  const port = reservation.address().port;
+  await new Promise(resolve => reservation.close(resolve));
+  const f = testFixture(t, { port }), gh = fakeGitHub(f, { slowBlobMs: 5200 });
+  await f.closeQueue();
+  const controller = createController(f.state, { execute: async () => ({ outcome: 'complete' }), stop: async () => {}, reconcile: async () => {} }, { deliveryProvider: gh.provider });
+  await new Promise(resolve => controller.server.listen(port, '127.0.0.1', resolve));
+  t.after(() => controller.close());
+  assert.equal(API_TIMEOUT_MS, 5000, 'unrelated shared API requests retain the five-second timeout');
+  assert.equal(PUBLICATION_API_TIMEOUT_MS, 600000, 'publication has an explicit ten-minute upper bound');
+  const { stdout } = await execFileAsync(process.execPath, ['bin/software-defence-factory.mjs', 'publish', jobID, '--state', f.state], {
+    encoding: 'utf8', env: { ...process.env, SDF_AUTO_UPDATE: '0', SDF_BOOTSTRAPPED: '1' },
+  });
+  const receipt = JSON.parse(stdout);
+  assert.equal(receipt.state, 'published');
+  assert.equal(receipt.pull_request.number, 29);
+  assert.equal(gh.state.writes.pulls, 1);
+});
+
 test('GitHub adapter keeps unknown and pending PR checks visible without treating them as success', async () => {
   const responses = [];
   const adapter = githubDeliveryProvider({ request: async (method, path) => {
     responses.push({ method, path });
     if (path.endsWith('/check-runs?per_page=100')) return { total_count: 1, check_runs: [{ name: 'build', status: 'queued', conclusion: null,
       pull_requests: [{ number: 29 }], html_url: 'https://github.com/example/project/actions/runs/1' }] };
-    return { state: 'pending', statuses: [] };
+    return { state: 'pending', total_count: 0, statuses: [] };
   } });
   const checks = await adapter.readChecks('https://github.com/example/project', 'a'.repeat(40), 29);
   assert.equal(checks.state, 'pending');
@@ -328,9 +406,43 @@ test('GitHub adapter keeps unknown and pending PR checks visible without treatin
     : { state: 'success', total_count: 1, statuses: [{ context: 'legacy status', state: 'success' }] } });
   assert.equal((await unrelated.readChecks('https://github.com/example/project', 'a'.repeat(40), 29)).state, 'unknown',
     'a successful run for another PR does not qualify as a PR check');
+  const nonBlocking = githubDeliveryProvider({ request: async (_method, path) => path.includes('/check-runs?')
+    ? { total_count: 3, check_runs: ['success', 'skipped', 'neutral'].map((conclusion, index) => ({ name: `job ${index}`, status: 'completed', conclusion,
+      pull_requests: [{ number: 29 }] })) }
+    : { state: 'success', total_count: 0, statuses: [] } });
+  const accepted = await nonBlocking.readChecks('https://github.com/example/project', 'a'.repeat(40), 29);
+  assert.equal(accepted.state, 'success', 'successful, skipped and neutral conclusions are non-blocking for the aggregate');
+  assert.equal(accepted.pagination_complete, true);
+  assert.deepEqual(accepted.check_runs.map(item => item.kind), ['check_run', 'check_run', 'check_run']);
+  assert.deepEqual(accepted.check_runs.map(item => item.conclusion), ['success', 'skipped', 'neutral'], 'raw provider conclusions remain available');
+  assert.deepEqual(accepted.check_runs.map(item => item.passed), [true, false, false], 'skipped and neutral remain distinct from executed passing checks');
+  assert.deepEqual(accepted.check_runs.map(item => item.non_blocking), [true, true, true]);
+  for (const conclusion of ['failure', 'action_required', 'timed_out', 'cancelled']) {
+    const failed = githubDeliveryProvider({ request: async (_method, path) => path.includes('/check-runs?')
+      ? { total_count: 1, check_runs: [{ name: 'check', status: 'completed', conclusion, pull_requests: [{ number: 29 }] }] }
+      : { state: 'success', total_count: 0, statuses: [] } });
+    assert.equal((await failed.readChecks('https://github.com/example/project', 'a'.repeat(40), 29)).state, 'failure', `${conclusion} remains a failure`);
+  }
+  const unrecognized = githubDeliveryProvider({ request: async (_method, path) => path.includes('/check-runs?')
+    ? { total_count: 1, check_runs: [{ name: 'check', status: 'completed', conclusion: 'startup_failure', pull_requests: [{ number: 29 }] }] }
+    : { state: 'success', total_count: 0, statuses: [] } });
+  const unrecognizedResult = await unrecognized.readChecks('https://github.com/example/project', 'a'.repeat(40), 29);
+  assert.equal(unrecognizedResult.state, 'unknown');
+  assert.equal(unrecognizedResult.check_runs[0].conclusion, 'startup_failure');
   const incomplete = githubDeliveryProvider({ request: async (_method, path) => path.endsWith('/check-runs?per_page=100')
     ? { total_count: 101, check_runs: [{ name: 'build', status: 'completed', conclusion: 'success', pull_requests: [{ number: 29 }] }] }
-    : { state: 'success', statuses: [] } });
+    : { state: 'success', total_count: 0, statuses: [] } });
   assert.equal((await incomplete.readChecks('https://github.com/example/project', 'a'.repeat(40), 29)).state, 'unknown',
     'truncated check results are not presented as complete success');
+  const incompletePending = githubDeliveryProvider({ request: async (_method, path) => path.includes('/check-runs?')
+    ? { total_count: 101, check_runs: [{ name: 'build', status: 'queued', pull_requests: [{ number: 29 }] }] }
+    : { state: 'success', total_count: 0, statuses: [] } });
+  assert.equal((await incompletePending.readChecks('https://github.com/example/project', 'a'.repeat(40), 29)).state, 'unknown',
+    'pending rows do not hide incomplete pagination');
+  const missingPaginationCount = githubDeliveryProvider({ request: async (_method, path) => path.includes('/check-runs?')
+    ? { check_runs: [{ name: 'build', status: 'completed', conclusion: 'success', pull_requests: [{ number: 29 }] }] }
+    : { state: 'success', total_count: 0, statuses: [] } });
+  const missingCount = await missingPaginationCount.readChecks('https://github.com/example/project', 'a'.repeat(40), 29);
+  assert.equal(missingCount.state, 'unknown', 'absent pagination totals cannot prove a complete result');
+  assert.equal(missingCount.pagination_complete, false);
 });

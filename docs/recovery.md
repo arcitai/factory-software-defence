@@ -151,8 +151,27 @@ rebases, creates a second PR to avoid an uncertain response, or merges. Restore
 the original trusted repository/target configuration if it changed; do not
 redirect a saved intent.
 
-The receipt reads the exact PR head's check runs and commit statuses. `pending`,
-`unknown`, failed and unavailable remain distinct from success. A target/base,
+The dashboard offers reconciliation for saved `intent`, `publishing`,
+`uncertain` and safely retryable `blocked` checkpoints. Legacy accepted jobs
+without candidate-bound check, review and approval evidence are labelled
+unverified and cannot be published. Deleting an issue with any unconfirmed
+delivery record is blocked in the dashboard and controller API; inspect or
+reconcile the saved remote effect before removing the job. A confirmed
+`published` receipt is no longer unresolved.
+
+The CLI publication request has a ten-minute deadline because a delivery can
+require multiple provider requests. Other CLI API requests keep their
+five-second deadline. If the client reaches its deadline, the remote action may
+still have completed: inspect `status` and repeat `publish` after the active
+controller action finishes. The controller reads the exact branch and PR before
+any repeated write, so this retry reconciles instead of creating a duplicate.
+
+The receipt reads the exact PR head's check runs and commit statuses. Raw
+conclusions are retained. `success`, `skipped` and `neutral` do not make the
+aggregate fail, while skipped/neutral are distinct from an executed passing
+check. `pending`, `unknown`, failed and unavailable remain distinct; unknown
+conclusions and incomplete pagination stay unknown. This aggregate does not
+establish required-check completeness or merge authorization. A target/base,
 candidate or policy change requires fresh applicable checks, review and
 approval; do not edit SQLite or acceptance evidence to bypass the guard. A stale
 target after branch creation leaves that unique branch for inspection and does

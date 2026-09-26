@@ -84,9 +84,19 @@ The controller uses its existing `gh` identity. GitHub credentials are never
 copied to `model.env` or mounted into jobs. The intent, generated branch, PR
 identity, actual base/head/tree and triggered PR check results appear in the
 same job. Unknown and pending checks remain visible and are not reported as
-success. Repeating `publish` refreshes/reconciles the same branch and PR; it
-does not create a second PR or overwrite a changed branch. Publication does
-not merge, integrate, release or deploy. See [delivery recovery](recovery.md#trusted-pr-delivery).
+success. GitHub's raw `success`, `skipped` and `neutral` conclusions are
+non-blocking in the Factory check summary; skipped and neutral remain visibly
+distinct from an executed passing check. Unknown conclusions and incomplete
+pagination keep the aggregate unknown. This summary does not determine branch
+protection requirements or grant merge authorization. See [GitHub's required
+status check guidance](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
+Repeating `publish` refreshes/reconciles the same branch and PR; it does not
+create a second PR or overwrite a changed branch. The CLI gives this bounded
+multi-request action ten minutes; other API calls keep their five-second
+deadline. If a client deadline expires, inspect status and repeat `publish` to
+reconcile. Delete issue stays disabled while delivery is unresolved, and the
+controller enforces the same guard on its API. Publication does not merge,
+integrate, release or deploy. See [delivery recovery](recovery.md#trusted-pr-delivery).
 
 ## Remote access and operation
 

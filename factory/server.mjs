@@ -58,6 +58,8 @@ export function createController(state, adapter = executors(state), integrations
       if (request.method === 'GET' && url.pathname === '/api/v1/status') {
         const jobs = queue.all().map(job => ({ ...job, source_admission: publicSourceAdmission(job.source_admission),
           source_history: (job.source_history || []).map(publicSourceAdmission), can_request_changes: queue.canRequestChanges(job),
+          can_remove: queue.canRemove(job), removal_block_reason: queue.removalBlockReason(job),
+          delivery_removal_blocked: Boolean(job.delivery && job.delivery.state !== 'published'),
           delivery_status: delivery.summary(job), runs: job.runs.map(attempt => attemptPresentation({ ...attempt,
           outcome: attempt.outcome || (attempt.state === 'succeeded' ? 'complete' : undefined) }, adapter.usage?.(job, attempt))) }));
         return send(200, { version: 1, runtime_version: VERSION, maintenance: queue.maintenance, workflows: Object.keys(definitions.workflows), commands: [], triggers: [], jobs, csrf_token: csrf,

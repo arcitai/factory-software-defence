@@ -164,6 +164,51 @@ function sameRepository(actual, expected) {
   return typeof actual === 'string' && actual.toLowerCase() === expected.toLowerCase();
 }
 
+function acceptanceSummary(job, state, config) {
+  const handoff = job.runs?.at(-1);
+  if (job.workflow?.name !== 'software' || job.state !== 'succeeded'
+    || handoff?.command !== 'handoff' || handoff.state !== 'succeeded') return { state: 'not_ready' };
+
+  let accepted, candidate, checks, review;
+  try {
+    const folder = join(state, 'jobs', job.id);
+    accepted = readPrivateJson(join(folder, 'accepted.json'));
+    candidate = readPrivateJson(join(folder, 'candidate.json'));
+    checks = readPrivateJson(join(folder, 'checks.json'));
+    review = readPrivateJson(join(folder, 'review.json'));
+  } catch {
+    return { state: 'unverified', reason: 'Bound candidate, check, review and approval evidence is missing or unsafe; publication is unavailable.' };
+  }
+
+  // Older accepted jobs recorded a head only. They must not appear as a
+  // publishable candidate without the base/tree, patch digest and phase links
+  // that the current handoff binds.
+  if (!SHA1.test(accepted.base || '') || !SHA1.test(accepted.head || '') || !SHA1.test(accepted.tree || '')
+    || !/^[a-f0-9]{64}$/.test(accepted.patch_sha256 || '')
+    || !accepted.build_run_id || !accepted.checks_run_id || !accepted.review_run_id || !accepted.handoff_run_id) {
+    return { state: 'legacy_unverified', reason: 'This legacy acceptance does not bind the candidate, checks, review and approval required for PR delivery.' };
+  }
+
+  const expectedPolicy = digest(JSON.stringify(withRequestedModel(config, job.model)));
+  const byID = id => job.runs.find(run => run.id === id);
+  const buildRun = byID(accepted.build_run_id), checkRun = byID(accepted.checks_run_id), reviewRun = byID(accepted.review_run_id);
+  const validRun = (run, command) => run?.command === command && run.state === 'succeeded' && run.outcome === 'complete'
+    && run.execution?.runtimeVersion === VERSION && run.execution?.policyHash === expectedPolicy;
+  const bound = handoff.id === accepted.handoff_run_id && validRun(buildRun, 'build')
+    && validRun(checkRun, 'verify') && validRun(reviewRun, 'review') && validRun(handoff, 'handoff')
+    && job.source_admission?.status === 'retained' && accepted.head !== accepted.base && candidate.parent === accepted.base
+    && candidate.build_run_id === buildRun.id && candidate.build_policy_hash === expectedPolicy
+    && candidate.base === accepted.base && candidate.head === accepted.head && candidate.tree === accepted.tree
+    && accepted.base === job.source_admission?.resolved_sha && accepted.policyHash === expectedPolicy
+    && accepted.checks_run_id === checkRun.id && accepted.review_run_id === reviewRun.id
+    && checks.run_id === checkRun.id && checks.passed === true && checks.head === accepted.head
+    && checks.tree === accepted.tree && checks.policyHash === expectedPolicy && checks.command === config.check
+    && review.run_id === reviewRun.id && review.verdict === 'pass' && review.head === accepted.head
+    && review.tree === accepted.tree && review.policyHash === expectedPolicy && reviewRun.review_verdict === 'pass';
+  return bound ? { state: 'ready' }
+    : { state: 'blocked', reason: 'Candidate, checks, review or approval evidence is stale or does not match the current Factory policy.' };
+}
+
 export class DeliveryService {
   constructor(queue, state, { config = () => configAt(state), sourceAdmission, provider }) {
     this.queue = queue;
@@ -177,9 +222,14 @@ export class DeliveryService {
     let config;
     try { config = this.currentConfig(); } catch { config = {}; }
     const enabled = config.delivery?.provider === 'github' && this.provider?.supported === true;
+    const acceptance = enabled && !job.delivery ? acceptanceSummary(job, this.state, config) : { state: 'not_ready' };
     const state = job.delivery?.state || (enabled
-      ? job.workflow?.name === 'software' && job.state === 'succeeded' ? 'ready' : 'not_started'
+      ? acceptance.state === 'ready' ? 'ready'
+        : acceptance.state === 'legacy_unverified' ? 'legacy_unverified'
+          : acceptance.state === 'blocked' ? 'blocked'
+            : acceptance.state === 'unverified' ? 'unverified' : 'not_started'
       : config.delivery?.provider ? 'patch_only_unsupported_provider' : 'patch_only');
+    const recoverable = job.delivery && ['intent', 'publishing', 'uncertain', 'blocked', 'published'].includes(job.delivery.state);
     return {
       state,
       provider: config.delivery?.provider || null,
@@ -191,9 +241,9 @@ export class DeliveryService {
       branch: job.delivery?.branch || null,
       pull_request: job.delivery?.pull_request || null,
       checks: job.delivery?.checks || null,
-      error: job.delivery?.error || null,
+      error: job.delivery?.error || acceptance.reason || null,
       can_publish: enabled && job.workflow?.name === 'software' && job.state === 'succeeded'
-        && (!job.delivery || ['uncertain', 'publishing', 'published'].includes(job.delivery.state)),
+        && (recoverable || (!job.delivery && acceptance.state === 'ready')),
       integration: 'separate',
       deployment: 'separate',
     };

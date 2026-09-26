@@ -4,7 +4,7 @@ import { resolve, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
-import { ROOT, PINS, DEFAULT_STATE, configAt, save, json, run, stream, digest, api, sleep, stopContainers } from '../factory/lib.mjs';
+import { ROOT, PINS, DEFAULT_STATE, configAt, save, json, run, stream, digest, api, sleep, stopContainers, PUBLICATION_API_TIMEOUT_MS } from '../factory/lib.mjs';
 import { assertInstalledJobImage, installCustomJobImage, installStandardJobImage, inspectImageInstallation } from '../factory/image-install.mjs';
 import { listIssues, readIssue } from '../factory/issue-intake.mjs';
 import { recommendWork } from '../factory/intake.mjs';
@@ -129,7 +129,7 @@ async function publishJob(jobId) {
   const snapshot=await api(state,'/api/v1/status'),job=snapshot.jobs.find(item=>item.id===jobId);
   if(!job)throw new Error('Job not found');
   const current=job.runs.at(-1);
-  const receipt=await api(state,`/api/v1/jobs/${jobId}/publish`,{run_id:current?.id});
+  const receipt=await api(state,`/api/v1/jobs/${jobId}/publish`,{run_id:current?.id},undefined,{timeoutMs:PUBLICATION_API_TIMEOUT_MS});
   console.log(JSON.stringify(receipt,null,2));
 }
 
