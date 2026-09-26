@@ -257,6 +257,7 @@ test('synthetic evidence cannot resume writes but known PR readback remains read
   writeFileSync(pendingReviewPath, JSON.stringify({ ...pendingReview, synthetic: true }), { mode: 0o600 });
   assert.equal(pendingManager.summary(pending.queue.get(jobID)).can_publish, true,
     'the displayed action is limited to read-only reconciliation of a saved PR-create checkpoint');
+  assert.equal(pendingManager.summary(pending.queue.get(jobID)).action_mode, 'reconcile');
   await assert.rejects(pendingManager.publish(jobID, { run_id: pending.run_id }), /not yet confirmed/);
   assert(pendingGH.state.pullSearchTargets.includes('main'), 'the saved PR checkpoint receives its read-only lookup');
   assert.deepEqual(pendingGH.state.writes, noWrites, 'an absent PR is not created from synthetic evidence');
@@ -269,6 +270,7 @@ test('synthetic evidence cannot resume writes but known PR readback remains read
   writeFileSync(reviewPath, JSON.stringify({ ...review, synthetic: true }), { mode: 0o600 });
   assert.equal(publishedManager.summary(published.queue.get(jobID)).can_publish, true,
     'a known receipt remains available for read-only refresh');
+  assert.equal(publishedManager.summary(published.queue.get(jobID)).action_mode, 'reconcile');
   assert.equal((await publishedManager.publish(jobID, { run_id: published.run_id })).state, 'published');
   assert.deepEqual(publishedGH.state.writes, writes, 'published readback remains read-only');
 });
@@ -277,6 +279,7 @@ test('explicit trusted config publishes one draft PR, records pending checks, re
   const f = testFixture(t), gh = fakeGitHub(f, { loseBranch: true, losePull: true }), manager = service(f, gh.provider);
   assert.equal(manager.summary(f.queue.get(jobID)).state, 'ready');
   assert.equal(manager.summary(f.queue.get(jobID)).can_publish, true);
+  assert.equal(manager.summary(f.queue.get(jobID)).action_mode, 'publish');
   await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /uncertain/);
   assert.equal(f.queue.get(jobID).delivery.state, 'uncertain');
   assert.equal(gh.state.writes.branches, 1); assert.equal(gh.state.writes.pulls, 1);
@@ -440,6 +443,7 @@ test('a pre-write branch collision can be explicitly abandoned after exact readb
   assert.deepEqual(gh.state.branch, { sha: foreignSha, node_id: 'foreign-branch-node' });
   const status = manager.summary(f.queue.get(jobID));
   assert.equal(status.can_publish, false, 'a branch-only collision cannot advertise publication after the action refuses it');
+  assert.equal(status.action_mode, null);
   assert.equal(status.can_abandon, true);
   assert.equal(status.remote_collision.sha, foreignSha);
 
@@ -457,6 +461,7 @@ test('a pre-write branch collision can be explicitly abandoned after exact readb
   assert.equal(resolved.state, 'abandoned');
   assert.equal(resolved.can_abandon, false);
   assert.equal(resolved.can_publish, false, 'abandonment never resumes publication');
+  assert.equal(resolved.action_mode, null);
   assert.equal(f.queue.canRemove(f.queue.get(jobID)), true);
   assert.equal(gh.state.branch.sha, foreignSha, 'the unexpected remote branch remains untouched');
   assert.deepEqual(gh.state.writes, writes, 'resolution is read-only at the provider boundary');
@@ -743,6 +748,7 @@ test('a target race after PR creation retains the remote identity for read-only 
   assert.equal(checkpoint.pull_request.number, 29);
   assert.equal(checkpoint.pull_request.base_sha, '9'.repeat(40));
   assert.equal(manager.summary(f.queue.get(jobID)).can_publish, true, 'the PR remains explicitly reconcilable');
+  assert.equal(manager.summary(f.queue.get(jobID)).action_mode, 'reconcile', 'a conflicted saved PR receipt advertises read-only reconciliation');
   assert.equal(f.queue.canRemove(f.queue.get(jobID)), false, 'the remote PR cannot be hidden by deletion');
   const writes = structuredClone(gh.state.writes);
 

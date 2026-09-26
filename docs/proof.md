@@ -828,3 +828,23 @@ tests. These are local fixtures with a fake GitHub provider. No fresh installed,
 live-provider, Docker or browser qualification was performed; those remain
 lead-owned, and this result awaits Native Factory Verify and independent Review
 of the full baseline-to-candidate diff.
+
+## #29 read-only PR reconciliation label — 26 September 2026
+
+The D2 regression reproduced at both boundaries before the fix: the shared
+summary had no mode for a conflicted record with a saved PR receipt, and task
+details labeled that available readback action “Publish accepted candidate as
+draft PR.” Delivery status now returns `action_mode` as `publish`, `reconcile`
+or `null`; task details use the shared value for its button and explanatory
+text. The service fixture confirms a saved PR conflict is read-only, while
+ready publication, pending PR-create readback, published receipts and branch-
+only collisions retain their prior modes and guards.
+
+Final `npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check`
+passed; the full check reported 138 root/runtime/package cases and 52 dashboard
+tests. The contract tests use disposable local repositories and a fake provider;
+they do not prove live GitHub behavior. No fresh installed/provider qualification
+was performed. Browser inspection remains pending because the Mac browser is
+locked and there is no usable browser provider; no visual pass is claimed.
+Native Factory Verify and independent Review still own the full
+baseline-to-candidate assessment.

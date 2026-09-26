@@ -88,13 +88,13 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   await render();
   assert(!button('Publish accepted candidate as draft PR'),'synthetic or unknown evidence has no dashboard publish action');
   assert.match(document.body.textContent,/Synthetic or unknown build, check or review evidence/);
-  job.delivery_status={state:'ready',repository:'https://github.com/example/project',target:'dev',can_publish:true,integration:'separate',deployment:'separate'};
+  job.delivery_status={state:'ready',repository:'https://github.com/example/project',target:'dev',can_publish:true,action_mode:'publish',integration:'separate',deployment:'separate'};
   await render();
   assert.match(document.body.textContent,/Ready for explicit draft PR delivery/);
   assert.match(document.body.textContent,/target dev/);
   await click(button('Publish accepted candidate as draft PR'));
   assert.equal(captured[1],'publish','publishing is a deliberate accepted-result action');
-  job.delivery_status={state:'published',repository:'https://github.com/example/project',target:'dev',can_publish:true,accepted_base_sha:'e'.repeat(40),
+  job.delivery_status={state:'published',repository:'https://github.com/example/project',target:'dev',can_publish:true,action_mode:'reconcile',accepted_base_sha:'e'.repeat(40),
     pull_request:{number:29,url:'https://github.com/example/project/pull/29',state:'open',draft:true,merged:false,branch:'factory/job_fixture',target:'dev',base_sha:'a'.repeat(40),head_sha:'c'.repeat(40),tree:'d'.repeat(40)},
     checks:{state:'pending',check_runs:[{name:'build',status:'queued'}],commit_statuses:[]},integration:'separate',deployment:'separate'};
   await render();
@@ -105,6 +105,14 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   assert.match(document.body.textContent,/Pending/);
   assert(button('Refresh PR readback and checks'));
   assert.match(document.body.textContent,/Integration and deployment are separate/);
+  job.delivery_status={...job.delivery_status,state:'conflict'};
+  await render();
+  assert(button('Reconcile PR delivery'),'a conflict with a saved PR receipt is a read-only reconciliation action');
+  assert(!button('Publish accepted candidate as draft PR'),'a conflicted receipt must not be labeled as a new publication');
+  assert.match(document.querySelector('[aria-label="Trusted PR delivery action"]').textContent,/does not publish new content/);
+  await click(button('Reconcile PR delivery'));
+  assert.equal(captured[1],'publish','the reconciliation label still calls the shared readback action');
+  job.delivery_status.state='published';
   job.delivery_status.pull_request.state='closed';
   job.delivery_status.pull_request.draft=false;
   job.delivery_status.pull_request.merged=true;
@@ -126,7 +134,7 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   await render();
   assert.match(document.querySelector('[aria-label="Delivery status"]').textContent,/Non-blocking results/);
 
-  job.delivery_status={...job.delivery_status,state:'uncertain',can_publish:true,branch:'factory/job_fixture-candidate',source_ref:'release',pull_request:null};
+  job.delivery_status={...job.delivery_status,state:'uncertain',can_publish:true,action_mode:'reconcile',branch:'factory/job_fixture-candidate',source_ref:'release',pull_request:null};
   job.can_remove=false;job.delivery_removal_blocked=true;
   job.removal_block_reason='Trusted PR delivery is unresolved. Reconcile the saved delivery or inspect its remote collision before deleting this issue.';
   await render();
@@ -144,7 +152,7 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   assert.equal(button('Reconcile PR delivery').getAttribute('aria-describedby'),deliveryAlert.id,'the action references its accessible error');
 
   const foreignSha='9'.repeat(40);
-  job.delivery_status={...job.delivery_status,state:'conflict',can_publish:false,can_abandon:true,identity:'delivery-intent-fixture',
+  job.delivery_status={...job.delivery_status,state:'conflict',can_publish:false,action_mode:null,can_abandon:true,identity:'delivery-intent-fixture',
     remote_collision:{kind:'branch',repository:'https://github.com/example/project',target:'dev',branch:'factory/job_fixture-candidate',sha:foreignSha,node_id:'foreign-node'}};
   deliveryActionError='';await render();
   assert.match(document.body.textContent,new RegExp(foreignSha),'the exact conflicting remote identity is visible before resolution');
@@ -157,7 +165,7 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   deliveryActionError='The inspected branch identity changed; review the refreshed status before resolving.';await render();
   assert.equal(document.querySelector('[aria-label="Trusted PR delivery action"] [role="alert"]').textContent,deliveryActionError,
     'a stale resolution result is visible beside its action');
-  job.delivery_status={...job.delivery_status,state:'abandoned',can_abandon:false,can_publish:false,
+  job.delivery_status={...job.delivery_status,state:'abandoned',can_abandon:false,can_publish:false,action_mode:null,
     resolution:{inspected:{repository:'example/project',branch:'factory/job_fixture-candidate',sha:foreignSha}}};
   deliveryActionError='';await render();
   assert.match(document.querySelector('[aria-label="Delivery status"]').textContent,/Local delivery was abandoned/);

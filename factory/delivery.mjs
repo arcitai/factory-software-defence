@@ -313,6 +313,10 @@ export class DeliveryService {
       && acceptance.state === 'ready';
     const canReadOnlyRecover = readOnlyRecovery(savedDelivery);
     const unknownDeliveryState = Boolean(savedDelivery && !KNOWN_DELIVERY_STATES.has(savedDelivery.state));
+    const deliveryActionAllowed = enabled && savedDestinationMatches && job.workflow?.name === 'software' && job.state === 'succeeded';
+    const actionMode = deliveryActionAllowed
+      ? canReadOnlyRecover ? 'reconcile' : canResumeWrites ? 'publish' : null
+      : null;
     const collision = job.delivery?.remote_collision;
     const canAbandon = Boolean(enabled && savedDestinationMatches && job.workflow?.name === 'software'
       && job.state === 'succeeded' && job.delivery?.state === 'conflict' && job.delivery.stage === 'intent'
@@ -342,8 +346,8 @@ export class DeliveryService {
         ? 'Saved delivery belongs to a different trusted destination. Restore its original provider, repository and target to recover it.'
         : unknownDeliveryState ? UNKNOWN_DELIVERY_REASON
         : canReadOnlyRecover ? job.delivery?.error || null : acceptance.reason || job.delivery?.error || null,
-      can_publish: enabled && savedDestinationMatches && job.workflow?.name === 'software' && job.state === 'succeeded'
-        && (canReadOnlyRecover || canResumeWrites),
+      can_publish: actionMode !== null,
+      action_mode: actionMode,
       can_abandon: canAbandon,
       integration: 'separate',
       deployment: 'separate',

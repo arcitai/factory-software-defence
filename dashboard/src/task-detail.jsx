@@ -479,16 +479,16 @@ function TaskActions({ job, result, deliveryActionError = "", onAction }) {
       {(delivery?.can_publish || delivery?.can_abandon || deliveryActionError) && delivery && (
         <section className="trusted-delivery-action space-y-2 rounded-lg border border-border p-3" aria-label="Trusted PR delivery action">
           <p className="text-sm font-medium">Optional PR delivery</p>
-          <p className="text-xs text-muted-foreground">{delivery.repository} · target {delivery.target}. Publishing uses the accepted patch and current evidence. Merge, integration and deployment remain separate.</p>
+          <p className="text-xs text-muted-foreground">{delivery.repository} · target {delivery.target}. {delivery.action_mode === "reconcile" ? "This action reads the saved PR and current checks; it does not publish new content." : delivery.action_mode === "publish" ? "Publishing uses the accepted patch and current evidence." : "Publication is unavailable; inspect and resolve the saved branch collision if offered."} Merge, integration and deployment remain separate.</p>
           {(deliveryActionError || delivery.error) && <p id={`delivery-action-error-${job.id}`} role="alert" aria-live="assertive" className="text-sm text-danger">{deliveryActionError || delivery.error}</p>}
-          {delivery.can_publish && <Button
+          {delivery.can_publish && (delivery.action_mode === "publish" || delivery.action_mode === "reconcile") && <Button
             className="delivery-action-button"
-            variant={delivery.state === "published" ? "outline" : "default"}
+            variant={delivery.action_mode === "reconcile" ? "outline" : "default"}
             disabled={busy}
             aria-describedby={(deliveryActionError || delivery.error) ? `delivery-action-error-${job.id}` : undefined}
             onClick={() => action("publish")}
           >
-            {busy ? "Reconciling…" : delivery.state === "published" ? "Refresh PR readback and checks" : ["intent", "uncertain", "publishing", "blocked"].includes(delivery.state) ? "Reconcile PR delivery" : "Publish accepted candidate as draft PR"}
+            {busy ? "Reconciling…" : delivery.action_mode === "reconcile" ? delivery.state === "published" ? "Refresh PR readback and checks" : "Reconcile PR delivery" : "Publish accepted candidate as draft PR"}
           </Button>}
           {delivery.can_abandon && delivery.remote_collision && <div className="space-y-2 border-t border-border pt-2">
             <p className="text-xs text-muted-foreground">Inspect this GitHub branch and confirm it is unrelated. Factory will recheck this exact head and confirm no pull request is attached; this action records local abandonment only and leaves the remote branch unchanged.</p>
