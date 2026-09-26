@@ -111,8 +111,8 @@ export function stopContainers(state, jobId) {
       try {run('docker', ['stop', '--time', '2', item.Id]);}
       catch(error) {if(containers(state).some(c=>c.Id===item.Id&&c.State.Running))throw error;}
     }
-    try { run('docker', ['rm', item.Id]); } catch (error) {
-      if (containers(state).some(c => c.Id === item.Id)) throw error;
-    }
+    try { run('docker', ['rm', item.Id]); } catch { /* The following listing establishes whether removal completed. */ }
+    if (containers(state).some(c => c.Id === item.Id))
+      throw new Error('Could not confirm job container removal; recovery is required');
   }
 }

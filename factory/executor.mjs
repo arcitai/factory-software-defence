@@ -62,6 +62,13 @@ function removeScratch(path) {
   }
   rmSync(path, { recursive: true, force: true });
 }
+function removeContainerAndConfirmAbsence(name) {
+  try { run('docker', ['rm', '-f', name]); } catch { /* The listing, not the client status, establishes shutdown. */ }
+  let remaining;
+  try { remaining = run('docker', ['ps', '-aq', '--filter', `name=^/${name}$`]); }
+  catch { throw new Error('Could not confirm worker container shutdown; recovery is required'); }
+  if (remaining) throw new Error('Worker container shutdown is unconfirmed; recovery is required');
+}
 async function container(mode, input, command, writable = false) {
   const name = `sdf-${instanceLabel(state)}-${attempt}-${mode}`;
   const reportDir = join(folder, attempt, mode);
@@ -85,15 +92,17 @@ async function container(mode, input, command, writable = false) {
   if (scratch) args.push('--mount',`type=bind,source=${scratch},target=/scratch`);
   if (mode === 'verify') args.push('--env',`FACTORY_BASE_REVISION=${git('rev-parse',`${metadata().base}^{commit}`)}`);
   const logPath = join(folder, attempt, `${mode}.log`);
-  const log = new BoundedLog(), usageParser = execution.executor === 'codex' ? new CodexUsageParser() : null; let exitSignal;
+  const log = new BoundedLog(), usageParser = execution.executor === 'codex' ? new CodexUsageParser() : null;
+  let exitSignal, selectedModelEnvironment = false, launchAttempted = false;
   try {
-    const hasModelEnvironment = writeSelectedModelEnvironment(join(state, 'model.env'), modelEnvironmentPath, {
+    selectedModelEnvironment = writeSelectedModelEnvironment(join(state, 'model.env'), modelEnvironmentPath, {
       phase: mode, executor: execution.executor, inferenceProvider: config.inferenceProvider,
     });
-    if (hasModelEnvironment) args.push('--env-file', modelEnvironmentPath);
+    if (selectedModelEnvironment) args.push('--env-file', modelEnvironmentPath);
     args.push('-i',config.image,'timeout','--signal=KILL',`${config.timeoutSeconds}s`,'sh','-c','mkdir -p "$HOME" && exec "$@"','factory',...command);
     console.log(JSON.stringify({ phase: mode, event: 'started', synthetic: harnessOf(config) === 'mock' }));
     const code = await new Promise((ok, fail) => {
+      launchAttempted = true;
       const child = spawn('docker', args, { stdio: ['pipe','pipe','pipe'] });
       child.stdout.on('data', bytes => { log.write('stdout', bytes); usageParser?.write(bytes); });
       child.stderr.on('data', bytes => log.write('stderr', bytes));
@@ -103,18 +112,16 @@ async function container(mode, input, command, writable = false) {
     const parsedUsage = usageParser?.finish();
     if (parsedUsage) observedUsage = parsedUsage;
     writeFileSync(logPath, log.finish({code,signal:exitSignal}), { mode: 0o600 });
-    // A Docker client exit is not proof of container termination.
-    try { run('docker',['rm','-f',name]); } catch (error) {
-      const probe = run('docker',['ps','-aq','--filter',`name=^/${name}$`]);
-      if (probe) throw error;
-    }
     let cleanupError;
     try { if (scratch) removeScratch(scratch); } catch (error) { cleanupError = error; }
     if (code !== 0) throw new Error(`${mode} exited ${code}; private log: ${logPath}${cleanupError ? `; scratch cleanup requires recovery: ${cleanupError.message}` : ''}`);
     if (cleanupError) throw cleanupError;
     return reportDir;
   } finally {
-    rmSync(modelEnvironmentPath, { force: true });
+    // A launch error can occur after Docker created the container. Keep the
+    // selected inference file until a host-side listing proves it is absent.
+    if (launchAttempted) removeContainerAndConfirmAbsence(name);
+    if (selectedModelEnvironment) rmSync(modelEnvironmentPath, { force: true });
   }
 }
 function brief(instruction) {
@@ -210,5 +217,7 @@ try {
   save(join(folder,`measurement-${attempt}.json`),measurement);save(join(output,`measurement-${attempt}.json`),measurement);
   // If cleanup cannot be confirmed, retain the lock and require explicit recovery.
   stopContainers(state,job);
+  if (['build', 'review', 'defence'].includes(phase))
+    rmSync(join(folder, attempt, `.model-${phase}.env`), { force: true });
   rmSync(lock);
 }

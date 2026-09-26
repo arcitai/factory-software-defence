@@ -699,8 +699,9 @@ to the trusted Codex executor during build, review or defence. It remains
 excluded from Pi, including Pi with the OpenAI provider, deterministic checks
 and unrelated executors. Codex API-key and OpenAI-compatible endpoint settings
 remain available; the original `model.env` is not mounted into worker output.
-The selected temporary env file remains private and is removed after container
-completion.
+The selected temporary env file remains private and is removed only after a
+Docker listing confirms container absence. The R1 repair below also preserves
+it and the active fence when removal or the absence probe is uncertain.
 
 Inert-sentinel regressions cover account-auth validation and roundtrip, an
 auth-only Codex profile, Pi/OpenAI provider isolation, verification and custom
@@ -761,10 +762,23 @@ and a fake provider; they include ready, closed, merged, deleted-branch-after-
 close, target movement, changed head/tree/parent/repository/target, immutable
 acceptance and provider-outage cases. They perform no live provider writes.
 
-No real provider credentials, Docker qualification, installed-package account
-profile check, live disposable PR or browser inspection was performed by this
-Build. The lead owns package freeze/install, private account-profile
-compatibility, all installed Docker paths and a real disposable PR exercise.
-Browser inspection remains external qualification pending; browser access on
-the lead's Mac is currently unavailable. Factory Verify and independent Review
-must consume the exact final worktree after Build returns.
+The R1 recovery repair adds a controlled Docker-client executor-boundary
+regression with selected inert Codex auth. It covers failed removal with a
+present container, unknown probes, a successful remove response while the
+container remains, normal removal with confirmed absence, a client failure
+before container creation, and a Docker spawn error. Uncertain cases retain
+the selected file and active fence; ordinary reconciliation removes both once
+Docker confirms absence. It also exercises safe outer `stopContainers` cleanup.
+This is controlled-client evidence, not live Docker qualification. On this
+worktree, `npm ci --ignore-scripts`,
+`npm run build:dashboard` and `npm run check` passed; the full check reported
+121 root test cases and 52 dashboard tests.
+
+The task context reports that the previously installed candidate passed 15
+Docker paths, actual account-profile compatibility, cancellation, and disposable
+PR #68 lifecycle checks including repeat, restart, provider outage, ready and
+closed states. Those results belong to the previous candidate and do not prove
+this executor repair. No real provider credentials, Docker daemon qualification
+of the changed executor, or browser inspection was performed by this Build.
+Browser qualification remains external pending. Factory Verify and independent
+Review must consume the exact final worktree after Build returns.
