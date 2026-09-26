@@ -762,17 +762,19 @@ and a fake provider; they include ready, closed, merged, deleted-branch-after-
 close, target movement, changed head/tree/parent/repository/target, immutable
 acceptance and provider-outage cases. They perform no live provider writes.
 
-The R1 recovery repair adds a controlled Docker-client executor-boundary
-regression with selected inert Codex auth. It covers failed removal with a
-present container, unknown probes, a successful remove response while the
-container remains, normal removal with confirmed absence, a client failure
-before container creation, and a Docker spawn error. Uncertain cases retain
-the selected file and active fence; ordinary reconciliation removes both once
-Docker confirms absence. It also exercises safe outer `stopContainers` cleanup.
-This is controlled-client evidence, not live Docker qualification. On this
-worktree, `npm ci --ignore-scripts`,
+The R1 recovery regressions use a controlled Docker client at the executor
+boundary. Existing selected inert Codex auth cases cover present/unknown
+containers, client and spawn failures, successful removal, and ordinary
+reconciliation of the private file and fence. The verify-specific regression
+records scratch existence and running state at the first Docker remove attempt:
+the pre-fix test failed because scratch was already absent while the container
+was still running. After the repair, present and unknown probes retain scratch
+and the fence until reconciliation confirms shutdown; confirmed absence after
+success/client failure, outer `stopContainers` cleanup, and recovery after a
+spawn error remove scratch. These controlled-client checks do not constitute
+live Docker qualification. On this worktree, `npm ci --ignore-scripts`,
 `npm run build:dashboard` and `npm run check` passed; the full check reported
-121 root test cases and 52 dashboard tests.
+129 root test cases and 52 dashboard tests.
 
 The task context reports that the previously installed candidate passed 15
 Docker paths, actual account-profile compatibility, cancellation, and disposable

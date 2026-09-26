@@ -12,7 +12,7 @@ const job = `job_${'c'.repeat(24)}`;
 const attempt = `run_${'d'.repeat(24)}`;
 const inertAuth = 'inert-executor-auth-sentinel';
 
-function fixture(t, mode) {
+function fixture(t, mode, phase = 'review') {
   const rootDir = mkdtempSync(join(tmpdir(), 'sdf-executor-container-recovery-'));
   t.after(() => rmSync(rootDir, { recursive: true, force: true }));
   const dockerRoot = mkdtempSync(join(root, '.sdf-controlled-docker-'));
@@ -35,10 +35,10 @@ function fixture(t, mode) {
 
   const config = {
     harness: 'codex', command: ['fixture-agent'], image: 'fixture/image:latest',
-    memoryMiB: 512, cpus: 1, network: 'none', timeoutSeconds: 30,
+    memoryMiB: 512, cpus: 1, network: 'none', timeoutSeconds: 30, check: 'true',
   };
   const policyHash = digest(JSON.stringify(config));
-  const execution = { phase: 'review', executor: 'codex', runtimeVersion: 'fixture', policyHash, requestedModel: 'fixture-model' };
+  const execution = { phase, executor: 'codex', runtimeVersion: 'fixture', policyHash, requestedModel: 'fixture-model' };
   writeFileSync(join(attemptFolder, 'execution-config.json'), JSON.stringify(config));
   writeFileSync(join(artifacts, 'execution.json'), JSON.stringify(execution));
   writeFileSync(join(folder, 'candidate.json'), JSON.stringify({ base: head, head, tree }));
@@ -46,14 +46,16 @@ function fixture(t, mode) {
   writeFileSync(join(state, 'model.env'), `FACTORY_CODEX_AUTH_JSON={"auth_mode":"fixture","tokens":{"access_token":"${inertAuth}"}}\n`, { mode: 0o600 });
   writeFileSync(dockerState, JSON.stringify({
     mode, present: false, running: false, id: 'fixture-container-id',
-    labels: {}, initialRemoveFailed: mode === 'present' || mode === 'unknown' || mode === 'outer-cleanup',
-    outerRemoveFailed: mode === 'present' || mode === 'success-still-present', listingUnknown: mode === 'unknown',
+    labels: {}, initialRemoveFailed: ['present', 'unknown', 'outer-cleanup', 'verify-present', 'verify-unknown', 'verify-outer-cleanup'].includes(mode),
+    outerRemoveFailed: ['present', 'success-still-present', 'verify-present'].includes(mode),
+    listingUnknown: ['unknown', 'verify-unknown'].includes(mode),
     recoveryAllowed: false, launchSawSelectedEnvironment: false, launchAttempted: false,
+    firstRmScratchExists: null, firstRmMarkerExists: null, firstRmRunning: null,
   }));
 
   const docker = join(bin, 'docker');
   const dockerProgram = `#!/usr/bin/env node
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 const statePath = process.env.SDF_DOCKER_STATE;
 const state = JSON.parse(readFileSync(statePath, 'utf8'));
 const [command, ...args] = process.argv.slice(2);
@@ -75,14 +77,28 @@ if (command === 'run') {
   state.labels = Object.fromEntries(args.filter(value => value.startsWith('sdf.')).map(value => value.split('=')));
   const mountArgs = [];
   for (let i = 0; i < args.length - 1; i++) if (args[i] === '--mount') mountArgs.push(args[i + 1]);
+  const scratchMount = mountArgs.find(value => /(?:^|,)target=\\/scratch(?:,|$)/.test(value));
+  state.scratchPath = scratchMount?.match(/(?:^|,)source=([^,]+),target=\\/scratch(?:,|$)/)?.[1] ?? null;
+  if (state.scratchPath) {
+    const cache = state.scratchPath + '/fixture-cache';
+    mkdirSync(cache, { recursive: true });
+    state.scratchMarkerPath = cache + '/partial-check-output.txt';
+    writeFileSync(state.scratchMarkerPath, 'controlled partial check output\\n');
+    chmodSync(cache, 0o500);
+  }
   const outputMount = mountArgs.find(value => /(?:^|,)target=\\/output(?:,|$)/.test(value));
   const outputDir = outputMount?.match(/(?:^|,)source=([^,]+),target=\\/output(?:,|$)/)?.[1];
   if (outputDir) {
     writeFileSync(outputDir + '/review.json', JSON.stringify({ verdict: 'pass', summary: 'Controlled executor fixture', findings: [] }));
     writeFileSync(outputDir + '/agent-report.md', 'Controlled executor fixture.\\n');
   }
-  if (state.mode === 'client-failure-absent') {
+  if (state.mode === 'client-failure-absent' || state.mode === 'verify-client-failure-absent') {
     save(); process.stderr.write('simulated Docker client failure\\n'); process.exit(42);
+  }
+  if (state.mode === 'verify-present' || state.mode === 'verify-unknown') {
+    state.present = true;
+    state.running = true;
+    save(); process.stderr.write('simulated Docker client exit while container is still running\\n'); process.exit(42);
   }
   state.present = true;
   state.running = false;
@@ -110,8 +126,15 @@ if (command === 'stop') {
 }
 if (command === 'rm') {
   const force = args.includes('-f');
+  if (state.firstRmScratchExists === null) {
+    state.firstRmScratchExists = Boolean(state.scratchPath && existsSync(state.scratchPath));
+    state.firstRmMarkerExists = Boolean(state.scratchMarkerPath && existsSync(state.scratchMarkerPath));
+    state.firstRmRunning = state.running;
+    save();
+  }
   if (!state.present) fail('No such container');
   if (!force) state.outerRemovalSawSelectedEnvironment = Boolean(state.selectedEnvironmentPath && existsSync(state.selectedEnvironmentPath));
+  if (!force) state.outerRemovalSawScratch = Boolean(state.scratchPath && existsSync(state.scratchPath));
   if (force && state.mode === 'success-still-present') { output(state.id); process.exit(0); }
   if ((force && state.initialRemoveFailed) || (!force && state.outerRemoveFailed && !state.recoveryAllowed))
     fail('simulated Docker remove failure');
@@ -125,6 +148,8 @@ fail('unsupported controlled Docker operation');
   return {
     rootDir, state, folder, attemptFolder, artifacts, output, dockerState, docker, dockerProgram,
     selectedEnvironment: join(attemptFolder, '.model-review.env'),
+    verifyScratch: join(attemptFolder, 'check-workspace'),
+    phase,
     lock: join(folder, 'active.json'),
     executorEnv: {
       ...process.env,
@@ -140,7 +165,7 @@ fail('unsupported controlled Docker operation');
 }
 
 function runExecutor(f) {
-  return spawnSync(process.execPath, [join(root, 'factory/executor.mjs'), f.state, 'review'], {
+  return spawnSync(process.execPath, [join(root, 'factory/executor.mjs'), f.state, f.phase], {
     input: 'bounded executor cleanup fixture', encoding: 'utf8', env: f.executorEnv, timeout: 30_000,
   });
 }
@@ -162,7 +187,7 @@ function restoreDockerClient(f) {
 function runOrdinaryRecovery(f) {
   const script = join(f.rootDir, 'reconcile.mjs');
   const module = pathToFileURL(join(root, 'factory/processes.mjs')).href;
-  writeFileSync(script, `import { executors } from ${JSON.stringify(module)};\nawait executors(process.argv[2], { alive: () => false, run: () => '' }).reconcile(process.argv[3], 'review');\n`);
+  writeFileSync(script, `import { executors } from ${JSON.stringify(module)};\nawait executors(process.argv[2], { alive: () => false, run: () => '' }).reconcile(process.argv[3], ${JSON.stringify(f.phase)});\n`);
   return spawnSync(process.execPath, [script, f.state, job], {
     encoding: 'utf8', env: f.executorEnv, timeout: 30_000,
   });
@@ -236,5 +261,71 @@ test('a Docker spawn error retains the file and fence until ordinary recovery co
   const recovered = runOrdinaryRecovery(f);
   assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
   assert.equal(existsSync(f.selectedEnvironment), false);
+  assert.equal(existsSync(f.lock), false);
+});
+
+test('verify preserves scratch while shutdown is present or unknown, then recovery removes it', async t => {
+  for (const mode of ['verify-present', 'verify-unknown']) await t.test(mode, t => {
+    const f = fixture(t, mode, 'verify');
+    const execution = runExecutor(f);
+    const docker = stateOf(f);
+    assert.notEqual(execution.status, 0, 'uncertain container termination blocks verification');
+    assert.equal(docker.firstRmScratchExists, true, 'scratch still exists at the first Docker remove attempt');
+    assert.equal(docker.firstRmMarkerExists, true, 'partial check output remains in the mounted scratch directory');
+    assert.equal(docker.firstRmRunning, true, 'the Docker client exit did not imply that the container stopped');
+    assert.equal(existsSync(f.verifyScratch), true, 'host cleanup waits while the container may still write scratch');
+    assert.equal(existsSync(join(f.verifyScratch, 'fixture-cache', 'partial-check-output.txt')), true);
+    assert.equal(existsSync(f.lock), true, 'the recovery fence remains while shutdown is uncertain');
+
+    enableRecovery(f);
+    const recovered = runOrdinaryRecovery(f);
+    assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
+    assert.equal(existsSync(f.verifyScratch), false, 'confirmed recovery removes verify scratch');
+    assert.equal(existsSync(join(f.verifyScratch, 'fixture-cache', 'partial-check-output.txt')), false);
+    assert.equal(existsSync(f.lock), false, 'confirmed recovery releases the fence');
+  });
+});
+
+test('verify removes scratch after confirmed absence on success and Docker client failure', async t => {
+  for (const mode of ['success', 'verify-client-failure-absent']) await t.test(mode, t => {
+    const f = fixture(t, mode, 'verify');
+    const execution = runExecutor(f);
+    const docker = stateOf(f);
+    if (mode === 'success') assert.equal(execution.status, 0, execution.stderr || execution.stdout);
+    else assert.notEqual(execution.status, 0, 'the client failure blocks verification');
+    assert.equal(docker.firstRmScratchExists, true, 'scratch remains available until the absence probe follows the client exit');
+    assert.equal(docker.firstRmMarkerExists, true, 'partial check output remains available through the absence probe');
+    assert.equal(docker.present, false, 'the controlled case confirms that no container remains');
+    assert.equal(existsSync(f.verifyScratch), false, 'confirmed absence permits scratch cleanup');
+    assert.equal(existsSync(join(f.verifyScratch, 'fixture-cache', 'partial-check-output.txt')), false);
+    assert.equal(existsSync(f.lock), false, 'confirmed absence permits fence cleanup');
+  });
+});
+
+test('outer stopContainers cleanup removes verify scratch only after confirming shutdown', t => {
+  const f = fixture(t, 'verify-outer-cleanup', 'verify');
+  const execution = runExecutor(f);
+  const docker = stateOf(f);
+  assert.notEqual(execution.status, 0, 'the inner remove failure remains visible to the phase');
+  assert.equal(docker.firstRmScratchExists, true, 'scratch survives through the inner remove attempt');
+  assert.equal(docker.outerRemovalSawScratch, true, 'outer container removal still sees scratch before confirmed shutdown');
+  assert.equal(docker.present, false, 'outer stopContainers cleanup confirms removal');
+  assert.equal(existsSync(f.verifyScratch), false, 'outer cleanup removes scratch after shutdown confirmation');
+  assert.equal(existsSync(join(f.verifyScratch, 'fixture-cache', 'partial-check-output.txt')), false);
+  assert.equal(existsSync(f.lock), false, 'outer cleanup then releases the recovery fence');
+});
+
+test('verify spawn failure retains scratch until ordinary recovery confirms absence', t => {
+  const f = fixture(t, 'spawn-error-absent', 'verify');
+  const execution = runExecutor(f);
+  assert.notEqual(execution.status, 0, 'a missing Docker client blocks verification');
+  assert.equal(existsSync(f.verifyScratch), true, 'a spawn error cannot establish that the container is absent');
+  assert.equal(existsSync(f.lock), true, 'the executor fence survives unknown Docker availability');
+
+  restoreDockerClient(f);
+  enableRecovery(f);
+  const recovered = runOrdinaryRecovery(f);
+  assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
+  assert.equal(existsSync(f.verifyScratch), false, 'confirmed recovery removes scratch after a spawn failure');
   assert.equal(existsSync(f.lock), false);
 });

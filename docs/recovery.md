@@ -18,9 +18,14 @@ For backup, stop the installation and copy the complete private state directory,
 Earlier experimental engines use a different journal. Start a new state directory for the native 0.3 runtime; preserve old journals separately. There is no automatic import of their jobs or approval state.
 
 Verification cleanup makes owned scratch directories traversable before removing
-them and never follows their symlinks. It runs only after container stop is
-confirmed. If a filesystem error still prevents cleanup, the attempt fails and
-retains the original check exit and private log path alongside the cleanup error.
+them and never follows their symlinks. The executor and recovery paths remove
+`check-workspace` only after Docker confirms the named container is absent; a
+client exit, failed remove or failed/unknown probe does not establish shutdown.
+While shutdown is uncertain, the scratch directory and active recovery fence
+remain. Ordinary reconciliation removes scratch after the process and labelled
+containers are confirmed stopped. If a filesystem error still prevents cleanup,
+the attempt fails and retains the original check exit and private log path
+alongside the cleanup error.
 Inspect that retained attempt before manual removal; never substitute the source
 candidate path for the scratch path.
 

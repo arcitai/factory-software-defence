@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { ROOT, configAt, run, json, save, stopContainers, sleep } from './lib.mjs';
 import { effectiveExecutionConfig, executionProfile } from './execution-profile.mjs';
 import { parseCodexJsonl, emptyUsage, usageFields } from './usage.mjs';
+import { removeScratch } from './scratch.mjs';
 
 const MAX_LEGACY_LOG_BYTES = 1024 * 1024;
 const credentialedPhases = new Set(['build', 'review', 'defence']);
@@ -17,6 +18,11 @@ function clearStoppedFence(state, jobId, expectedPid) {
   if (!Number.isSafeInteger(previous.pid) || !Number.isSafeInteger(previous.pgid)
     || (expectedPid !== undefined && (previous.pid !== expectedPid || previous.pgid !== expectedPid)))
     throw new Error('Stopped executor identity does not match the retained recovery fence');
+  if (previous.phase === 'verify') {
+    if (!/^run_[a-z0-9]+$/.test(previous.attempt || ''))
+      throw new Error('Stopped verification attempt does not match the retained recovery fence');
+    removeScratch(join(folder, previous.attempt, 'check-workspace'));
+  }
   if (/^run_[a-z0-9]+$/.test(previous.attempt || '') && credentialedPhases.has(previous.phase))
     rmSync(join(folder, previous.attempt, `.model-${previous.phase}.env`), { force: true });
   rmSync(lock);
