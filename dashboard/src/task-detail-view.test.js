@@ -148,6 +148,7 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
     remote_collision:{kind:'branch',repository:'https://github.com/example/project',target:'dev',branch:'factory/job_fixture-candidate',sha:foreignSha,node_id:'foreign-node'}};
   deliveryActionError='';await render();
   assert.match(document.body.textContent,new RegExp(foreignSha),'the exact conflicting remote identity is visible before resolution');
+  assert(!button('Publish accepted candidate as draft PR'),'a branch-only collision never offers publication');
   assert(button('Abandon local delivery; keep remote branch'));
   await click(button('Abandon local delivery; keep remote branch'));
   assert.equal(captured[1],'abandon-delivery','the dashboard calls the explicit shared resolution action');

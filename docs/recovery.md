@@ -185,6 +185,14 @@ delivery record is blocked in the dashboard and controller API; inspect or
 reconcile the saved remote effect before removing the job. A confirmed
 `published` receipt is no longer unresolved.
 
+The shared capability advertises new publication only with ready evidence and
+no saved delivery or a known resumable write state. A branch-only `conflict`
+has no publish action; inspect it and use explicit local abandonment only
+after the exact branch head and absence of an associated PR are confirmed.
+Conflicts with a saved PR receipt and pending PR-creation checkpoints retain a
+read-only reconciliation action. Unknown and abandoned delivery states cannot
+advertise or start publication.
+
 A collision found while the record is still at `intent` is known to precede
 provider writes. Inspect the exact branch in GitHub, then use the task action
 **Abandon local delivery; keep remote branch**, or confirm its current head with

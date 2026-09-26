@@ -812,3 +812,19 @@ and independent Review.
 For this worktree, `npm ci --ignore-scripts`, `npm run build:dashboard` and
 `npm run check` passed. The complete check reported 137 root/runtime/package
 test cases and 52 dashboard tests.
+
+A follow-up on checkpoint `6d2f3ba120153bb900b23605bfbd360e49185eab` fixes the
+shared publication capability after a branch-only collision. Before the
+change, the strengthened collision regression failed because `can_publish` was
+`true` while `publish` refused the saved conflict. The shared summary now
+offers new/resumable writes only for ready evidence in eligible known states;
+branch-only conflicts expose abandonment only, while known PR receipts and
+pending PR creation retain read-only reconciliation. Unknown states refuse
+both advertisement and action. The delivery regressions also exercise CLI/API
+refusal and the dashboard's existing shared action controls. Final
+`npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check` passed;
+the complete check reported 138 root/runtime/package cases and 52 dashboard
+tests. These are local fixtures with a fake GitHub provider. No fresh installed,
+live-provider, Docker or browser qualification was performed; those remain
+lead-owned, and this result awaits Native Factory Verify and independent Review
+of the full baseline-to-candidate diff.

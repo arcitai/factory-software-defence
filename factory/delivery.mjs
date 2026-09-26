@@ -16,6 +16,21 @@ const MAX_TREE_BYTES = 8 * 1024 * 1024;
 const SHA1 = /^[a-f0-9]{40}$/;
 const PRIVATE_JSON_BYTES = 1024 * 1024;
 const utf8 = new TextDecoder('utf-8', { fatal: true });
+const KNOWN_DELIVERY_STATES = new Set(['intent', 'publishing', 'uncertain', 'blocked', 'conflict', 'published', 'abandoned']);
+const RESUMABLE_DELIVERY_STATES = new Set(['intent', 'publishing', 'uncertain', 'blocked']);
+const PR_READBACK_STATES = new Set(['publishing', 'uncertain', 'blocked']);
+const PULL_READBACK_STAGES = new Set(['creating_pull_request', 'pull_request_created', 'pull_request_found']);
+const UNKNOWN_DELIVERY_REASON = 'Saved delivery has an unknown state; publication is blocked until it is inspected.';
+
+function pendingPullReadback(record) {
+  return Boolean(record && PR_READBACK_STATES.has(record.state) && PULL_READBACK_STAGES.has(record.stage));
+}
+
+function readOnlyRecovery(record) {
+  return Boolean(record && (record.state === 'published'
+    || (record.state === 'conflict' && Number.isSafeInteger(record.pull_request?.number))
+    || pendingPullReadback(record)));
+}
 
 class BranchCollisionError extends QueueError {
   constructor(branch, message) {
@@ -294,10 +309,10 @@ export class DeliveryService {
             : acceptance.state === 'unverified' ? 'unverified' : 'not_started'
       : config.delivery?.provider ? 'patch_only_unsupported_provider' : 'patch_only');
     const savedDelivery = job.delivery;
-    const readOnlyRecovery = savedDelivery && (savedDelivery.state === 'published'
-      || (savedDelivery.state === 'conflict' && Number.isSafeInteger(savedDelivery.pull_request?.number))
-      || (['publishing', 'uncertain', 'blocked'].includes(savedDelivery.state)
-        && ['creating_pull_request', 'pull_request_created', 'pull_request_found'].includes(savedDelivery.stage)));
+    const canResumeWrites = (!savedDelivery || RESUMABLE_DELIVERY_STATES.has(savedDelivery.state))
+      && acceptance.state === 'ready';
+    const canReadOnlyRecover = readOnlyRecovery(savedDelivery);
+    const unknownDeliveryState = Boolean(savedDelivery && !KNOWN_DELIVERY_STATES.has(savedDelivery.state));
     const collision = job.delivery?.remote_collision;
     const canAbandon = Boolean(enabled && savedDestinationMatches && job.workflow?.name === 'software'
       && job.state === 'succeeded' && job.delivery?.state === 'conflict' && job.delivery.stage === 'intent'
@@ -325,9 +340,10 @@ export class DeliveryService {
       resolution: job.delivery?.resolution || null,
       error: job.delivery && !savedDestinationMatches
         ? 'Saved delivery belongs to a different trusted destination. Restore its original provider, repository and target to recover it.'
-        : readOnlyRecovery ? job.delivery?.error || null : acceptance.reason || job.delivery?.error || null,
+        : unknownDeliveryState ? UNKNOWN_DELIVERY_REASON
+        : canReadOnlyRecover ? job.delivery?.error || null : acceptance.reason || job.delivery?.error || null,
       can_publish: enabled && savedDestinationMatches && job.workflow?.name === 'software' && job.state === 'succeeded'
-        && savedDelivery?.state !== 'abandoned' && (Boolean(readOnlyRecovery) || acceptance.state === 'ready'),
+        && (canReadOnlyRecover || canResumeWrites),
       can_abandon: canAbandon,
       integration: 'separate',
       deployment: 'separate',
@@ -342,6 +358,8 @@ export class DeliveryService {
         throw new QueueError('Publication destination is operator-configured and cannot be supplied with a job action.', 400);
       const saved = job.delivery;
       if (saved?.state === 'abandoned') throw new QueueError('This local delivery was explicitly abandoned; publishing remains disabled.');
+      if (saved && !KNOWN_DELIVERY_STATES.has(saved.state))
+        throw new QueueError(UNKNOWN_DELIVERY_REASON);
       const config = this.currentConfig();
       if (config.delivery?.provider !== 'github' || this.provider?.supported !== true)
         throw new QueueError('Trusted GitHub delivery is not configured; the accepted patch remains available.', 409);
@@ -354,8 +372,7 @@ export class DeliveryService {
         const intent = this.ensureIntent(job, config, savedEvidence, { allowConflict: true });
         return this.refreshSavedPull(job, intent);
       }
-      if (saved && ['publishing', 'uncertain', 'blocked'].includes(saved.state)
-        && ['creating_pull_request', 'pull_request_created', 'pull_request_found'].includes(saved.stage)) {
+      if (pendingPullReadback(saved)) {
         const intent = this.ensureIntent(job, config, savedEvidence);
         const reconciled = await this.discoverPendingPull(job, intent);
         if (reconciled) return reconciled;
@@ -507,6 +524,8 @@ export class DeliveryService {
         throw new QueueError('Saved delivery intent belongs to a different candidate or destination. Restore its original trusted configuration to recover it.');
       if (job.delivery.state === 'abandoned')
         throw new QueueError('This local delivery was explicitly abandoned; publication remains disabled.');
+      if (!KNOWN_DELIVERY_STATES.has(job.delivery.state))
+        throw new QueueError(UNKNOWN_DELIVERY_REASON);
       if (job.delivery.state === 'conflict' && !allowConflict)
         throw new QueueError('Saved delivery intent has an unexpected remote collision. Inspect it before taking further action.');
       return job.delivery;

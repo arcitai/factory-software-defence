@@ -410,6 +410,21 @@ test('unrelated branch collisions are preserved and repeated/concurrent actions 
   assert.match(branch, /^factory\/job_/);
 });
 
+test('unknown saved delivery state is neither advertised nor resumed', async t => {
+  const f = testFixture(t), gh = fakeGitHub(f), manager = service(f, gh.provider);
+  const config = configAt(f.state), job = f.queue.get(jobID);
+  manager.ensureIntent(job, config, manager.validateEvidence(job, config));
+  job.delivery.state = 'future_state';
+  f.queue.save(job);
+
+  const status = manager.summary(f.queue.get(jobID));
+  assert.equal(status.can_publish, false);
+  assert.match(status.error, /unknown state/);
+  assert.equal(status.can_abandon, false);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /unknown state/);
+  assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
+});
+
 test('a pre-write branch collision can be explicitly abandoned after exact readback and remains removed only locally', async t => {
   const foreignSha = '9'.repeat(40), f = testFixture(t);
   const gh = fakeGitHub(f, { branch: { sha: foreignSha, node_id: 'foreign-branch-node' } });
@@ -424,10 +439,13 @@ test('a pre-write branch collision can be explicitly abandoned after exact readb
   assert.equal(collision.stage, 'intent', 'the resolution is restricted to a collision found before provider writes');
   assert.deepEqual(gh.state.branch, { sha: foreignSha, node_id: 'foreign-branch-node' });
   const status = manager.summary(f.queue.get(jobID));
+  assert.equal(status.can_publish, false, 'a branch-only collision cannot advertise publication after the action refuses it');
   assert.equal(status.can_abandon, true);
   assert.equal(status.remote_collision.sha, foreignSha);
 
   const writes = structuredClone(gh.state.writes);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /unexpected remote collision/);
+  assert.deepEqual(gh.state.writes, writes, 'a repeated action still refuses the foreign branch without provider writes');
   await assert.rejects(manager.abandonDelivery(jobID, {
     run_id: f.run_id, delivery_identity: collision.identity, branch_sha: '8'.repeat(40),
   }), /inspected branch identity/);
@@ -538,6 +556,7 @@ test('authenticated dashboard and CLI abandon the same inspected branch-only col
   const status = await (await fetch(`${apiOrigin}/api/v1/status`)).json();
   const apiJob = status.jobs[0], collision = apiJob.delivery_status.remote_collision;
   assert.equal(apiJob.delivery_status.can_abandon, true);
+  assert.equal(apiJob.delivery_status.can_publish, false, 'the API exposes the same branch-collision refusal as the shared action');
   assert.equal(apiJob.can_remove, false);
   assert.equal(apiJob.delivery_removal_blocked, true);
   const request = (headers, body) => fetch(`${apiOrigin}/api/v1/jobs/${jobID}/abandon-delivery`, {
@@ -571,6 +590,14 @@ test('authenticated dashboard and CLI abandon the same inspected branch-only col
   const cliController = createController(cliFixture.state, { execute: async () => ({ outcome: 'complete' }), stop: async () => {}, reconcile: async () => {} }, { deliveryProvider: cliGH.provider });
   await new Promise(resolve => cliController.server.listen(cliFixture.config.port, '127.0.0.1', resolve));
   t.after(() => cliController.close());
+  let cliRefusal;
+  try {
+    await execFileAsync(process.execPath, ['bin/software-defence-factory.mjs', 'publish', jobID, '--state', cliFixture.state], {
+      encoding: 'utf8', env: { ...process.env, SDF_AUTO_UPDATE: '0', SDF_BOOTSTRAPPED: '1' },
+    });
+  } catch (error) { cliRefusal = error; }
+  assert.match(cliRefusal?.stderr || '', /unexpected remote collision/);
+  assert.deepEqual(cliGH.state.writes, cliWrites, 'the CLI action leaves the foreign branch and provider state untouched');
   const { stdout } = await execFileAsync(process.execPath, [
     'bin/software-defence-factory.mjs', 'abandon-delivery', jobID,
     '--branch-sha', '8'.repeat(40), '--state', cliFixture.state,
