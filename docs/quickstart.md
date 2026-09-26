@@ -34,9 +34,29 @@ Verification commands receive `FACTORY_BASE_REVISION`, the resolved admission co
 
 Replace the check with the application's actual verification command. `init` does not edit the app, copy global skills or start work. It creates factory.json, worker.token and model.env with private permissions. Each installation has one repository and a distinct state path/port. `--harness pi` selects Pi; `--harness custom --command-json '["executable","argument"]'` selects an available command in the job image. The bundled image provides Node, Git, Codex and Pi. Other toolchains require an intentionally built compatible image; do not claim Rust/mobile/browser capabilities from this image alone.
 
-Configure inference credentials in the private model.env file. Do not copy the operator's entire account environment or authentication folders. Codex uses its supported API credential environment; Pi uses the selected provider's configuration. Use `--model` with init for a specific model. Task-level model overrides are supported only for Codex/Pi and do not prove that the provider serves that model.
+Configure supported inference settings in the private `model.env` file. It
+rejects unrelated names such as `DEPLOY_TOKEN`; do not copy the operator's
+account environment or authentication folders. Codex receives only its OpenAI
+settings. Pi receives only the selected provider's settings. Set
+`--inference-provider PROVIDER` during `init`, or pin an operator-selected
+`provider/model` with `--model`; if multiple provider credential groups are in
+`model.env`, an explicit provider is required. Task-level model overrides never
+select a credential group. See the `inferenceProvider` entry in private
+`factory.json` when editing trusted installation configuration directly.
 
-A local model endpoint must be reachable from inside the job container. Host loopback addresses do not automatically refer to the host from Docker. Configure and qualify the chosen adapter/network path before dispatch; this package does not automatically expose Ollama or import its models.
+Factory's Pi provider identifiers are `anthropic`, `azure-openai-responses`,
+`cerebras`, `cloudflare-ai-gateway`, `cloudflare-workers-ai`, `deepseek`,
+`google`, `groq`, `huggingface`, `kimi-coding`, `minimax`, `minimax-cn`,
+`mistral`, `openai`, `opencode`, `opencode-go`, `openrouter`,
+`vercel-ai-gateway`, `xiaomi`, `xiaomi-token-plan-ams`,
+`xiaomi-token-plan-cn`, `xiaomi-token-plan-sgp`, `xai` and `zai`. Factory
+forwards provider API-key and endpoint settings from this map; it does not
+forward OAuth files or ambient cloud identity credentials.
+
+`OPENAI_BASE_URL` remains available for an OpenAI-compatible local endpoint
+selected for Codex; the endpoint must be reachable from inside the job
+container. Host loopback addresses do not automatically refer to the host from
+Docker. The package does not automatically expose Ollama or import models.
 
 ```sh
 software-defence-factory up --state /private/state/my-app
@@ -156,8 +176,11 @@ is tested at 100%; changing browser zoom is separate from a project theme.
 ## Environment
 
 Factory does not load a repository `.env` file. Configure the private
-`factory.json` through `init`; put inference credentials only in its private
-`model.env`. A repository `.env.example` is unnecessary for this CLI. Optional
+`factory.json` through `init`; put supported inference settings only in its
+private `model.env`. A provider allowlist selects the configured Codex/Pi
+settings before a worker starts; unrelated host, forge, deployment, cloud
+identity and application variables are rejected. A repository `.env.example`
+is unnecessary for this CLI. Optional
 process settings are `SDF_AUTO_UPDATE=0` (skip automatic CLI update checks),
 `XDG_STATE_HOME`, `XDG_DATA_HOME` and `XDG_CONFIG_HOME` (user-owned state, release
 and service locations). They must be exported in the process environment.

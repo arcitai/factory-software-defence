@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { ROOT, configAt, run, json, save, stopContainers, sleep } from './lib.mjs';
 import { withRequestedModel, executionProfile } from './execution-profile.mjs';
 import { parseCodexJsonl, emptyUsage, usageFields } from './usage.mjs';
+import { configuredInferenceProvider } from './model-environment.mjs';
 
 const MAX_LEGACY_LOG_BYTES = 1024 * 1024;
 
@@ -84,7 +85,13 @@ export function executors(state) {
     return value;
   }
   function prepare(job, attempt) {
-    const config = withRequestedModel(configAt(state), job.model);
+    const operatorConfig = configAt(state);
+    const inferenceProvider = configuredInferenceProvider(operatorConfig);
+    const config = withRequestedModel(operatorConfig, job.model);
+    // Freeze provider selection from private installation settings before a
+    // task-level model override is applied. Issue/source text cannot choose the
+    // credential group delivered to the container.
+    if (inferenceProvider) config.inferenceProvider = inferenceProvider;
     // Resolve tags before admission so the recorded image is the one actually run.
     config.image = run('docker', ['image', 'inspect', '--format', '{{.Id}}', config.image]);
     if (!/^sha256:[a-f0-9]{64}$/.test(config.image)) throw new Error('Expected an immutable Docker image ID');

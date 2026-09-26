@@ -46,6 +46,14 @@ test('configuration rejects unsafe network and command shapes before process lau
   for(const change of [{network:'host'},{command:'sh -c anything'},{repo:'/tmp/a,target=/'},{scope:{}},{cpus:0},{cpus:33},{cpus:'8'},{pidsLimit:1},{pidsLimit:16385},{pidsLimit:'1024'}]) {
     save(join(state,'factory.json'),{...base,...change});assert.throws(()=>configAt(state));
   }
+  for(const change of [
+    {inferenceProvider:'openai'},
+    {agent:'codex',inferenceProvider:'anthropic'},
+    {agent:'pi',inferenceProvider:'unknown-provider'},
+    {agent:'pi',inferenceProvider:'openai',model:'anthropic/claude-sonnet'},
+  ]) {
+    save(join(state,'factory.json'),{...base,...change});assert.throws(()=>configAt(state),/inferenceProvider/);
+  }
   save(join(state,'factory.json'),{...base,cpus:8,pidsLimit:2048});
   assert.equal(configAt(state).cpus,8);
 });
@@ -59,6 +67,10 @@ test('init preserves app and refuses to overwrite an existing installation',t=>{
   assert.equal(JSON.parse(config).sourceRef,'HEAD');
   assert.throws(()=>run(process.execPath,args,options),/Already configured/);
   assert.equal(readFileSync(join(state,'factory.json'),'utf8'),config);assert.equal(run('git',['-C',repo,'status','--porcelain']),before);
+  const piState=join(parent,'pi-state');
+  run(process.execPath,['bin/software-defence-factory.mjs','init','--state',piState,'--repo',repo,'--harness','pi','--inference-provider','anthropic','--model','anthropic/claude-sonnet','--check','true'],options);
+  const piConfig=JSON.parse(readFileSync(join(piState,'factory.json'),'utf8'));
+  assert.equal(piConfig.inferenceProvider,'anthropic');assert.equal(piConfig.model,'anthropic/claude-sonnet');
   run('git',['-C',repo,'remote','add','origin','https://github.com/example/authorized.git']);
   assert.throws(()=>run(process.execPath,['bin/software-defence-factory.mjs','run','--state',state,'--issue','https://github.com/example/wrong/issues/1']),/does not belong/);
 });

@@ -155,6 +155,11 @@ model servers, public listeners, Docker socket mounts or whole account folders.
 Cloud inference likewise needs a real provider/model connectivity check without
 printing credentials. A model-list/health response is connectivity evidence;
 qualifying model output requires a separately accepted bounded task.
+Store only supported inference settings in `model.env`; jobs reject unrelated
+names such as deployment credentials. Codex receives its OpenAI setting group,
+and Pi receives only its operator-selected provider group. Use
+`--inference-provider` with `init` when Pi's provider is not encoded in the
+operator-configured model name or when multiple provider groups are stored.
 
 Checkpoint: record the exact source revision, image ID, check command, resource
 limits, inference connectivity and CI result. Keep product controllers stopped

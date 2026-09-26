@@ -642,3 +642,46 @@ protected exact-head/policy attestation was not supplied in this worker
 context. The lead owns the independent exact-final-diff review, protected
 verification, installed CLI/dashboard publication repeat/restart/readback, and
 desktop/narrow light/dark browser inspection before acceptance.
+
+## CRED-1 and policy-retry repairs on admitted checkpoint faca645 — 26 September 2026
+
+This uncommitted repair preserves package version `0.8.0` and starts from
+admitted checkpoint `faca6458ada153454ae9b690287ef78abea14f16`. The combined
+review baseline remains original main `b2643a8b67b748e9f0bf99a66e7cdd091bda3a71`.
+
+`model.env` now accepts a typed set of provider inference settings and rejects
+unrelated variables, including deployment, forge, Git, Actions and cloud
+identity credentials. Before container start, the executor writes a mode-0600
+temporary env file containing only the trusted Codex or Pi provider selection;
+it never mounts the original model.env. Codex is fixed to OpenAI settings. Pi
+uses its private `inferenceProvider`, an operator-configured `provider/model`,
+or a sole provider group in the private model.env. Multiple provider groups
+require explicit operator selection. A task-level model override is applied
+after that selection and cannot choose a credential group. `OPENAI_BASE_URL`
+remains available for the Codex OpenAI-compatible endpoint path used with local
+models.
+
+Regression coverage rejects a synthetic `DEPLOY_TOKEN` without including its
+value in the error, checks that selected Pi/OpenAI settings alone are written
+to the worker env file, rejects ambiguous multi-provider selection, and checks
+failed-check, stale-build-policy and fresh-build evidence at the handoff guard.
+The Docker qualification recipe now retains a failed-check job, verifies an
+unchanged-policy retry fails the same check, verifies changing the policy
+cannot hand off the earlier build, then admits a fresh build under the current
+policy and completes its handoff.
+
+`npm ci --ignore-scripts` and the dashboard lockfile install succeeded. The
+focused credential/evidence/configuration regressions passed. The dashboard
+suite passed 52/52. `npm run check` validated JavaScript/JSON and ran the full
+runtime/package suite, with 101 tests passing and two artifact-dependent tests
+failing because this checkout has no ignored `factory/ui/index.html`; the
+locked dashboard was not rebuilt because its sources did not change. The
+failures were the controller asset-route and npm-tarball asset-presence checks.
+No Docker qualification or live provider/browser qualification ran here.
+
+The requested preserved `review.json` was not available under `/workspace`,
+`/output` or `/tmp`, so its findings could not be reread in this worker context.
+This source diff inspection and test run are not an independent exact-head
+review or protected-policy verification. The lead owns those, plus the new
+isolated Docker qualification and any live-provider/browser proof before
+acceptance.

@@ -34,7 +34,7 @@ let state = resolve(flags.state || DEFAULT_STATE);
 if(existsSync(state))state=realpathSync(state);
 const alive = pid => { try { process.kill(pid,0); return true; } catch(error) { if(error.code === 'ESRCH')return false; throw error; } };
 
-function init(repo, harness='codex', check='', port=7331, sourceRef='HEAD', delivery) {
+function init(repo, harness='codex', check='', port=7331, sourceRef='HEAD', delivery, inferenceProvider) {
   repo=realpathSync(resolve(repo));
   if (existsSync(join(state,'factory.json'))) throw new Error('Already configured; edit the private factory.json explicitly or choose another --state');
   if ([repo,state,ROOT].some(p=>/[,\n\r]/.test(p))) throw new Error('Paths cannot contain commas or line breaks');
@@ -45,11 +45,11 @@ function init(repo, harness='codex', check='', port=7331, sourceRef='HEAD', deli
   if (!argv) throw new Error('Select codex, pi, mock or custom with --command-json');
   if (flags.model && ['codex','pi'].includes(harness)) argv.splice(harness==='codex'?argv.length-1:argv.length,0,'--model',flags.model);
   mkdirSync(state,{recursive:true,mode:0o700});state=realpathSync(state);chmodSync(state,0o700);
-  save(join(state,'factory.json'),{version:1,repo,sourceRef,harness,command:argv,check,port:Number(port),image:PINS.jobImage,network:harness==='mock'?'none':'bridge',timeoutSeconds:1800,memoryMiB:2048,model:flags.model || null,...(delivery?{delivery}:{}),
+  save(join(state,'factory.json'),{version:1,repo,sourceRef,harness,command:argv,check,port:Number(port),image:PINS.jobImage,network:harness==='mock'?'none':'bridge',timeoutSeconds:1800,memoryMiB:2048,model:flags.model || null,...(inferenceProvider?{inferenceProvider}:{}),...(delivery?{delivery}:{}),
     scope:{project:'pilot',service:'app',environment:'test',owner:'operator'}});
   configAt(state);
   writeFileSync(join(state,'worker.token'),randomBytes(32).toString('hex')+'\n',{mode:0o600});
-  writeFileSync(join(state,'model.env'),'# Only inference credentials belong here. Never add GitHub, deploy or cloud credentials.\n',{mode:0o600});
+  writeFileSync(join(state,'model.env'),'# Supported inference settings only. Never add host, forge, deploy, Docker or cloud identity credentials.\n',{mode:0o600});
   registerInstallation(state);
   console.log(`Configured ${state}\nApp files were not changed. Only committed code is cloned into jobs.`);
 }
@@ -140,7 +140,7 @@ try {
     const deliveryFlags=[flags['delivery-provider'],flags['delivery-repository'],flags['delivery-target']];
     if(deliveryFlags.some(Boolean)&&deliveryFlags.some(value=>!value))throw new Error('Trusted PR delivery requires --delivery-provider github --delivery-repository URL --delivery-target main|dev');
     const delivery=deliveryFlags.every(Boolean)?{provider:flags['delivery-provider'],repository:flags['delivery-repository'],target:flags['delivery-target']}:undefined;
-    init(flags.repo,flags.harness || flags.agent,flags.check,flags.port,flags['source-ref'] || 'HEAD',delivery);
+    init(flags.repo,flags.harness || flags.agent,flags.check,flags.port,flags['source-ref'] || 'HEAD',delivery,flags['inference-provider']);
   }
   else if(command==='install')await withServiceOperation('install',install);
   else if(command==='up') { if(hasService(state))await manageService('controller','start',state);else await withServiceOperation('up',up); }
@@ -261,6 +261,7 @@ try {
   demo                                    Install and run a synthetic sample (no model key)
   qualify --state PATH                    Exercise recovery and isolation with a stopped demo job
   init --repo PATH --harness codex|pi|custom --check "npm ci && npm test" [--source-ref REF]
+       [--inference-provider PROVIDER]
        [--delivery-provider github --delivery-repository https://github.com/OWNER/REPO --delivery-target main|dev]
   install [--image LOCAL_REF]             Build the standard image, or select an existing local image
   doctor | up | status | stop              Inspect / operate your private installation

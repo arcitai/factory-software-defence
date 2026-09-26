@@ -4,6 +4,7 @@ import { spawnSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
 import { ROOT, DEFAULT_STATE } from './paths.mjs';
+import { isInferenceProvider, inferenceProviderFromModel } from './model-environment.mjs';
 export { ROOT, DEFAULT_STATE };
 export const PINS = JSON.parse(readFileSync(join(ROOT, 'factory/pins.json')));
 export const json = path => JSON.parse(readFileSync(path, 'utf8'));
@@ -39,7 +40,15 @@ export function harnessOf(config) {
 export function configAt(state) {
   const config = json(join(state, 'factory.json'));
   if (config.version !== 1) throw new Error('Unsupported configuration');
-  harnessOf(config);
+  const harness = harnessOf(config);
+  if (config.inferenceProvider !== undefined) {
+    if (!isInferenceProvider(config.inferenceProvider) || !['codex', 'pi'].includes(harness)
+      || (harness === 'codex' && config.inferenceProvider !== 'openai'))
+      throw new Error('inferenceProvider must select a supported Codex/Pi inference provider.');
+    const modelProvider = inferenceProviderFromModel(config.model);
+    if (harness === 'pi' && modelProvider && modelProvider !== config.inferenceProvider)
+      throw new Error('inferenceProvider must match the provider in the configured model.');
+  }
   if (!Array.isArray(config.command) || !config.command.length || !config.command.every(v => typeof v === 'string' && v && !v.includes('\0'))) throw new Error('command must be an argument array');
   if (!Number.isInteger(config.port) || config.port < 1024 || config.port > 65535) throw new Error('Invalid port');
   if (!Number.isInteger(config.timeoutSeconds) || config.timeoutSeconds < 1 || config.timeoutSeconds > 7200) throw new Error('timeoutSeconds must be 1–7200');
