@@ -565,3 +565,33 @@ Retain `qualification.json` and the nested `source-admission-*` fixture evidence
 Repeat browser inspection when UI assets change. The implementation and review
 containers do not have Docker or browser access; the operator proof above was
 performed outside those containers against the packed candidate.
+
+## 0.8.0 — trusted PR handoff (#29)
+
+The implementation candidate starts at the admitted `main` source revision
+`b2643a8b67b748e9f0bf99a66e7cdd091bda3a71`. Package and root lockfile versions
+are `0.8.0`. `npm run build:dashboard` completed successfully against the
+dashboard lockfile. `npm run check` exited successfully, including all runtime,
+package and 51 dashboard tests. The focused delivery and model-environment
+regressions passed 10/10.
+
+The bounded delivery tests use disposable real local Git repositories and an
+injected fake GitHub provider. They cover default patch-only mode, trusted
+destination selection separate from source ref, stale policy/check/review/
+approval/patch rejection, changed source origin and target base, collision
+preservation, concurrent requests, repeated publication, lost branch/PR
+responses across controller restart, exact PR head/tree readback, and pending,
+unknown or unrelated PR checks. They also exercise the authenticated API and
+CLI against the same receipt. They do not establish live GitHub API behavior,
+provider permissions, credential validity or successful external publication.
+
+The dashboard regression is rendered with JSDOM. No browser tool or browser
+executable is available in this implementation environment, so desktop and
+narrow-width visual inspection of the final built assets was not performed.
+The release lead owns that browser inspection and the authorized disposable
+GitHub fixture: use the existing Factory repository, normal admission/check/
+review/approval, a uniquely named draft proof PR, repeated publication and
+restart recovery, exact readback, and close without merge. No GitHub write or
+live fixture was attempted by this implementation worker. These checks are
+required before lead acceptance; delivery itself still does not merge,
+integrate or deploy.

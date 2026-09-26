@@ -1,0 +1,444 @@
+import { createHash, randomBytes } from 'node:crypto';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { VERSION } from './updates.mjs';
+import { configAt, digest } from './lib.mjs';
+import { withRequestedModel } from './execution-profile.mjs';
+import { publicSourceAdmission } from './source-admission.mjs';
+import { QueueError } from './queue.mjs';
+import { readProjectLinks } from './project-links.mjs';
+
+const MAX_PATCH_BYTES = 8 * 1024 * 1024;
+const MAX_CHANGED_FILES = 500;
+const MAX_TREE_BYTES = 8 * 1024 * 1024;
+const SHA1 = /^[a-f0-9]{40}$/;
+const PRIVATE_JSON_BYTES = 1024 * 1024;
+const utf8 = new TextDecoder('utf-8', { fatal: true });
+
+function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
+function utcGitDate(value) {
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) throw new Error('Accepted timestamp is invalid.');
+  const date = new Date(Math.floor(parsed.getTime() / 1000) * 1000);
+  return { iso: date.toISOString().replace(/\.000Z$/, 'Z'), epoch: Math.floor(date.getTime() / 1000) };
+}
+function commitObjectSha({ tree, parents, message, author, committer }) {
+  if (parents.length !== 1 || !SHA1.test(tree || '') || !SHA1.test(parents[0] || '')) throw new Error('Candidate commit identity is invalid.');
+  const date = utcGitDate(author.date);
+  if (committer.date !== author.date || author.name !== 'Software and Defence Factory' || committer.name !== author.name
+    || author.email !== 'factory@localhost' || committer.email !== author.email) throw new Error('Candidate commit identity is invalid.');
+  const raw = Buffer.from(`tree ${tree}\nparent ${parents[0]}\nauthor ${author.name} <${author.email}> ${date.epoch} +0000\ncommitter ${committer.name} <${committer.email}> ${date.epoch} +0000\n\n${message}`, 'utf8');
+  return createHash('sha1').update(`commit ${raw.length}\0`).update(raw).digest('hex');
+}
+function readPrivateJson(path) {
+  const stat = lstatSync(path);
+  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || stat.size > PRIVATE_JSON_BYTES)
+    throw new Error('Protected delivery evidence is missing or unsafe.');
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+function readPrivateFile(path, limit) {
+  const stat = lstatSync(path);
+  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || stat.size > limit)
+    throw new Error('Protected candidate patch is missing, unsafe or too large.');
+  return readFileSync(path);
+}
+function assertPrivateDirectory(path) {
+  const stat = lstatSync(path);
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0)
+    throw new Error('Protected delivery directory is missing or unsafe.');
+}
+function runGitCommand(args) {
+  const env = {
+    PATH: process.env.PATH || '/usr/bin:/bin', HOME: '/nonexistent',
+    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0',
+  };
+  const result = spawnSync('git', args, { env, encoding: 'utf8', maxBuffer: MAX_TREE_BYTES + MAX_PATCH_BYTES + 1024 * 1024 });
+  if (result.error || result.status !== 0) throw new Error('Could not prepare private candidate reconstruction storage.');
+  return result.stdout.trim();
+}
+function runGit(repo, args, { input, binary = false } = {}) {
+  // Delivery reconstruction runs only trusted Git operations in a newly made
+  // bare repository. Candidate hooks, filters, global config and credentials
+  // are unavailable to these subprocesses.
+  const env = {
+    PATH: process.env.PATH || '/usr/bin:/bin',
+    HOME: '/nonexistent',
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_OPTIONAL_LOCKS: '0',
+  };
+  const result = spawnSync('git', ['--git-dir', repo, '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', ...args], {
+    env, input, encoding: binary ? null : 'utf8', maxBuffer: MAX_TREE_BYTES + MAX_PATCH_BYTES + 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) throw new Error('Could not reconstruct the accepted candidate from retained Git objects.');
+  return binary ? result.stdout : result.stdout.trim();
+}
+function parseTree(bytes) {
+  const entries = new Map();
+  let start = 0;
+  while (start < bytes.length) {
+    const end = bytes.indexOf(0, start);
+    if (end < 0) throw new Error('Retained Git tree is malformed.');
+    const row = bytes.subarray(start, end), tab = row.indexOf(9);
+    if (tab < 0) throw new Error('Retained Git tree is malformed.');
+    const meta = row.subarray(0, tab).toString('ascii').split(' ');
+    let path;
+    try { path = utf8.decode(row.subarray(tab + 1)); }
+    catch { throw new Error('Candidate has a path GitHub cannot represent.'); }
+    if (meta.length !== 3 || !['blob', 'commit'].includes(meta[1]) || !SHA1.test(meta[2])
+      || !path || path.startsWith('/') || path.split('/').some(part => !part || part === '.' || part === '..')
+      || /[\u0000-\u001f\u007f]/.test(path)) throw new Error('Candidate contains an unsupported Git path or object.');
+    entries.set(path, { mode: meta[0], type: meta[1], sha: meta[2] });
+    start = end + 1;
+  }
+  return entries;
+}
+
+function candidateTree(state, job, sourcePath, sourceAdmission, accepted) {
+  if (sourceAdmission.object_format !== 'sha1' || !SHA1.test(accepted.base || '') || !SHA1.test(accepted.tree || ''))
+    throw new Error('GitHub delivery currently requires a SHA-1 candidate from the retained source repository.');
+  const patchPath = join(state, 'jobs', job.id, 'delivery-input', 'candidate.patch');
+  assertPrivateDirectory(join(state, 'jobs'));
+  assertPrivateDirectory(join(state, 'jobs', job.id));
+  assertPrivateDirectory(join(state, 'jobs', job.id, 'delivery-input'));
+  const patch = readPrivateFile(patchPath, MAX_PATCH_BYTES);
+  if (!patch.length || sha256(patch) !== accepted.patch_sha256) throw new Error('Accepted patch digest does not match the approval record.');
+  const folder = join(state, 'jobs', job.id);
+  const scratchRoot = mkdtempSync(join(folder, 'delivery-work-'));
+  const scratchRepo = join(scratchRoot, 'candidate.git');
+  try {
+    runGitCommand(['init', '--bare', '--quiet', '--object-format=sha1', scratchRepo]);
+    runGit(scratchRepo, ['fetch', '--quiet', '--no-tags', '--', sourcePath, `${accepted.base}:refs/heads/factory-base`]);
+    const baseCommit = runGit(scratchRepo, ['rev-parse', '--verify', `${accepted.base}^{commit}`]);
+    if (baseCommit !== accepted.base) throw new Error('Accepted base differs from the retained source commit.');
+    runGit(scratchRepo, ['read-tree', accepted.base]);
+    runGit(scratchRepo, ['apply', '--cached', '--binary', '--whitespace=nowarn', patchPath]);
+    const tree = runGit(scratchRepo, ['write-tree']);
+    if (tree !== accepted.tree) throw new Error('Protected patch does not reproduce the accepted candidate tree.');
+    const baseTree = runGit(scratchRepo, ['rev-parse', `${accepted.base}^{tree}`]);
+    const before = parseTree(runGit(scratchRepo, ['ls-tree', '-r', '-z', accepted.base], { binary: true }));
+    const after = parseTree(runGit(scratchRepo, ['ls-tree', '-r', '-z', tree], { binary: true }));
+    const paths = [...new Set([...before.keys(), ...after.keys()])].sort();
+    const changed = paths.filter(path => {
+      const oldEntry = before.get(path), newEntry = after.get(path);
+      return !oldEntry || !newEntry || oldEntry.mode !== newEntry.mode || oldEntry.type !== newEntry.type || oldEntry.sha !== newEntry.sha;
+    });
+    if (!changed.length || changed.length > MAX_CHANGED_FILES) throw new Error('Candidate change count is empty or exceeds the bounded GitHub delivery limit.');
+    const entries = [];
+    let total = 0;
+    for (const path of changed) {
+      const next = after.get(path), previous = before.get(path);
+      if (!next) {
+        entries.push({ path, mode: previous.mode, type: previous.type, sha: null });
+        continue;
+      }
+      if (next.type !== 'blob' || !['100644', '100755', '120000'].includes(next.mode))
+        throw new Error('Candidate adds or changes an unsupported Git object type.');
+      const content = runGit(scratchRepo, ['cat-file', 'blob', next.sha], { binary: true });
+      total += content.length;
+      if (total > MAX_TREE_BYTES) throw new Error('Candidate files exceed the bounded GitHub delivery size.');
+      entries.push({ path, mode: next.mode, type: 'blob', content });
+    }
+    return { patch, patch_sha256: accepted.patch_sha256, base_tree: baseTree, tree, entries };
+  } finally {
+    rmSync(scratchRoot, { recursive: true, force: true });
+  }
+}
+
+function sourceIssue(job, repository) {
+  const url = job.task?.source_url;
+  if (typeof url !== 'string') return null;
+  const match = url.match(/^https:\/\/github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9_.-]+)\/issues\/(\d+)$/);
+  if (!match || `https://github.com/${match[1]}/${match[2]}`.toLowerCase() !== repository.toLowerCase()) return null;
+  return { number: Number(match[3]), url };
+}
+
+function branchIdentity(job, accepted) {
+  return `factory/${job.id}-${accepted.head.slice(0, 12)}`;
+}
+
+function sameRepository(actual, expected) {
+  return typeof actual === 'string' && actual.toLowerCase() === expected.toLowerCase();
+}
+
+export class DeliveryService {
+  constructor(queue, state, { config = () => configAt(state), sourceAdmission, provider }) {
+    this.queue = queue;
+    this.state = state;
+    this.currentConfig = config;
+    this.sourceAdmission = sourceAdmission;
+    this.provider = provider;
+  }
+
+  summary(job) {
+    let config;
+    try { config = this.currentConfig(); } catch { config = {}; }
+    const enabled = config.delivery?.provider === 'github' && this.provider?.supported === true;
+    const state = job.delivery?.state || (enabled
+      ? job.workflow?.name === 'software' && job.state === 'succeeded' ? 'ready' : 'not_started'
+      : config.delivery?.provider ? 'patch_only_unsupported_provider' : 'patch_only');
+    return {
+      state,
+      provider: config.delivery?.provider || null,
+      repository: enabled ? config.delivery.repository : null,
+      target: enabled ? config.delivery.target : null,
+      candidate_sha: job.delivery?.candidate || null,
+      source_ref: job.delivery?.source_ref || null,
+      source_issue: job.delivery?.issue || null,
+      branch: job.delivery?.branch || null,
+      pull_request: job.delivery?.pull_request || null,
+      checks: job.delivery?.checks || null,
+      error: job.delivery?.error || null,
+      can_publish: enabled && job.workflow?.name === 'software' && job.state === 'succeeded'
+        && (!job.delivery || ['uncertain', 'publishing', 'published'].includes(job.delivery.state)),
+      integration: 'separate',
+      deployment: 'separate',
+    };
+  }
+
+  publish(jobId, input) {
+    return this.queue.exclusive(jobId, async () => {
+      const job = this.queue.get(jobId), latest = job.runs.at(-1);
+      if (input?.run_id !== latest?.id) throw new QueueError('Job changed; reload before publishing.');
+      if (Object.hasOwn(input || {}, 'repository') || Object.hasOwn(input || {}, 'target') || Object.hasOwn(input || {}, 'branch'))
+        throw new QueueError('Publication destination is operator-configured and cannot be supplied with a job action.', 400);
+      const config = this.currentConfig();
+      if (config.delivery?.provider !== 'github' || this.provider?.supported !== true)
+        throw new QueueError('Trusted GitHub delivery is not configured; the accepted patch remains available.', 409);
+      const evidence = this.validateEvidence(job, config);
+      const intent = this.ensureIntent(job, config, evidence);
+      return this.resume(job, config, evidence, intent);
+    });
+  }
+
+  validateEvidence(job, config) {
+    if (job.workflow?.name !== 'software' || job.state !== 'succeeded') throw new QueueError('Only an accepted software candidate can be published.');
+    const handoff = job.runs.at(-1);
+    if (handoff?.command !== 'handoff' || handoff.state !== 'succeeded') throw new QueueError('The operator handoff has not completed.');
+    if (job.source_admission?.status !== 'retained' || typeof this.sourceAdmission?.validate !== 'function')
+      throw new QueueError('This job has no valid admission-time source revision.');
+    const expectedPolicy = digest(JSON.stringify(withRequestedModel(config, job.model)));
+    const folder = join(this.state, 'jobs', job.id);
+    let accepted, candidate, checks, review;
+    try {
+      accepted = readPrivateJson(join(folder, 'accepted.json'));
+      candidate = readPrivateJson(join(folder, 'candidate.json'));
+      checks = readPrivateJson(join(folder, 'checks.json'));
+      review = readPrivateJson(join(folder, 'review.json'));
+    } catch { throw new QueueError('Protected candidate, check, review or approval evidence is missing or unsafe.'); }
+    const byID = id => job.runs.find(run => run.id === id);
+    const buildRun = byID(accepted.build_run_id), checkRun = byID(accepted.checks_run_id), reviewRun = byID(accepted.review_run_id);
+    const validRun = (run, command) => run?.command === command && run.state === 'succeeded' && run.outcome === 'complete'
+      && run.execution?.runtimeVersion === VERSION && run.execution?.policyHash === expectedPolicy;
+    if (!validRun(buildRun, 'build') || !validRun(checkRun, 'verify') || !validRun(reviewRun, 'review') || !validRun(handoff, 'handoff'))
+      throw new QueueError('Build, checks, review and approval do not match the current Factory policy.');
+    if (candidate.build_run_id !== buildRun.id || candidate.build_policy_hash !== expectedPolicy
+      || accepted.handoff_run_id !== handoff.id || accepted.policyHash !== expectedPolicy
+      || accepted.base !== job.source_admission.resolved_sha || candidate.base !== accepted.base
+      || accepted.head !== candidate.head || accepted.tree !== candidate.tree
+      || !/^[a-f0-9]{64}$/.test(accepted.patch_sha256 || '')
+      || accepted.checks_run_id !== checkRun.id || accepted.review_run_id !== reviewRun.id)
+      throw new QueueError('Approval does not bind the exact admitted candidate and phase evidence.');
+    if (checks.run_id !== checkRun.id || checks.passed !== true || checks.head !== accepted.head || checks.tree !== accepted.tree
+      || checks.policyHash !== expectedPolicy || checks.command !== config.check
+      || review.run_id !== reviewRun.id || review.verdict !== 'pass' || review.head !== accepted.head || review.tree !== accepted.tree
+      || review.policyHash !== expectedPolicy || reviewRun.review_verdict !== 'pass')
+      throw new QueueError('Current successful checks and independent review for this candidate are required.');
+    if (!SHA1.test(accepted.base || '') || !SHA1.test(accepted.head || '') || !SHA1.test(accepted.tree || '')
+      || accepted.head === accepted.base || candidate.parent !== accepted.base)
+      throw new QueueError('Candidate base, head or tree is invalid for trusted PR delivery.');
+    let retained;
+    try { retained = this.sourceAdmission.validate(job.id, job.source_admission); }
+    catch { throw new QueueError('The retained admission-time source is missing or corrupt.'); }
+    const currentRepository = readProjectLinks(config.repo)?.repository;
+    const admittedRepository = job.source_admission.source_repository;
+    if (!admittedRepository || !sameRepository(admittedRepository, config.delivery.repository)
+      || !sameRepository(currentRepository, admittedRepository))
+      throw new QueueError('The configured GitHub destination no longer matches the repository identity captured at admission.');
+    if (resolve(config.repo) !== job.source_admission.repository_path)
+      throw new QueueError('Configured source path changed since admission.');
+    let patch;
+    try { patch = candidateTree(this.state, job, retained.path, job.source_admission, accepted); }
+    catch (error) { throw new QueueError(error.message || 'Protected candidate patch is invalid.'); }
+    return { accepted, candidate, checks, review, expectedPolicy, patch, issue: sourceIssue(job, config.delivery.repository) };
+  }
+
+  ensureIntent(job, config, evidence) {
+    const deliveryConfig = config.delivery;
+    const branch = branchIdentity(job, evidence.accepted);
+    const identity = digest(JSON.stringify({ job: job.id, candidate: evidence.accepted.head, tree: evidence.accepted.tree,
+      base: evidence.accepted.base, provider: deliveryConfig.provider, repository: deliveryConfig.repository, target: deliveryConfig.target }));
+    if (job.delivery) {
+      if (job.delivery.identity !== identity || job.delivery.provider !== 'github' || job.delivery.repository !== deliveryConfig.repository
+        || job.delivery.target !== deliveryConfig.target || job.delivery.branch !== branch)
+        throw new QueueError('Saved delivery intent belongs to a different candidate or destination. Restore its original trusted configuration to recover it.');
+      if (job.delivery.state === 'conflict') throw new QueueError('Saved delivery intent has an unexpected remote collision. Inspect it before taking further action.');
+      return job.delivery;
+    }
+    const record = {
+      version: 1, identity, provider: 'github', repository: deliveryConfig.repository, target: deliveryConfig.target,
+      source_ref: job.source_admission.requested_ref, source_sha: job.source_admission.resolved_sha,
+      base: evidence.accepted.base, candidate: evidence.accepted.head, tree: evidence.accepted.tree,
+      patch_sha256: evidence.accepted.patch_sha256, policyHash: evidence.expectedPolicy,
+      branch, state: 'intent', stage: 'intent', created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      issue: evidence.issue,
+    };
+    job.delivery = record;
+    this.queue.save(job); // Durable intent precedes every GitHub write.
+    return record;
+  }
+
+  persist(job, record, update) {
+    Object.assign(record, update, { updated_at: new Date().toISOString() });
+    job.delivery = record;
+    this.queue.save(job);
+  }
+
+  async resume(job, config, evidence, record) {
+    const { repository, target, branch } = record;
+    try {
+      const repoInfo = await this.provider.inspectRepository(repository);
+      if (!sameRepository(repoInfo.full_name, repository.slice('https://github.com/'.length)) || repoInfo.archived || !repoInfo.push)
+        throw new QueueError('Configured GitHub identity cannot write the exact destination repository.');
+
+      const remoteTarget = await this.provider.readTarget(repository, target);
+      if (remoteTarget.sha !== record.base) throw new QueueError('Configured PR target moved from the accepted base; fresh build, checks and review are required.');
+      const remoteBaseCommit = await this.provider.readCommit(repository, remoteTarget.sha);
+      if (remoteBaseCommit.sha !== record.base || remoteBaseCommit.tree !== evidence.patch.base_tree)
+        throw new QueueError('GitHub target tree differs from the retained accepted base.');
+
+      const existingBranch = await this.provider.readBranch(repository, branch);
+      if (existingBranch && record.final_sha && existingBranch.sha !== record.final_sha)
+        throw new QueueError('The delivery branch changed unexpectedly; it was preserved and will not be overwritten.');
+      if (existingBranch && !record.final_sha) throw new QueueError('An unrelated branch already uses the reserved delivery name; it was preserved.');
+
+      if (!record.tree_sha) {
+        this.persist(job, record, { state: 'publishing', stage: 'creating_blobs' });
+        const apiEntries = [];
+        const blobShas = Object.assign(Object.create(null), record.blob_shas || {});
+        for (const entry of evidence.patch.entries) {
+          if (!Object.hasOwn(entry, 'content')) {
+            apiEntries.push(entry); continue;
+          }
+          const expected = createHash('sha1').update(`blob ${entry.content.length}\0`).update(entry.content).digest('hex');
+          let blob = blobShas[entry.path];
+          if (blob && blob !== expected) throw new QueueError('Saved delivery blob evidence does not match the accepted tree.');
+          if (!blob) {
+            blob = await this.provider.createBlob(repository, entry.content);
+            if (blob !== expected) throw new QueueError('GitHub returned a blob that differs from the accepted candidate.');
+            blobShas[entry.path] = blob;
+            this.persist(job, record, { state: 'publishing', stage: 'creating_blobs', blob_shas: blobShas });
+          }
+          apiEntries.push({ path: entry.path, mode: entry.mode, type: 'blob', sha: blob });
+        }
+        this.persist(job, record, { state: 'publishing', stage: 'creating_tree', blob_shas: blobShas });
+        const treeSha = await this.provider.createTree(repository, evidence.patch.base_tree, apiEntries);
+        if (treeSha !== record.tree) throw new QueueError('GitHub candidate tree does not match the approved tree.');
+        this.persist(job, record, { state: 'publishing', stage: 'creating_commit', tree_sha: treeSha, blob_shas: blobShas });
+      }
+
+      const message = `Factory candidate ${job.id} ${record.candidate}\n`;
+      const acceptedAt = utcGitDate(evidence.accepted.acceptedAt).iso;
+      const commitInput = {
+        message, tree: record.tree_sha, parents: [record.base],
+        author: { name: 'Software and Defence Factory', email: 'factory@localhost', date: acceptedAt },
+        committer: { name: 'Software and Defence Factory', email: 'factory@localhost', date: acceptedAt },
+      };
+      const expectedCommit = commitObjectSha(commitInput);
+      if (record.final_sha && record.final_sha !== expectedCommit) throw new QueueError('Saved delivery commit identity differs from the accepted candidate.');
+      if (!record.final_sha) this.persist(job, record, { state: 'publishing', stage: 'reconciling_commit', commit_message: message, final_sha: expectedCommit, final_tree: record.tree });
+      let commit = await this.provider.readCommit(repository, expectedCommit);
+      if (!commit) {
+        const created = await this.provider.createCommit(repository, commitInput);
+        if (created !== expectedCommit) throw new QueueError('GitHub candidate commit differs from the deterministic delivery identity.');
+        this.persist(job, record, { state: 'publishing', stage: 'checking_commit', final_sha: expectedCommit, final_tree: record.tree });
+        commit = await this.provider.readCommit(repository, expectedCommit);
+      }
+      if (!commit || commit.sha !== record.final_sha || commit.tree !== record.tree || commit.parents.length !== 1 || commit.parents[0] !== record.base)
+        throw new QueueError('GitHub candidate commit did not read back with the approved base and tree.');
+
+      const targetBeforeBranch = await this.provider.readTarget(repository, target);
+      if (targetBeforeBranch.sha !== record.base) throw new QueueError('PR target moved before branch creation; fresh build, checks and review are required.');
+
+      // Reconcile before every branch write. GitHub's create-ref endpoint is
+      // create-only; an unexpected existing branch is never force-updated.
+      const branchNow = await this.provider.readBranch(repository, branch);
+      if (branchNow && branchNow.sha !== record.final_sha)
+        throw new QueueError('The delivery branch changed unexpectedly; it was preserved and will not be overwritten.');
+      if (!branchNow) {
+        this.persist(job, record, { state: 'publishing', stage: 'creating_branch' });
+        try { await this.provider.createBranch(repository, branch, record.final_sha); }
+        catch {
+          const reconciled = await this.provider.readBranch(repository, branch);
+          if (!reconciled || reconciled.sha !== record.final_sha) throw new QueueError('Branch creation is uncertain. Recovery read the branch; no duplicate branch write was attempted.');
+        }
+      }
+      const confirmedBranch = await this.provider.readBranch(repository, branch);
+      if (!confirmedBranch || confirmedBranch.sha !== record.final_sha)
+        throw new QueueError('GitHub branch readback differs from the approved candidate.');
+      this.persist(job, record, { state: 'publishing', stage: 'branch_confirmed', branch_node_id: confirmedBranch.node_id || record.branch_node_id || null, final_tree: record.tree });
+
+      const targetBeforePR = await this.provider.readTarget(repository, target);
+      if (targetBeforePR.sha !== record.base) throw new QueueError('PR target moved after branch creation; the branch was preserved and no pull request was opened.');
+      let pulls = await this.provider.findPulls(repository, branch, target);
+      if (pulls.length > 1) throw new QueueError('Multiple pull requests use this delivery branch; inspect the saved delivery record before recovery.');
+      let pull = pulls[0];
+      if (pull) {
+        if (!sameRepository(pull.base?.repo?.full_name, repository.slice('https://github.com/'.length))
+          || !sameRepository(pull.head?.repo?.full_name, repository.slice('https://github.com/'.length))
+          || pull.base?.ref !== target || pull.head?.ref !== branch || pull.head?.sha !== record.final_sha)
+          throw new QueueError('An unrelated or changed pull request uses the delivery branch; it was preserved.');
+      } else {
+        const sourceTitle = String(job.task?.title || 'Accepted candidate').replace(/[\r\n\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 160) || 'Accepted candidate';
+        const title = `Factory: ${sourceTitle}`.slice(0, 240);
+        const issueLine = record.issue ? `Source issue: ${record.issue.url}\n` : '';
+        const body = `${issueLine}Factory job: ${job.id}\nCandidate: ${record.candidate}\nCandidate tree: ${record.tree}\nAccepted base: ${record.base}\nSource ref at admission: ${record.source_ref}\n\nThis draft PR records delivery only. It does not merge, release, deploy or claim integration.`;
+        this.persist(job, record, { state: 'publishing', stage: 'creating_pull_request' });
+        try { pull = await this.provider.createPull(repository, { title, body, head: `${repository.slice('https://github.com/'.length).split('/')[0]}:${branch}`, base: target, draft: true }); }
+        catch {
+          pulls = await this.provider.findPulls(repository, branch, target);
+          if (pulls.length !== 1) throw new QueueError('Pull request creation is uncertain. Recovery searched the exact branch and target; no duplicate pull request was created.');
+          pull = pulls[0];
+        }
+      }
+      if (!Number.isSafeInteger(pull?.number) || pull.number < 1) throw new QueueError('GitHub did not return a valid pull request identity.');
+      const readback = await this.provider.readPull(repository, pull.number);
+      const headSha = readback?.head?.sha;
+      if (readback?.number !== pull.number || readback.state !== 'open' || readback.draft !== true
+        || !sameRepository(readback?.base?.repo?.full_name, repository.slice('https://github.com/'.length))
+        || !sameRepository(readback?.head?.repo?.full_name, repository.slice('https://github.com/'.length))
+        || readback.base.ref !== target || readback.base.sha !== record.base
+        || readback.head.ref !== branch || headSha !== record.final_sha)
+        throw new QueueError('Pull request readback differs from the configured repository, target, draft state or candidate.');
+      if (readback.html_url !== `https://github.com/${readback.base.repo.full_name}/pull/${readback.number}`)
+        throw new QueueError('GitHub pull request URL does not match its repository identity.');
+      const finalCommit = await this.provider.readCommit(repository, headSha);
+      if (finalCommit.tree !== record.tree || finalCommit.parents.length !== 1 || finalCommit.parents[0] !== record.base)
+        throw new QueueError('Pull request head tree or base parent differs from the approved candidate.');
+      const checks = await this.provider.readChecks(repository, headSha, pull.number);
+      const afterChecks = await this.provider.readPull(repository, pull.number);
+      if (afterChecks?.number !== pull.number || afterChecks?.state !== 'open' || afterChecks?.draft !== true
+        || afterChecks?.head?.sha !== headSha || afterChecks?.base?.sha !== record.base
+        || afterChecks?.base?.ref !== target || afterChecks?.head?.ref !== branch)
+        throw new QueueError('Pull request head or base changed while its checks were being read.');
+      const receipt = {
+        id: afterChecks.id || null, node_id: afterChecks.node_id || null,
+        number: afterChecks.number, url: afterChecks.html_url, state: afterChecks.state, draft: afterChecks.draft === true,
+        repository: afterChecks.base.repo.full_name, branch: afterChecks.head.ref, target: afterChecks.base.ref,
+        base_sha: afterChecks.base.sha, head_sha: headSha, tree: finalCommit.tree,
+      };
+      this.persist(job, record, { state: 'published', stage: 'readback_complete', pull_request: receipt, checks, published_at: record.published_at || new Date().toISOString(), error: null });
+      return this.summary(job);
+    } catch (error) {
+      const message = error instanceof QueueError ? error.message : 'GitHub delivery is uncertain. Inspect the saved intent and reconcile before retrying.';
+      const state = error instanceof QueueError && /collision|unrelated|changed unexpectedly|multiple pull|readback differs|changed while its checks|does not match the approved|differs from the deterministic/i.test(message) ? 'conflict'
+        : error instanceof QueueError && /moved|stale|current Factory policy|retained admission|evidence|source path changed/i.test(message) ? 'blocked' : 'uncertain';
+      this.persist(job, record, { state, error: message });
+      if (error instanceof QueueError) throw error;
+      throw new QueueError(message, 409);
+    }
+  }
+}

@@ -161,9 +161,12 @@ function App() {
   async function workflowAction(job, action, stopped = false, feedback = "", sourceRef = "") {
     setTaskActionError("");
     try {
+      const body = action === "publish"
+        ? { run_id: job.runs.at(-1)?.id }
+        : { run_id: job.runs.at(-1)?.id, previous_process_stopped: stopped, feedback, ...(sourceRef.trim()?{source_ref:sourceRef.trim()}:{}) };
       const response = await fetch(`/api/v1/jobs/${encodeURIComponent(job.id)}/${action}`, {
         method: "POST", headers: { "Content-Type": "application/json", "X-Factory-Session": status.csrf_token },
-        body: JSON.stringify({ run_id: job.runs.at(-1)?.id, previous_process_stopped: stopped, feedback, ...(sourceRef.trim()?{source_ref:sourceRef.trim()}:{}) }),
+        body: JSON.stringify(body),
       });
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || "Unable to update job"); }
       await statusLoader.current.refresh();

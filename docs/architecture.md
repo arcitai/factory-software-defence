@@ -15,6 +15,15 @@ Defence. Dashed planned capabilities are not installed behavior.
 
 Software phases are build → verify → review → approved handoff. An implementation receives a writable job checkout; verification and review cannot modify that candidate. Both must cover the candidate commit and current policy hash. A requested revision preserves old work and starts a fresh implementation/check/review sequence. Retry resumes a stopped phase only after process/container reconciliation.
 
+Trusted PR delivery is a separate, opt-in controller action after acceptance.
+The private operator configuration selects the GitHub repository and `main` or
+`dev` target; admission separately records the source ref and canonical source
+repository identity. The controller reconstructs the approved tree from its
+retained base and protected patch, records intent before writes, and stores the
+branch/PR/readback receipt in the same job record. GitHub credentials stay on
+the controller. Workers do not receive them. A PR receipt is delivery only;
+PR checks, integration, merge, release and deployment remain distinct.
+
 Defence is a separate read-only investigation workflow over admitted incident evidence. Both workflows use one execution owner; no competing scheduler exists. Schedules belong to the selected harness; Factory has no cron module or issue watcher. Live production connectors, arbitrary workflow editing and autonomous deployment are not implemented.
 
 `dashboard/` preserves the selected task board, details, files, history, analytics, infrastructure, agents, skills and definition views. Vite builds self-contained assets into `factory/ui/`; npm consumers need no frontend toolchain. The UI displays actual queue records, with unreported cost/tokens remaining unknown.
@@ -45,6 +54,7 @@ Earlier experimental runtime and evaluation dashboards are retained in Git histo
 | Instance settings | Private `factory.json` | Controller and immutable admitted attempt config |
 | Job state, attempts and external write receipts | Private SQLite queue | CLI/API and dashboard |
 | Admission-time repository identity, requested ref and commit | Protected job record plus per-job retained Git objects | Queue, executor, retry/revision, status and evidence |
+| Trusted delivery target and durable PR receipt | Private operator configuration and protected SQLite job record | Controller delivery adapter, CLI/API and dashboard |
 | Remote issue metadata | Selected provider (GitHub adapter first) | Live adapter reads, CLI/API and dashboard |
 | Automation schedule | Selected harness | Explicit calls into Factory CLI/API |
 | List/board status groups | `dashboard/src/runs-board.js` | Both task views and their filters |

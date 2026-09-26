@@ -33,7 +33,7 @@ shell endpoint or a second scheduler.
 | Method export | `kit --output` | No export endpoint | None | Equivalent download/export preserving staging-only adoption |
 | Synthetic qualification | `demo`, `qualify` | No qualification endpoint | Synthetic disclosure only | Explicit separate state; never target an application accidentally |
 | Immutable source admission | `init --source-ref`, `run --source-ref`, `issue start --source-ref`; status and build evidence carry the resolved SHA | `POST /api/v1/jobs` resolves/retains before acknowledgement; shared source metadata in status | New issue and revision forms accept a ref; task detail shows requested ref, resolved SHA and prior source commits | Build/retry use retained objects; revisions keep the recorded source unless a new ref is explicit; legacy source remains unknown |
-| Trusted PR handoff | Operator applies accepted patch | Not implemented | Not implemented | #29; credentials remain outside jobs |
+| Trusted PR handoff | `publish JOB_ID` publishes or reconciles a saved delivery intent | Authenticated `POST /api/v1/jobs/:id/publish`; shared receipt and checks | Deliberate action on an accepted software result; exact PR/readback and pending checks are visible | Optional GitHub destination/`main` or `dev` target comes from private operator config; unknown providers and unset delivery remain patch-only |
 
 The current generic task form can name the Defence workflow; that is not a
 substitute for the CLI's validated incident admission. Treat the typed intake

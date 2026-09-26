@@ -8,6 +8,7 @@ import { BoundedLog } from './bounded-log.mjs';
 import { CodexUsageParser, emptyUsage, usageFields } from './usage.mjs';
 import { assertRetainedSource, publicSourceAdmission, restoreRetainedCheckout } from './source-admission.mjs';
 import { runCandidateGit } from './git-environment.mjs';
+import { validateModelEnvironment } from './model-environment.mjs';
 
 const [state, phase] = process.argv.slice(2);
 if(process.getuid()===0)throw new Error('Agent jobs require a non-root controller account');
@@ -41,6 +42,9 @@ function candidate() {
   if (git('rev-parse','HEAD') !== meta.head || git('status','--porcelain')) throw new Error('Candidate changed; create a new task and rerun verification');
   if (sourceAdmission?.status === 'retained' && (meta.base !== sourceAdmission.resolved_sha || meta.source_admission?.resolved_sha !== sourceAdmission.resolved_sha))
     throw new Error('Candidate does not use this job’s retained source revision; previous evidence is invalid for the current base');
+  if (git('rev-parse','HEAD^{tree}') !== meta.tree) throw new Error('Candidate tree changed; previous evidence is invalid');
+  if (meta.head !== meta.base && git('rev-parse', `${meta.head}^`) !== meta.base)
+    throw new Error('Candidate parent differs from its admitted base; previous evidence is invalid');
   return meta;
 }
 function safeRead(path) {
@@ -58,6 +62,7 @@ function removeScratch(path) {
   rmSync(path, { recursive: true, force: true });
 }
 async function container(mode, input, command, writable = false, credentials = false) {
+  if (credentials) validateModelEnvironment(join(state, 'model.env'));
   const name = `sdf-${instanceLabel(state)}-${attempt}-${mode}`;
   const reportDir = join(folder, attempt, mode);
   mkdirSync(reportDir, { recursive: true, mode: 0o700 });
@@ -119,7 +124,8 @@ try {
     restoreRetainedCheckout(state, job, sourceAdmission, workspace);
     const head = git('rev-parse','HEAD');
     if (head !== retained.sha) throw new Error('Build checkout differs from its admission-time source revision');
-    save(join(folder,'candidate.json'), { base: sourceAdmission.resolved_sha, head, source_admission: publicSourceAdmission(sourceAdmission), synthetic: harnessOf(config) === 'mock' });
+    const baseTree = git('rev-parse', `${head}^{tree}`);
+    save(join(folder,'candidate.json'), { base: sourceAdmission.resolved_sha, head, tree: baseTree, source_admission: publicSourceAdmission(sourceAdmission), synthetic: harnessOf(config) === 'mock' });
   }
   if (phase === 'build') {
     const reports = await container('build', brief('Implement the requested bounded change. Save /output/agent-report.md with actual changes and remaining uncertainty.'), config.command, true, true);
@@ -127,10 +133,16 @@ try {
     if (git('diff','--cached','--stat')) git('-c','user.name=Arcitai Factory','-c','user.email=factory@localhost','commit','--no-verify','-m','Factory candidate');
     // Checks must cover the committed tree, not ignored build products supplied by the agent.
     git('clean','-fdx');
-    const meta = { ...metadata(), head: git('rev-parse','HEAD'), source_admission: publicSourceAdmission(sourceAdmission) };
+    const head = git('rev-parse','HEAD');
+    const meta = { ...metadata(), head, tree: git('rev-parse', `${head}^{tree}`),
+      ...(head === metadata().base ? {} : { parent: git('rev-parse', `${head}^`) }),
+      build_run_id: attempt, build_policy_hash: policyHash,
+      source_admission: publicSourceAdmission(sourceAdmission) };
     save(join(folder,'candidate.json'),meta);
     save(join(output,'candidate.json'),meta);
-    writeFileSync(join(output,'change.patch'), git('diff','--binary',meta.base,meta.head) + '\n');
+    const patchText = git('--no-pager', 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', meta.base, meta.head);
+    const patch = patchText ? `${patchText}\n` : '';
+    writeFileSync(join(output,'change.patch'), patch);
     writeFileSync(join(output,'implementation.md'),safeRead(join(reports,'agent-report.md')));
   } else if (phase === 'verify') {
     const meta = candidate();
@@ -138,7 +150,7 @@ try {
     const check = ['sh','-c','mkdir -p /scratch/check && cp -R /workspace/. /scratch/check/ && cd /scratch/check && exec sh -c "$1"','check',config.check];
     await container('verify', '', check);
     candidate();
-    const proof = { head: meta.head, policyHash, command: config.check, passed: true, finishedAt: new Date().toISOString(), synthetic: meta.synthetic };
+    const proof = { run_id: attempt, head: meta.head, tree: meta.tree, policyHash, command: config.check, passed: true, finishedAt: new Date().toISOString(), synthetic: meta.synthetic };
     save(join(folder,'checks.json'),proof); save(join(output,'checks.json'),proof);
   } else if (phase === 'review') {
     const meta = candidate(), checks = json(join(folder,'checks.json'));
@@ -148,16 +160,33 @@ try {
     const review = JSON.parse(safeRead(join(reports,'review.json')));
     if (!['pass','changes','blocked'].includes(review.verdict) || typeof review.summary !== 'string' || !review.summary.trim() || !Array.isArray(review.findings)) throw new Error('Invalid independent review');
     reviewVerdict = review.verdict;
-    save(join(folder,'review.json'), { ...review, head: meta.head, policyHash });
-    save(join(output,'review.json'), { ...review, head: meta.head, policyHash });
+    save(join(folder,'review.json'), { ...review, run_id: attempt, head: meta.head, tree: meta.tree, policyHash });
+    save(join(output,'review.json'), { ...review, run_id: attempt, head: meta.head, tree: meta.tree, policyHash });
     candidate();
     if (review.verdict !== 'pass') throw new Error(`Review requires attention: ${review.summary}`);
   } else if (phase === 'handoff') {
     const meta = candidate(), review = json(join(folder,'review.json')), checks = json(join(folder,'checks.json'));
-    if (review.verdict !== 'pass' || review.head !== meta.head || !checks.passed || checks.head !== meta.head || checks.policyHash!==policyHash || review.policyHash!==policyHash) throw new Error('Review/checks do not cover candidate and current policy');
+    if (review.verdict !== 'pass' || review.head !== meta.head || review.tree !== meta.tree
+      || !checks.passed || checks.head !== meta.head || checks.tree !== meta.tree
+      || checks.policyHash!==policyHash || review.policyHash!==policyHash
+      || meta.build_policy_hash !== policyHash) throw new Error('Build/checks/review do not cover candidate and current policy');
+    const patchText = git('--no-pager', 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', meta.base, meta.head);
+    const patch = patchText ? `${patchText}\n` : '';
+    if (!patch) throw new Error('Candidate has no content changes to accept');
+    const patchHash = digest(patch);
+    const deliveryInput = join(folder, 'delivery-input');
+    mkdirSync(deliveryInput, { recursive: true, mode: 0o700 });
+    const deliveryPatch = join(deliveryInput, 'candidate.patch');
+    if (existsSync(deliveryPatch)) {
+      const stat = lstatSync(deliveryPatch);
+      if (!stat.isFile() || stat.isSymbolicLink() || digest(readFileSync(deliveryPatch)) !== patchHash)
+        throw new Error('A different protected candidate patch already exists');
+    } else writeFileSync(deliveryPatch, patch, { mode: 0o600, flag: 'wx' });
     const sourceSha = meta.source_admission?.resolved_sha || 'Not recorded (legacy/unknown)';
-    writeFileSync(join(output,'handoff.md'), `Ready for manual handoff at ${meta.head}, based on source ${sourceSha}.\nNo PR, merge or deployment performed.\nSee docs/quickstart.md for applying the reviewed change.patch to your own branch.\n`);
-    save(join(folder,'accepted.json'), { head: meta.head, source_admission: meta.source_admission || publicSourceAdmission(null), acceptedAt: new Date().toISOString() });
+    writeFileSync(join(output,'handoff.md'), `Accepted candidate ${meta.head} (tree ${meta.tree}), based on source ${sourceSha}.\nPatch handoff remains available. Optional PR delivery is a separate explicit operator action when configured.\nNo integration, merge, release or deployment performed.\nSee docs/quickstart.md for applying the reviewed change.patch to your own branch.\n`);
+    save(join(folder,'accepted.json'), { base: meta.base, head: meta.head, tree: meta.tree, patch_sha256: patchHash,
+      build_run_id: meta.build_run_id, checks_run_id: checks.run_id, review_run_id: review.run_id,
+      handoff_run_id: attempt, policyHash, source_admission: meta.source_admission || publicSourceAdmission(null), acceptedAt: new Date().toISOString() });
   } else if (phase === 'defence') {
     const reports = await container('defence', brief('Read-only incident triage. Use supplied evidence only; distinguish observations, hypotheses and unknowns. No live production access is configured. A 500 error is not inherently a security incident. Missing or stale telemetry remains unknown. Write /output/incident-report.json with status needs_review or insufficient_evidence, summary, hypotheses array, recommended_actions array, unknowns array and production_action_taken:false. Write /output/agent-report.md. Never claim root cause or recovery without supporting evidence.'), config.command,false,true);
     const report = JSON.parse(safeRead(join(reports,'incident-report.json')));

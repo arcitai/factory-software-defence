@@ -1,0 +1,336 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { execFile, execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { promisify } from 'node:util';
+import { createServer as createNetServer } from 'node:net';
+import { JobQueue } from '../factory/queue.mjs';
+import { DeliveryService } from '../factory/delivery.mjs';
+import { SourceAdmissionStore, publicSourceAdmission, restoreRetainedCheckout } from '../factory/source-admission.mjs';
+import { runCandidateGit } from '../factory/git-environment.mjs';
+import { configAt, digest } from '../factory/lib.mjs';
+import { withRequestedModel } from '../factory/execution-profile.mjs';
+import { VERSION } from '../factory/updates.mjs';
+import { githubDeliveryProvider } from '../factory/providers/github-delivery.mjs';
+import { createController } from '../factory/server.mjs';
+
+const jobID = `job_${'a'.repeat(24)}`;
+const execFileAsync = promisify(execFile);
+const runIDs = { build: `run_${'b'.repeat(24)}`, verify: `run_${'c'.repeat(24)}`, review: `run_${'d'.repeat(24)}`, handoff: `run_${'e'.repeat(24)}` };
+const git = (repo, ...args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).trim();
+const save = (path, value) => { mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 }); writeFileSync(path, JSON.stringify(value), { mode: 0o600 }); };
+
+function testFixture(t, { delivery = true, port = 7331 } = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'sdf-delivery-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const repo = join(root, 'repo'), state = join(root, 'state');
+  mkdirSync(repo); mkdirSync(state, { mode: 0o700 });
+  execFileSync('git', ['-C', repo, 'init', '--quiet', '-b', 'main']);
+  writeFileSync(join(repo, 'source.txt'), 'source\n');
+  git(repo, 'add', 'source.txt');
+  git(repo, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@localhost', 'commit', '--quiet', '-m', 'Source');
+  git(repo, 'remote', 'add', 'origin', 'git@github.com:example/project.git');
+  const config = { version: 1, repo, sourceRef: 'main', harness: 'mock', command: ['mock'], port,
+    timeoutSeconds: 10, memoryMiB: 256, image: 'fixture:1', network: 'none', check: 'node --test', model: null,
+    scope: { project: 'fixture', service: 'app', environment: 'test', owner: 'operator' },
+    ...(delivery ? { delivery: { provider: 'github', repository: 'https://github.com/example/project', target: 'main' } } : {}) };
+  writeFileSync(join(state, 'factory.json'), JSON.stringify(config), { mode: 0o600 });
+  writeFileSync(join(state, 'worker.token'), 'fixture-token', { mode: 0o600 });
+  const sourceAdmission = new SourceAdmissionStore(state, repo, 'main');
+  const admission = sourceAdmission.admit(jobID, undefined);
+  assert.equal(admission.requested_ref, 'main');
+  assert.equal(admission.ref_source, 'configured');
+  assert.equal(admission.source_repository, 'https://github.com/example/project');
+  const base = admission.resolved_sha;
+  const baseTree = git(repo, 'rev-parse', `${base}^{tree}`);
+  const checkout = join(state, 'jobs', jobID, 'checkout');
+  restoreRetainedCheckout(state, jobID, admission, checkout);
+  writeFileSync(join(checkout, 'candidate.txt'), 'accepted content\n');
+  runCandidateGit(checkout, 'add', '-A');
+  runCandidateGit(checkout, '-c', 'user.name=Factory candidate', '-c', 'user.email=factory@localhost', 'commit', '--no-verify', '-m', 'Candidate');
+  const head = git(checkout, 'rev-parse', 'HEAD'), tree = git(checkout, 'rev-parse', 'HEAD^{tree}');
+  const patchText = runCandidateGit(checkout, '--no-pager', 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', base, head);
+  const patch = patchText ? `${patchText}\n` : '';
+  const policyHash = digest(JSON.stringify(withRequestedModel(config, null)));
+  const patchHash = digest(Buffer.from(patch));
+  const candidate = { base, head, tree, parent: git(checkout, 'rev-parse', 'HEAD^'), build_run_id: runIDs.build,
+    build_policy_hash: policyHash, source_admission: publicSourceAdmission(admission), synthetic: true };
+  const checks = { run_id: runIDs.verify, head, tree, policyHash, command: config.check, passed: true, synthetic: true };
+  const review = { run_id: runIDs.review, verdict: 'pass', summary: 'Candidate reviewed.', findings: [], head, tree, policyHash };
+  const accepted = { base, head, tree, patch_sha256: patchHash, build_run_id: runIDs.build, checks_run_id: runIDs.verify,
+    review_run_id: runIDs.review, handoff_run_id: runIDs.handoff, policyHash, source_admission: publicSourceAdmission(admission), acceptedAt: '2026-09-26T12:00:00.000Z' };
+  const folder = join(state, 'jobs', jobID), input = join(folder, 'delivery-input');
+  mkdirSync(input, { mode: 0o700 });
+  writeFileSync(join(input, 'candidate.patch'), patch, { mode: 0o600 });
+  save(join(folder, 'candidate.json'), candidate); save(join(folder, 'checks.json'), checks);
+  save(join(folder, 'review.json'), review); save(join(folder, 'accepted.json'), accepted);
+  const execution = { runtimeVersion: VERSION, policyHash };
+  const runs = [
+    { id: runIDs.build, command: 'build', state: 'succeeded', outcome: 'complete', execution },
+    { id: runIDs.verify, command: 'verify', state: 'succeeded', outcome: 'complete', execution },
+    { id: runIDs.review, command: 'review', state: 'succeeded', outcome: 'complete', review_verdict: 'pass', execution },
+    { id: runIDs.handoff, command: 'handoff', state: 'succeeded', outcome: 'complete', execution },
+  ];
+  const job = { id: jobID, state: 'succeeded', task: { title: 'Delivery fixture', source_url: 'https://github.com/example/project/issues/29' },
+    workflow: { name: 'software', steps: ['build', 'verify', 'review', 'handoff'], current_step: 3 }, repository: 'app',
+    source_admission: admission, runs, created_at: '2026-09-26T11:00:00.000Z' };
+  const sourceAdapter = { admit: () => admission, validate: (id, value) => sourceAdmission.validate(id, value), release: () => {} };
+  const queue = new JobQueue(state, { execute: async () => ({ outcome: 'complete' }), stop: async () => {}, reconcile: async () => {}, sourceAdmission: sourceAdapter });
+  queue.save(job);
+  let queueOpen = true;
+  const closeQueue = async () => { if (queueOpen) { queueOpen = false; await queue.close(); } };
+  t.after(closeQueue);
+  return { root, repo, state, config, base, baseTree, head, tree, patch, policyHash, patchHash, admission, sourceAdmission, sourceAdapter, queue, job, folder, run_id: runIDs.handoff, closeQueue };
+}
+
+function fakeGitHub(f, options = {}) {
+  const state = { targetSha: options.targetSha || f.base, branch: options.branch || null, pull: null, commit: null, checks: { state: 'pending', check_runs: [], commit_statuses: [] },
+    writes: { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 }, loseBranch: options.loseBranch === true,
+    losePull: options.losePull === true, failFindOnce: false };
+  const branchName = `factory/${jobID}-${f.head.slice(0, 12)}`;
+  const provider = {
+    supported: true, id: 'github',
+    inspectRepository: async () => ({ full_name: 'example/project', archived: false, push: true }),
+    readTarget: async () => ({ sha: state.targetSha, ref: 'refs/heads/main' }),
+    readCommit: async (_repository, sha) => sha === f.base
+      ? { sha: f.base, tree: f.baseTree, parents: [] }
+      : state.commit?.sha === sha ? { ...state.commit } : null,
+    createBlob: async (_repository, content) => {
+      state.writes.blobs++;
+      if (state.holdBlob) {
+        state.blobStarted?.();
+        await new Promise(resolve => { state.releaseBlob = resolve; });
+        state.holdBlob = false;
+      }
+      return createHashBlob(content);
+    },
+    createTree: async (_repository, baseTree, entries) => { state.writes.trees++; assert.equal(baseTree, f.baseTree); assert(entries.some(entry => entry.path === 'candidate.txt')); return f.tree; },
+    createCommit: async (_repository, input) => {
+      state.writes.commits++; assert.equal(input.tree, f.tree); assert.deepEqual(input.parents, [f.base]);
+      const sha = commitSha(input); state.commit = { sha, tree: input.tree, parents: input.parents };
+      return sha;
+    },
+    readBranch: async () => state.branch && ({ ...state.branch }),
+    createBranch: async (_repository, branch, sha) => {
+      state.writes.branches++; assert.equal(branch, branchName);
+      if (state.branch) throw Object.assign(new Error('branch exists'), { httpStatus: 422 });
+      state.branch = { sha, node_id: 'branch-node' };
+      if (state.loseBranch) { state.loseBranch = false; throw new Error('response lost'); }
+      return state.branch;
+    },
+    findPulls: async () => {
+      if (state.failFindOnce) { state.failFindOnce = false; throw new Error('read failed after ambiguous creation'); }
+      return state.pull ? [state.pull] : [];
+    },
+    createPull: async (_repository, input) => {
+      state.writes.pulls++;
+      assert.equal(input.head, `example:${branchName}`); assert.equal(input.base, 'main'); assert.equal(input.draft, true);
+      assert.match(input.body, new RegExp(jobID)); assert.match(input.body, /issues\/29/);
+      state.pull = pullRecord(state.commit.sha, f.base, branchName);
+      if (state.losePull) { state.losePull = false; state.failFindOnce = true; throw new Error('response lost'); }
+      return state.pull;
+    },
+    readPull: async () => ({ ...state.pull, base: { ...state.pull.base }, head: { ...state.pull.head } }),
+    readChecks: async () => structuredClone(state.checks),
+  };
+  return { provider, state, get finalSha() { return state.commit?.sha; }, branchName };
+}
+function createHashBlob(content) {
+  return createHash('sha1').update(`blob ${content.length}\0`).update(content).digest('hex');
+}
+function commitSha(input) {
+  const epoch = Math.floor(new Date(input.author.date).getTime() / 1000);
+  const raw = Buffer.from(`tree ${input.tree}\nparent ${input.parents[0]}\nauthor ${input.author.name} <${input.author.email}> ${epoch} +0000\ncommitter ${input.committer.name} <${input.committer.email}> ${epoch} +0000\n\n${input.message}`, 'utf8');
+  return createHash('sha1').update(`commit ${raw.length}\0`).update(raw).digest('hex');
+}
+function pullRecord(sha, base, branch) {
+  return { number: 29, html_url: 'https://github.com/example/project/pull/29', state: 'open', draft: true,
+    base: { ref: 'main', sha: base, repo: { full_name: 'example/project' } },
+    head: { ref: branch, sha, repo: { full_name: 'example/project' } } };
+}
+function service(f, provider) { return new DeliveryService(f.queue, f.state, { config: () => configAt(f.state), sourceAdmission: f.sourceAdapter, provider }); }
+
+test('explicit trusted config publishes one draft PR, records pending checks, reconciles lost responses and survives restart', async t => {
+  const f = testFixture(t), gh = fakeGitHub(f, { loseBranch: true, losePull: true }), manager = service(f, gh.provider);
+  assert.equal(manager.summary(f.queue.get(jobID)).state, 'ready');
+  assert.equal(manager.summary(f.queue.get(jobID)).can_publish, true);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /uncertain/);
+  assert.equal(f.queue.get(jobID).delivery.state, 'uncertain');
+  assert.equal(gh.state.writes.branches, 1); assert.equal(gh.state.writes.pulls, 1);
+  await f.closeQueue();
+  const restartedQueue = new JobQueue(f.state, { execute: async () => ({ outcome: 'complete' }), stop: async () => {}, reconcile: async () => {}, sourceAdmission: f.sourceAdapter });
+  const restarted = new DeliveryService(restartedQueue, f.state, { config: () => configAt(f.state), sourceAdmission: f.sourceAdapter, provider: gh.provider });
+  const receipt = await restarted.publish(jobID, { run_id: f.run_id });
+  assert.equal(receipt.state, 'published');
+  assert.equal(receipt.repository, 'https://github.com/example/project');
+  assert.equal(receipt.target, 'main');
+  assert.equal(receipt.pull_request.head_sha, gh.finalSha);
+  assert.equal(receipt.pull_request.tree, f.tree);
+  assert.equal(receipt.checks.state, 'pending');
+  assert.equal(gh.state.writes.branches, 1, 'the branch response was reconciled without a duplicate ref write');
+  assert.equal(gh.state.writes.pulls, 1, 'the uncertain PR response was reconciled without a duplicate PR');
+  gh.state.checks = { state: 'success', check_runs: [{ name: 'check (22)', status: 'completed', conclusion: 'success' }], commit_statuses: [] };
+  const refreshed = await restarted.publish(jobID, { run_id: f.run_id });
+  assert.equal(refreshed.checks.state, 'success');
+  assert.equal(gh.state.writes.pulls, 1);
+  await restartedQueue.close();
+});
+
+test('patch-only is the default and issue text cannot provide a destination', async t => {
+  const f = testFixture(t, { delivery: false }), gh = fakeGitHub(f), manager = service(f, gh.provider);
+  assert.equal(manager.summary(f.queue.get(jobID)).can_publish, false);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /not configured/);
+  const unknown = testFixture(t), unknownConfigPath = join(unknown.state, 'factory.json');
+  writeFileSync(unknownConfigPath, JSON.stringify({ ...unknown.config, delivery: { provider: 'future-provider' } }), { mode: 0o600 });
+  const unknownManager = service(unknown, fakeGitHub(unknown).provider);
+  assert.equal(unknownManager.summary(unknown.queue.get(jobID)).state, 'patch_only_unsupported_provider');
+  await assert.rejects(unknownManager.publish(jobID, { run_id: unknown.run_id }), /not configured/);
+  const configured = testFixture(t);
+  const provider = fakeGitHub(configured).provider, configuredManager = service(configured, provider);
+  await assert.rejects(configuredManager.publish(jobID, { run_id: configured.run_id, repository: 'https://github.com/attacker/target' }), /operator-configured/);
+  assert.equal(configured.queue.get(jobID).delivery, undefined);
+  const configPath = join(configured.state, 'factory.json');
+  const operatorConfig = JSON.parse(readFileSync(configPath, 'utf8'));
+  operatorConfig.delivery.target = 'dev';
+  writeFileSync(configPath, JSON.stringify(operatorConfig), { mode: 0o600 });
+  assert.equal(configAt(configured.state).sourceRef, 'main');
+  assert.equal(configAt(configured.state).delivery.target, 'dev', 'source ref and PR target remain separate operator settings');
+  operatorConfig.delivery.target = 'feature/from-task-text';
+  writeFileSync(configPath, JSON.stringify(operatorConfig), { mode: 0o600 });
+  assert.throws(() => configAt(configured.state), /target main or dev/);
+});
+
+test('stale evidence, changed source identity and changed remote base block before content writes', async t => {
+  const f = testFixture(t), gh = fakeGitHub(f), manager = service(f, gh.provider);
+  const checkFile = join(f.folder, 'checks.json'), checks = JSON.parse(readFileSync(checkFile, 'utf8'));
+  writeFileSync(checkFile, JSON.stringify({ ...checks, head: '0'.repeat(40) }), { mode: 0o600 });
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /successful checks/);
+  assert.equal(gh.state.writes.blobs, 0);
+  writeFileSync(checkFile, JSON.stringify(checks), { mode: 0o600 });
+  git(f.repo, 'config', 'remote.origin.url', 'git@github.com:example/renamed.git');
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /destination no longer matches/);
+  assert.equal(gh.state.writes.blobs, 0);
+  git(f.repo, 'config', 'remote.origin.url', 'git@github.com:example/project.git');
+  gh.state.targetSha = '9'.repeat(40);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /target moved/);
+  assert.equal(gh.state.writes.blobs, 0);
+});
+
+test('stale policy, approval and protected patch are rejected before publishing', async t => {
+  const f = testFixture(t), gh = fakeGitHub(f), manager = service(f, gh.provider);
+  const configPath = join(f.state, 'factory.json'), config = JSON.parse(readFileSync(configPath, 'utf8'));
+  writeFileSync(configPath, JSON.stringify({ ...config, check: 'changed policy' }), { mode: 0o600 });
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /current Factory policy/);
+  writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 });
+  const acceptedPath = join(f.folder, 'accepted.json'), accepted = JSON.parse(readFileSync(acceptedPath, 'utf8'));
+  writeFileSync(acceptedPath, JSON.stringify({ ...accepted, head: '9'.repeat(40) }), { mode: 0o600 });
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /Approval does not bind/);
+  writeFileSync(acceptedPath, JSON.stringify(accepted), { mode: 0o600 });
+  writeFileSync(join(f.folder, 'delivery-input', 'candidate.patch'), `${f.patch}tampered\n`, { mode: 0o600 });
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /Accepted patch digest/);
+  assert.equal(gh.state.writes.blobs, 0);
+});
+
+test('unrelated branch collisions are preserved and repeated/concurrent actions do not overwrite them', async t => {
+  const f = testFixture(t), branch = `factory/${jobID}-${f.head.slice(0, 12)}`;
+  const gh = fakeGitHub(f, { branch: { sha: '9'.repeat(40), node_id: 'unrelated' } }), manager = service(f, gh.provider);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /unrelated branch/);
+  assert.deepEqual(gh.state.branch, { sha: '9'.repeat(40), node_id: 'unrelated' });
+  assert.equal(gh.state.writes.branches, 0); assert.equal(gh.state.writes.pulls, 0);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /unexpected remote collision/);
+  assert.equal(gh.state.writes.branches, 0);
+  assert.match(branch, /^factory\/job_/);
+});
+
+test('a changed remote branch or PR head is never overwritten or duplicated', async t => {
+  const f = testFixture(t), gh = fakeGitHub(f), manager = service(f, gh.provider);
+  await manager.publish(jobID, { run_id: f.run_id });
+  const originalBranch = gh.state.branch.sha;
+  gh.state.branch.sha = '8'.repeat(40);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /changed unexpectedly/);
+  assert.equal(gh.state.branch.sha, '8'.repeat(40));
+  assert.equal(gh.state.writes.branches, 1);
+  assert.equal(gh.state.writes.pulls, 1);
+  assert.equal(originalBranch, f.queue.get(jobID).delivery.final_sha);
+  const f2 = testFixture(t), gh2 = fakeGitHub(f2), manager2 = service(f2, gh2.provider);
+  await manager2.publish(jobID, { run_id: f2.run_id });
+  gh2.state.pull.head.sha = '7'.repeat(40);
+  await assert.rejects(manager2.publish(jobID, { run_id: f2.run_id }), /changed pull request/);
+  assert.equal(gh2.state.writes.pulls, 1);
+  const f3 = testFixture(t), gh3 = fakeGitHub(f3), manager3 = service(f3, gh3.provider);
+  await manager3.publish(jobID, { run_id: f3.run_id });
+  gh3.state.pull.draft = false;
+  await assert.rejects(manager3.publish(jobID, { run_id: f3.run_id }), /draft state/);
+  assert.equal(gh3.state.pull.draft, false, 'an externally changed PR is preserved and not reopened or rewritten');
+  assert.equal(gh3.state.writes.pulls, 1);
+});
+
+test('concurrent publish requests serialize on the accepted job', async t => {
+  const f = testFixture(t), gh = fakeGitHub(f), manager = service(f, gh.provider);
+  let started;
+  const waitStarted = new Promise(resolve => { started = resolve; });
+  gh.state.holdBlob = true; gh.state.blobStarted = started;
+  const first = manager.publish(jobID, { run_id: f.run_id });
+  await waitStarted;
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /already changing/);
+  gh.state.releaseBlob();
+  assert.equal((await first).state, 'published');
+  assert.equal(gh.state.writes.pulls, 1);
+});
+
+test('CLI and authenticated dashboard action use the same accepted delivery receipt', async t => {
+  const reservation = createNetServer();
+  await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
+  const port = reservation.address().port;
+  await new Promise(resolve => reservation.close(resolve));
+  const f = testFixture(t, { port }), gh = fakeGitHub(f);
+  await f.closeQueue();
+  const controller = createController(f.state, { execute: async () => ({ outcome: 'complete' }), stop: async () => {}, reconcile: async () => {} }, { deliveryProvider: gh.provider });
+  await new Promise(resolve => controller.server.listen(port, '127.0.0.1', resolve));
+  t.after(() => controller.close());
+  const origin = `http://127.0.0.1:${port}`;
+  const status = await (await fetch(`${origin}/api/v1/status`)).json();
+  assert.equal(status.delivery_configuration.mode, 'trusted_pr');
+  assert.equal(status.jobs[0].delivery_status.can_publish, true);
+  const unauthorized = await fetch(`${origin}/api/v1/jobs/${jobID}/publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ run_id: f.run_id }) });
+  assert.equal(unauthorized.status, 403);
+  const { stdout: cli } = await execFileAsync(process.execPath, ['bin/software-defence-factory.mjs', 'publish', jobID, '--state', f.state], {
+    encoding: 'utf8', env: { ...process.env, SDF_AUTO_UPDATE: '0', SDF_BOOTSTRAPPED: '1' },
+  });
+  const cliReceipt = JSON.parse(cli);
+  assert.equal(cliReceipt.state, 'published');
+  assert.equal(cliReceipt.pull_request.url, 'https://github.com/example/project/pull/29');
+  const dashboard = await fetch(`${origin}/api/v1/jobs/${jobID}/publish`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Factory-Session': status.csrf_token }, body: JSON.stringify({ run_id: f.run_id }) });
+  assert.equal(dashboard.status, 200);
+  assert.equal((await dashboard.json()).pull_request.head_sha, gh.finalSha);
+  assert.equal(gh.state.writes.pulls, 1);
+});
+
+test('GitHub adapter keeps unknown and pending PR checks visible without treating them as success', async () => {
+  const responses = [];
+  const adapter = githubDeliveryProvider({ request: async (method, path) => {
+    responses.push({ method, path });
+    if (path.endsWith('/check-runs?per_page=100')) return { total_count: 1, check_runs: [{ name: 'build', status: 'queued', conclusion: null,
+      pull_requests: [{ number: 29 }], html_url: 'https://github.com/example/project/actions/runs/1' }] };
+    return { state: 'pending', statuses: [] };
+  } });
+  const checks = await adapter.readChecks('https://github.com/example/project', 'a'.repeat(40), 29);
+  assert.equal(checks.state, 'pending');
+  assert.equal(checks.check_runs[0].status, 'queued');
+  assert.equal(responses.length, 2);
+
+  const unrelated = githubDeliveryProvider({ request: async (_method, path) => path.endsWith('/check-runs?per_page=100')
+    ? { total_count: 1, check_runs: [{ name: 'push-only', status: 'completed', conclusion: 'success', pull_requests: [{ number: 28 }] }] }
+    : { state: 'success', total_count: 1, statuses: [{ context: 'legacy status', state: 'success' }] } });
+  assert.equal((await unrelated.readChecks('https://github.com/example/project', 'a'.repeat(40), 29)).state, 'unknown',
+    'a successful run for another PR does not qualify as a PR check');
+  const incomplete = githubDeliveryProvider({ request: async (_method, path) => path.endsWith('/check-runs?per_page=100')
+    ? { total_count: 101, check_runs: [{ name: 'build', status: 'completed', conclusion: 'success', pull_requests: [{ number: 29 }] }] }
+    : { state: 'success', statuses: [] } });
+  assert.equal((await incomplete.readChecks('https://github.com/example/project', 'a'.repeat(40), 29)).state, 'unknown',
+    'truncated check results are not presented as complete success');
+});

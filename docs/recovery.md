@@ -126,3 +126,34 @@ Use `issue submissions` and `issue recover --key REQUEST_ID` against the same
 controller state. Recovery reads the original provider using the original
 identity; it does not publish again. Do not use a new request key to retry an
 uncertain write. See [provider ownership and recovery limits](integrations.md).
+
+## Trusted PR delivery
+
+Delivery is available only for an accepted software job with current source,
+candidate, check, independent review and approval records. The private operator
+configuration pins the GitHub repository and target; task text and worker
+reports cannot provide either. The controller stores the intent and remote
+branch/PR identifiers in the job row before it writes. Status and task details
+show the receipt separately from integration or deployment.
+
+Inspect the same installation before recovery:
+
+```sh
+software-defence-factory status --state /private/state/project
+software-defence-factory publish JOB_ID --state /private/state/project
+```
+
+After a lost response or controller restart, repeat `publish`. The controller
+reads the exact configured target, generated branch and PR before attempting a
+missing stage. A matching branch/PR is reused; a different remote head, target,
+repository or collision is preserved and blocks recovery. It never force-pushes,
+rebases, creates a second PR to avoid an uncertain response, or merges. Restore
+the original trusted repository/target configuration if it changed; do not
+redirect a saved intent.
+
+The receipt reads the exact PR head's check runs and commit statuses. `pending`,
+`unknown`, failed and unavailable remain distinct from success. A target/base,
+candidate or policy change requires fresh applicable checks, review and
+approval; do not edit SQLite or acceptance evidence to bypass the guard. A stale
+target after branch creation leaves that unique branch for inspection and does
+not open a PR. A PR does not imply integration or deployment.

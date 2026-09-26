@@ -154,6 +154,7 @@ export function TaskDetail({
                     {result.error}
                   </p>
                 )}
+                {job.delivery_status && <DeliveryDetails delivery={job.delivery_status} />}
                 {result && job.task && (
                   <Artifacts
                     key={result.id}
@@ -300,6 +301,7 @@ export function TaskDetail({
       <aside className="task-metadata" aria-label="Issue details">
         <h3><FileText size={15} />Metadata</h3>
         <dl>
+          <div><dt>Factory job</dt><dd><code className="source-revision-sha">{job.id}</code></dd></div>
           <div><dt>Status</dt><dd><State value={job.state} /></dd></div>
           <div><dt>Project</dt><dd>{identity?.name || job.repository}</dd></div>
           <div><dt>Workflow</dt><dd>{friendlyName(job.workflow?.name || job.command)}</dd></div>
@@ -407,6 +409,7 @@ function TaskActions({ job, result, onAction }) {
   const retry = hasRetainedSource && ["failed", "interrupted", "cancelled"].includes(job.state);
   const legacyRecovery = !hasRetainedSource && ["blocked", "failed", "interrupted", "cancelled"].includes(job.state);
   const canRevise = job.can_request_changes ?? (job.state === "awaiting_approval" && job.workflow?.name === "software");
+  const delivery = job.delivery_status;
   return (
     <div className="space-y-3">
       {(job.state === "awaiting_approval" || canRevise) && (
@@ -466,6 +469,15 @@ function TaskActions({ job, result, onAction }) {
           )}
         </div>
       )}
+      {delivery?.can_publish && (
+        <section className="space-y-2 rounded-lg border border-border p-3" aria-label="Trusted PR delivery action">
+          <p className="text-sm font-medium">Optional PR delivery</p>
+          <p className="text-xs text-muted-foreground">{delivery.repository} · target {delivery.target}. Publishing uses the accepted patch and current evidence. Merge, integration and deployment remain separate.</p>
+          <Button variant={delivery.state === "published" ? "outline" : "default"} disabled={busy} onClick={() => action("publish")}>
+            {busy ? "Reconciling…" : delivery.state === "published" ? "Refresh PR readback and checks" : delivery.state === "uncertain" || delivery.state === "publishing" ? "Reconcile PR delivery" : "Publish accepted candidate as draft PR"}
+          </Button>
+        </section>
+      )}
       {job.state === "blocked" && hasRetainedSource && (
         <p className="text-sm text-muted-foreground">
           Resolve the blocker, then cancel this work to reconcile the worker before retrying.
@@ -509,6 +521,37 @@ function TaskActions({ job, result, onAction }) {
         </Button>
       )}
     </div>
+  );
+}
+
+function DeliveryDetails({ delivery }) {
+  const pull = delivery.pull_request;
+  const checks = delivery.checks;
+  const status = value => ({success:"Passed",failure:"Failed",pending:"Pending",unknown:"Unknown"}[value] || value);
+  return (
+    <section className="space-y-2 rounded-lg border border-border bg-muted/20 p-3" aria-label="Delivery status">
+      <h3 className="text-sm font-semibold">Delivery</h3>
+      {delivery.state === "patch_only" || delivery.state === "patch_only_unsupported_provider"
+        ? <p className="text-sm text-muted-foreground">Patch-only handoff · no trusted PR destination is enabled.</p>
+        : <p className="text-sm text-muted-foreground">{delivery.state === "published" ? "PR created or reconciled" : delivery.state === "ready" ? "Ready for explicit draft PR delivery" : delivery.state.replaceAll("_", " ")} · {delivery.repository} · target {delivery.target}</p>}
+      {delivery.error && <p role="alert" className="text-sm text-danger">{delivery.error}</p>}
+      {pull && <dl className="grid gap-1 text-xs sm:grid-cols-2">
+        <div><dt className="text-muted-foreground">Pull request</dt><dd><a className="underline" href={pull.url} target="_blank" rel="noreferrer">#{pull.number} · {pull.state}{pull.draft ? " · draft" : ""}</a></dd></div>
+        <div><dt className="text-muted-foreground">Branch → target</dt><dd className="break-all">{pull.branch} → {pull.target}</dd></div>
+        <div><dt className="text-muted-foreground">Accepted base</dt><dd className="break-all font-mono">{pull.base_sha}</dd></div>
+        <div><dt className="text-muted-foreground">PR head / tree</dt><dd className="break-all font-mono">{pull.head_sha} / {pull.tree}</dd></div>
+        {delivery.candidate_sha && <div><dt className="text-muted-foreground">Accepted candidate</dt><dd className="break-all font-mono">{delivery.candidate_sha}</dd></div>}
+        <div><dt className="text-muted-foreground">Triggered PR checks</dt><dd>{status(checks?.state || "unknown")}</dd></div>
+      </dl>}
+      {checks && <ul className="space-y-1 text-xs" aria-label="Actual PR check results">
+        {[...(checks.check_runs || []), ...(checks.commit_statuses || [])].map((item, index) => <li key={`${item.kind || item.name}-${index}`} className="flex flex-wrap justify-between gap-2">
+          {item.url && /^https:\/\//.test(item.url) ? <a className="underline" href={item.url} target="_blank" rel="noreferrer">{item.name}</a> : <span>{item.name}</span>}
+          <span>{item.status === "completed" ? status(item.conclusion || "unknown") : status(item.status || "unknown")}</span>
+        </li>)}
+        {checks.state === "unknown" && <li className="text-muted-foreground">No successful PR check result is recorded.</li>}
+      </ul>}
+      <p className="text-xs text-muted-foreground">Delivery records a PR only. Integration and deployment are separate.</p>
+    </section>
   );
 }
 

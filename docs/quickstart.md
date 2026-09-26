@@ -28,7 +28,7 @@ software-defence-factory install --state /private/state/my-app
 software-defence-factory doctor --state /private/state/my-app
 ```
 
-`init --source-ref` selects the configured default ref (`HEAD` when omitted). Each job resolves that ref, or an explicit `--source-ref` on `run`/`issue start`, in the configured repository and durably retains its commit before acknowledging admission. The CLI and dashboard show the requested ref and resolved SHA. Task text and reference links do not select a repository or ref.
+`init --source-ref` selects the configured default ref (`HEAD` when omitted). Each job resolves that ref, or an explicit `--source-ref` on `run`/`issue start`, in the configured repository and durably retains its commit before acknowledging admission. It records the canonical GitHub origin identity when available; the CLI and dashboard show the requested ref and resolved SHA. Task text and reference links do not select a repository, source ref or PR target.
 
 Verification commands receive `FACTORY_BASE_REVISION`, the resolved admission commit recorded as the candidate base. Diff-based checks should compare against this revision; the isolated checkout has no origin remote. The value comes from protected controller metadata, not the task text.
 
@@ -50,6 +50,43 @@ A task should describe the accepted outcome, allowed scope and observable checks
 Inspect the task's Result, Files and History tabs. Task details show the requested source ref, resolved admission SHA and previous source commits when a new base was selected. Build evidence includes candidate.json, change.patch and the implementation report; handoff records its source SHA. Checks and review identify their exact candidate commit and policy hash. Approval revalidates both before writing accepted.json. Request changes preserves the recorded source by default and starts fresh checks/review; an explicit new source ref is retained as a deliberate base change.
 
 The source application is not changed and no branch, PR, merge or deployment is published automatically. A reviewed change.patch can be checked and applied with `git apply --check` and `git apply` on an appropriate branch at its recorded base revision; then follow the application's normal integrated checks and delivery policy.
+
+### Optional trusted PR delivery
+
+Patch-only remains the default. To enable the first delivery provider, select a
+canonical GitHub origin and an explicit target while initializing the private
+installation:
+
+```sh
+software-defence-factory init --repo /absolute/path/to/app --harness codex \
+  --check "npm ci && npm test" --source-ref main \
+  --delivery-provider github \
+  --delivery-repository https://github.com/OWNER/REPO \
+  --delivery-target main --state /private/state/my-app
+```
+
+Use `dev` only when it is the intended target. The source ref (`main` above)
+and PR target are separate settings. The configured GitHub repository must
+match the canonical origin captured at admission; a later repository rename or
+remote change blocks delivery. Configure this before admitting work because a
+configuration change invalidates earlier check/review/approval policy evidence.
+Unknown providers and installations without `delivery` configuration keep the
+patch-only flow.
+
+After the ordinary check, independent review and operator approval complete,
+use **Publish accepted candidate as draft PR** in task details or run:
+
+```sh
+software-defence-factory publish JOB_ID --state /private/state/my-app
+```
+
+The controller uses its existing `gh` identity. GitHub credentials are never
+copied to `model.env` or mounted into jobs. The intent, generated branch, PR
+identity, actual base/head/tree and triggered PR check results appear in the
+same job. Unknown and pending checks remain visible and are not reported as
+success. Repeating `publish` refreshes/reconciles the same branch and PR; it
+does not create a second PR or overwrite a changed branch. Publication does
+not merge, integrate, release or deploy. See [delivery recovery](recovery.md#trusted-pr-delivery).
 
 ## Remote access and operation
 

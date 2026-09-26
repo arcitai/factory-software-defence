@@ -47,6 +47,21 @@ export function configAt(state) {
   if (typeof config.image !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_./:@-]*$/.test(config.image)) throw new Error('Invalid container image');
   if (typeof config.repo !== 'string' || !isAbsolute(config.repo) || [config.repo,state,ROOT].some(p=>/[,\n\r]/.test(p))) throw new Error('Expected absolute paths without commas or line breaks');
   if (config.sourceRef !== undefined && (typeof config.sourceRef !== 'string' || !config.sourceRef || Buffer.byteLength(config.sourceRef) > 256 || /[\u0000-\u001f\u007f]/.test(config.sourceRef))) throw new Error('sourceRef must be a Git ref under 256 bytes');
+  if (config.delivery !== undefined) {
+    const delivery = config.delivery;
+    if (!delivery || typeof delivery !== 'object' || Array.isArray(delivery)
+      || typeof delivery.provider !== 'string' || !/^[a-z][a-z0-9-]{0,31}$/.test(delivery.provider))
+      throw new Error('delivery must name a supported provider');
+    // Unknown provider names are retained as patch-only configuration. They do
+    // not select an adapter or enable an external write.
+    if (delivery.provider === 'github') {
+      if (typeof delivery.repository !== 'string'
+        || !/^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+$/.test(delivery.repository)
+        || delivery.repository.endsWith('.git')
+        || !['main', 'dev'].includes(delivery.target))
+        throw new Error('GitHub delivery requires a canonical repository URL and target main or dev');
+    }
+  }
   if (typeof config.check !== 'string' || !config.scope || !['project','service','environment','owner'].every(k=>typeof config.scope[k]==='string'&&config.scope[k].trim())) throw new Error('Missing check or installation scope');
   return config;
 }

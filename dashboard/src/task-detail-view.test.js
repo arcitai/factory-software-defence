@@ -77,6 +77,26 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   assert.equal(captured[1],'approve','approval is the explicit action that starts handoff');
   assert(![...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Open PR'));
 
+  job.state='succeeded';runs[2].state='succeeded';runs[2].outcome='complete';job.can_request_changes=false;
+  job.delivery_status={state:'patch_only',repository:null,target:null,can_publish:false,integration:'separate',deployment:'separate'};
+  await render();
+  assert.match(document.body.textContent,/Patch-only handoff/);
+  assert(!button('Publish accepted candidate as draft PR'),'patch-only mode has no publish action');
+  job.delivery_status={state:'ready',repository:'https://github.com/example/project',target:'dev',can_publish:true,integration:'separate',deployment:'separate'};
+  await render();
+  assert.match(document.body.textContent,/Ready for explicit draft PR delivery/);
+  assert.match(document.body.textContent,/target dev/);
+  await act(()=>button('Publish accepted candidate as draft PR').click());
+  assert.equal(captured[1],'publish','publishing is a deliberate accepted-result action');
+  job.delivery_status={state:'published',repository:'https://github.com/example/project',target:'dev',can_publish:true,
+    pull_request:{number:29,url:'https://github.com/example/project/pull/29',state:'open',draft:true,branch:'factory/job_fixture',target:'dev',base_sha:'a'.repeat(40),head_sha:'c'.repeat(40),tree:'d'.repeat(40)},
+    checks:{state:'pending',check_runs:[{name:'build',status:'queued'}],commit_statuses:[]},integration:'separate',deployment:'separate'};
+  await render();
+  assert(document.querySelector('a[href="https://github.com/example/project/pull/29"]'));
+  assert.match(document.body.textContent,/Pending/);
+  assert(button('Refresh PR readback and checks'));
+  assert.match(document.body.textContent,/Integration and deployment are separate/);
+
   job.state='failed';delete job.source_admission;job.can_request_changes=false;await render();
   assert.match(document.body.textContent,/legacy job has no admission-time source record and cannot be retried or revised/);
   assert(![...document.querySelectorAll('button')].some(b=>b.textContent.trim().startsWith('Retry ')));

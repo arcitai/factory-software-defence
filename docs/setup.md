@@ -160,6 +160,49 @@ Checkpoint: record the exact source revision, image ID, check command, resource
 limits, inference connectivity and CI result. Keep product controllers stopped
 until their tasks are explicitly ready to run.
 
+### Optional trusted PR delivery
+
+Patch-only handoff is the default. When the operator intends to enable GitHub
+delivery for this installation, configure the exact canonical repository and
+target while initializing it, for example:
+
+```sh
+software-defence-factory init --repo /absolute/path/to/app --harness pi \
+  --check "npm ci && npm test" --source-ref main \
+  --delivery-provider github \
+  --delivery-repository https://github.com/OWNER/REPO \
+  --delivery-target main --state /private/state/my-app
+```
+
+The admitted source ref and PR target are independent. Only `main` and `dev`
+are supported target choices in this release. The destination must match the
+canonical origin retained at admission. A changed/renamed origin, moved target
+base or changed Factory policy blocks delivery until fresh applicable evidence
+exists. Configure this before admitting work. Unknown providers remain
+patch-only.
+
+The operator's authenticated `gh` identity stays on the controller. Keep GitHub
+credentials out of `model.env`, project files and worker containers. Do not add
+deploy credentials or a Docker socket for PR delivery. Use only the existing
+authorized repository and the repository access already approved for the
+operator; do not create a new fixture repository or request broader access.
+
+The release lead owns the live provider/browser qualification after installing
+the published candidate separately. Use a separate private state against the
+already authorized Factory repository and `main`; ordinary issue admission,
+checks, independent review and approval must produce the disposable candidate.
+Give its issue a title beginning **[Factory PR handoff proof]**, then use the
+normal **Publish accepted candidate as draft PR** action. Record the job,
+candidate SHA/tree, generated unique branch, exact draft PR, base/head/tree and
+triggered check states. Restart the installed controller and repeat
+`publish JOB_ID`; verify the same branch and PR head are read back and no second
+PR appears. Leave pending/unknown checks labelled as such. After inspection,
+close the proof PR without merging its fixture change. Do not publish a worker
+candidate from inside its sandbox.
+
+Mocks exercise controller and receipt behavior only. They are not live GitHub
+publication or browser proof; record each separately in [qualification](proof.md).
+
 ## 5. Enable only the intended background services
 
 A newly initialized state has no jobs. Before adopting older state, establish
@@ -242,6 +285,8 @@ Copy this private completion record into the installation's handoff:
 | History and intentionally stopped products preserved | Pending | |
 | Backups, logs, stop/update/rollback owner and guide | Pending | |
 | First bounded application task | Not started | Separate task authority and proof |
+| Optional trusted PR provider and target explicitly configured, or patch-only retained | Pending | |
+| Release lead live disposable Factory draft PR/readback/restart/close proof | Not started | Separate from mocked provider tests |
 
 Use Pass, Fail or Not applicable with a reason; never infer success from an
 installed file. Keep host identities, credentials, raw logs and customer details

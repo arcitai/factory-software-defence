@@ -15,6 +15,8 @@ import { VERSION } from './updates.mjs';
 import { readProjectLinks } from './project-links.mjs';
 import { attemptPresentation } from './execution-profile.mjs';
 import { SourceAdmissionStore, publicSourceAdmission } from './source-admission.mjs';
+import { deliveryProvider, deliveryProviderInfo } from './delivery-provider.mjs';
+import { DeliveryService } from './delivery.mjs';
 
 function equal(a, b) { return typeof a === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b)); }
 async function body(request) {
@@ -38,6 +40,8 @@ export function createController(state, adapter = executors(state), integrations
   const queue = new JobQueue(state, { ...adapter, sourceAdmission });
   const provider = integrations.issueProvider || issueProvider(config.repo);
   const submissions = new IssueSubmissions(queue, provider);
+  const deliveryAdapter = deliveryProvider(config, integrations);
+  const delivery = new DeliveryService(queue, state, { config: () => configAt(state), sourceAdmission, provider: deliveryAdapter });
   const projectLinks = readProjectLinks(config.repo);
   const definitions = factoryDefinition(config), host = machineInfo();
   const server = http.createServer(async (request, response) => {
@@ -53,11 +57,13 @@ export function createController(state, adapter = executors(state), integrations
       const authenticated = equal(request.headers.authorization, `Bearer ${token}`) || equal(request.headers['x-factory-session'], csrf);
       if (request.method === 'GET' && url.pathname === '/api/v1/status') {
         const jobs = queue.all().map(job => ({ ...job, source_admission: publicSourceAdmission(job.source_admission),
-          source_history: (job.source_history || []).map(publicSourceAdmission), can_request_changes: queue.canRequestChanges(job), runs: job.runs.map(attempt => attemptPresentation({ ...attempt,
+          source_history: (job.source_history || []).map(publicSourceAdmission), can_request_changes: queue.canRequestChanges(job),
+          delivery_status: delivery.summary(job), runs: job.runs.map(attempt => attemptPresentation({ ...attempt,
           outcome: attempt.outcome || (attempt.state === 'succeeded' ? 'complete' : undefined) }, adapter.usage?.(job, attempt))) }));
         return send(200, { version: 1, runtime_version: VERSION, maintenance: queue.maintenance, workflows: Object.keys(definitions.workflows), commands: [], triggers: [], jobs, csrf_token: csrf,
           infrastructure: { host, controller: { connected: !queue.closing }, workers: [{ id: 'local-executor', name: 'Local worker', host: host.hostname, connected: !queue.closing }] },
           automations: [], automation_control: definitions.automations, issue_provider: providerInfo(provider),
+          delivery_configuration: deliveryProviderInfo(configAt(state), deliveryAdapter),
           workers: [{ name: 'Local worker', machine: host, instance_id: 'local-executor', repositories: ['app'], connected: !queue.closing, last_seen_at: new Date().toISOString() }], // v1 compatibility view
           repositories: ['app'], repo: config.repo, project_links: projectLinks, source_ref_default: config.sourceRef || 'HEAD', harness: harnessOf(config), agent: harnessOf(config) });
       }
@@ -118,8 +124,10 @@ export function createController(state, adapter = executors(state), integrations
           const created = queue.submit(input);
           return send(201, { id: created.id, source_admission: publicSourceAdmission(created.source_admission) });
         }
-        const action = url.pathname.match(/^\/api\/v1\/jobs\/(job_[a-f0-9]+)\/(approve|cancel|retry|request_changes)$/);
-        if (action) return send(200, await queue.action(action[1], action[2], input));
+        const action = url.pathname.match(/^\/api\/v1\/jobs\/(job_[a-f0-9]+)\/(approve|cancel|retry|request_changes|publish)$/);
+        if (action) return send(200, action[2] === 'publish'
+          ? await delivery.publish(action[1], input)
+          : await queue.action(action[1], action[2], input));
       }
       const removal = url.pathname.match(/^\/api\/v1\/jobs\/(job_[a-f0-9]+)$/);
       if (request.method === 'DELETE' && removal) {
