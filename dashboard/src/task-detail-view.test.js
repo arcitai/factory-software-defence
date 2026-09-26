@@ -89,14 +89,22 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   assert.match(document.body.textContent,/target dev/);
   await click(button('Publish accepted candidate as draft PR'));
   assert.equal(captured[1],'publish','publishing is a deliberate accepted-result action');
-  job.delivery_status={state:'published',repository:'https://github.com/example/project',target:'dev',can_publish:true,
-    pull_request:{number:29,url:'https://github.com/example/project/pull/29',state:'open',draft:true,branch:'factory/job_fixture',target:'dev',base_sha:'a'.repeat(40),head_sha:'c'.repeat(40),tree:'d'.repeat(40)},
+  job.delivery_status={state:'published',repository:'https://github.com/example/project',target:'dev',can_publish:true,accepted_base_sha:'e'.repeat(40),
+    pull_request:{number:29,url:'https://github.com/example/project/pull/29',state:'open',draft:true,merged:false,branch:'factory/job_fixture',target:'dev',base_sha:'a'.repeat(40),head_sha:'c'.repeat(40),tree:'d'.repeat(40)},
     checks:{state:'pending',check_runs:[{name:'build',status:'queued'}],commit_statuses:[]},integration:'separate',deployment:'separate'};
   await render();
   assert(document.querySelector('a[href="https://github.com/example/project/pull/29"]'));
+  assert.match(document.body.textContent,/#29 · open · draft/);
+  assert.match(document.body.textContent,/Accepted basee{40}/);
+  assert.match(document.body.textContent,/PR basea{40}/);
   assert.match(document.body.textContent,/Pending/);
   assert(button('Refresh PR readback and checks'));
   assert.match(document.body.textContent,/Integration and deployment are separate/);
+  job.delivery_status.pull_request.state='closed';
+  job.delivery_status.pull_request.draft=false;
+  job.delivery_status.pull_request.merged=true;
+  await render();
+  assert.match(document.body.textContent,/#29 · closed · merged/);
   job.delivery_status.checks={state:'success',check_runs:[
     {name:'Executed check',kind:'check_run',status:'completed',conclusion:'success'},
     {name:'Skipped publish job',kind:'check_run',status:'completed',conclusion:'skipped'},

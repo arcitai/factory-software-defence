@@ -172,7 +172,7 @@ function remotePullReceipt(pull, repository, target, branch) {
     || pull.html_url !== `https://github.com/${pull.base.repo.full_name}/pull/${pull.number}`) return null;
   return {
     id: pull.id || null, node_id: pull.node_id || null, number: pull.number, url: pull.html_url,
-    state: typeof pull.state === 'string' ? pull.state : 'unknown', draft: pull.draft === true,
+    state: typeof pull.state === 'string' ? pull.state : 'unknown', draft: pull.draft === true, merged: pull.merged === true,
     repository: pull.base.repo.full_name, branch: pull.head.ref, target: pull.base.ref,
     base_sha: SHA1.test(pull.base.sha || '') ? pull.base.sha : null,
     head_sha: SHA1.test(pull.head.sha || '') ? pull.head.sha : null, tree: null,
@@ -261,6 +261,7 @@ export class DeliveryService {
       source_ref: job.delivery?.source_ref || null,
       source_issue: job.delivery?.issue || null,
       branch: job.delivery?.branch || null,
+      accepted_base_sha: job.delivery?.base || null,
       pull_request: job.delivery?.pull_request || null,
       checks: job.delivery?.checks || null,
       error: job.delivery && !savedDestinationMatches
@@ -424,66 +425,113 @@ export class DeliveryService {
 
   async refreshSavedPull(job, record) {
     const priorState = record.state;
+    const previouslyPublished = priorState === 'published';
     const { repository, target, branch } = record;
     const receipt = record.pull_request;
     try {
       if (!Number.isSafeInteger(receipt?.number) || receipt.number < 1)
         throw new QueueError('Saved delivery has no PR identity to refresh.');
+      if (!sameRepository(receipt.repository, repository.slice('https://github.com/'.length))
+        || receipt.target !== target || receipt.branch !== branch
+        || receipt.url !== `https://github.com/${receipt.repository}/pull/${receipt.number}`)
+        throw new QueueError('Saved pull request identity differs from its original repository, target, branch or URL.');
       const repoInfo = await this.provider.inspectRepository(repository);
       if (!sameRepository(repoInfo.full_name, repository.slice('https://github.com/'.length)))
         throw new QueueError('Configured GitHub identity cannot read the exact destination repository.');
-      const branchNow = await this.provider.readBranch(repository, branch);
-      if (!branchNow) throw new QueueError('Saved delivery branch is missing; readback will not recreate it.');
-      if (branchNow.sha !== record.final_sha)
-        throw new QueueError('The delivery branch changed unexpectedly; it was preserved and will not be overwritten.');
-      const pulls = await this.provider.findPulls(repository, branch, target);
-      if (!pulls.length) throw new QueueError('Saved pull request is missing; readback will not create another PR.');
-      if (pulls.length !== 1 || pulls[0]?.number !== receipt.number)
-        throw new QueueError('The saved PR no longer uniquely matches its branch and target.');
+      if (!previouslyPublished) {
+        const branchNow = await this.provider.readBranch(repository, branch);
+        if (!branchNow) throw new QueueError('Saved delivery branch is missing; readback will not recreate it.');
+        if (branchNow.sha !== record.final_sha)
+          throw new QueueError('The delivery branch changed unexpectedly; it was preserved and will not be overwritten.');
+        const pulls = await this.provider.findPulls(repository, branch, target);
+        if (!pulls.length) throw new QueueError('Saved pull request is missing; readback will not create another PR.');
+        if (pulls.length !== 1 || pulls[0]?.number !== receipt.number)
+          throw new QueueError('The saved PR no longer uniquely matches its branch and target.');
+      }
       const pull = await this.provider.readPull(repository, receipt.number);
       const ownerName = repository.slice('https://github.com/'.length);
-      if (pull?.number !== receipt.number || pull.state !== 'open' || pull.draft !== true
+      if (pull?.number !== receipt.number || (receipt.id != null && pull.id !== receipt.id)
+        || (receipt.node_id != null && pull.node_id !== receipt.node_id)
         || !sameRepository(pull.base?.repo?.full_name, ownerName) || !sameRepository(pull.head?.repo?.full_name, ownerName)
         || pull.base?.ref !== target || pull.head?.ref !== branch || pull.head?.sha !== record.final_sha
+        || (receipt.head_sha != null && receipt.head_sha !== record.final_sha)
+        || (receipt.tree != null && receipt.tree !== record.tree)
         || pull.html_url !== `https://github.com/${pull.base.repo.full_name}/pull/${pull.number}`
-        || !SHA1.test(pull.base?.sha || ''))
-        throw new QueueError('A changed pull request differs from the saved repository, target, draft state or candidate; it was preserved.');
+        || !SHA1.test(pull.base?.sha || '')
+        || !['open', 'closed'].includes(pull.state)
+        || (pull.state === 'open' && pull.merged === true)
+        || (pull.merged === true && pull.state !== 'closed'))
+        throw new QueueError('A changed pull request differs from the saved repository, target, branch or accepted candidate; it was preserved.');
 
-      const targetBefore = await this.provider.readTarget(repository, target);
-      if (targetBefore.sha !== pull.base.sha)
-        throw new QueueError('PR target changed while readback was starting; retry the read-only refresh.');
+      if (!previouslyPublished) {
+        if (pull.state !== 'open' || pull.draft !== true || pull.merged === true)
+          throw new QueueError('First publication requires the exact pull request to remain open and draft; it was preserved.');
+        const targetBefore = await this.provider.readTarget(repository, target);
+        if (targetBefore.sha !== pull.base.sha)
+          throw new QueueError('PR target changed while first-publication readback was starting; retry the read-only refresh.');
+      } else if (pull.state === 'open') {
+        const branchNow = await this.provider.readBranch(repository, branch);
+        if (!branchNow || branchNow.sha !== record.final_sha)
+          throw new QueueError('The open PR branch changed unexpectedly; its saved publication was preserved.');
+      }
       const finalCommit = await this.provider.readCommit(repository, record.final_sha);
       if (!finalCommit || finalCommit.sha !== record.final_sha || finalCommit.tree !== record.tree
         || finalCommit.parents.length !== 1 || finalCommit.parents[0] !== record.base)
         throw new QueueError('PR head no longer reads back as the accepted candidate commit and tree.');
 
+      if (previouslyPublished) {
+        let accepted, candidate;
+        try {
+          const folder = join(this.state, 'jobs', job.id);
+          accepted = readPrivateJson(join(folder, 'accepted.json'));
+          candidate = readPrivateJson(join(folder, 'candidate.json'));
+        } catch {
+          throw new QueueError('Original accepted evidence is missing or unsafe; the saved publication was preserved.');
+        }
+        if (accepted.base !== record.base || accepted.head !== record.candidate || accepted.tree !== record.tree
+          || accepted.patch_sha256 !== record.patch_sha256 || accepted.policyHash !== record.policyHash
+          || candidate.base !== accepted.base || candidate.head !== accepted.head || candidate.tree !== accepted.tree
+          || candidate.parent !== accepted.base || candidate.build_policy_hash !== accepted.policyHash)
+          throw new QueueError('Saved publication no longer matches its immutable accepted candidate, tree or parent.');
+      }
+
       const checks = await this.provider.readChecks(repository, record.final_sha, receipt.number);
       const afterChecks = await this.provider.readPull(repository, receipt.number);
-      const targetAfter = await this.provider.readTarget(repository, target);
-      if (afterChecks?.number !== receipt.number || afterChecks.state !== 'open' || afterChecks.draft !== true
+      if (afterChecks?.number !== receipt.number || (receipt.id != null && afterChecks.id !== receipt.id)
+        || (receipt.node_id != null && afterChecks.node_id !== receipt.node_id)
         || !sameRepository(afterChecks.base?.repo?.full_name, ownerName) || !sameRepository(afterChecks.head?.repo?.full_name, ownerName)
-        || afterChecks.base.ref !== target || afterChecks.base.sha !== pull.base.sha
+        || afterChecks.base.ref !== target || !SHA1.test(afterChecks.base.sha || '')
         || afterChecks.head.ref !== branch || afterChecks.head.sha !== record.final_sha
         || afterChecks.html_url !== `https://github.com/${afterChecks.base.repo.full_name}/pull/${afterChecks.number}`
-        || targetAfter.sha !== afterChecks.base.sha)
-        throw new QueueError('PR target or head changed while its checks were being refreshed.');
+        || !['open', 'closed'].includes(afterChecks.state)
+        || (afterChecks.state === 'open' && afterChecks.merged === true)
+        || (afterChecks.merged === true && afterChecks.state !== 'closed'))
+        throw new QueueError('PR repository, target, branch or accepted head changed while its checks were being refreshed.');
+      if (!previouslyPublished && (afterChecks.state !== 'open' || afterChecks.draft !== true || afterChecks.merged === true))
+        throw new QueueError('First publication changed from an open draft while its checks were being refreshed.');
+      if (!previouslyPublished) {
+        const targetAfter = await this.provider.readTarget(repository, target);
+        if (targetAfter.sha !== afterChecks.base.sha)
+          throw new QueueError('PR target or head changed while first-publication checks were being refreshed.');
+      }
 
       const updatedReceipt = {
         id: afterChecks.id || null, node_id: afterChecks.node_id || null,
         number: afterChecks.number, url: afterChecks.html_url, state: afterChecks.state, draft: afterChecks.draft === true,
+        merged: afterChecks.merged === true,
         repository: afterChecks.base.repo.full_name, branch: afterChecks.head.ref, target: afterChecks.base.ref,
         base_sha: afterChecks.base.sha, head_sha: afterChecks.head.sha, tree: finalCommit.tree,
       };
       const baseAdvanced = afterChecks.base.sha !== record.base;
-      const state = baseAdvanced && priorState !== 'published' ? 'conflict' : 'published';
+      const state = baseAdvanced && !previouslyPublished ? 'conflict' : 'published';
       const error = baseAdvanced
-        ? 'The PR base advanced from the accepted base. Current PR and check readback reflects that base; fresh applicable checks and review are required before accepting a changed candidate.'
+        ? 'The PR base differs from the immutable accepted base. This readback preserves the original acceptance and does not accept a changed candidate.'
         : null;
       this.persist(job, record, { state, stage: 'readback_complete', pull_request: updatedReceipt, checks, error });
       return this.summary(job);
     } catch (error) {
       const message = error instanceof QueueError ? error.message : 'GitHub PR readback is uncertain; the saved delivery remains visible.';
-      const state = priorState === 'published' ? 'published'
+      const state = previouslyPublished ? (error instanceof QueueError ? 'conflict' : 'published')
         : Number.isSafeInteger(record.pull_request?.number) ? 'conflict'
           : priorState === 'blocked' ? 'blocked' : 'uncertain';
       this.persist(job, record, { state, error: message });

@@ -568,9 +568,10 @@ function DeliveryDetails({ delivery }) {
         {delivery.source_ref && <div><dt className="text-muted-foreground">Source ref at admission</dt><dd className="break-all font-mono">{delivery.source_ref}</dd></div>}
       </dl>}
       {pull && <dl className="grid gap-1 text-xs sm:grid-cols-2">
-        <div><dt className="text-muted-foreground">Pull request</dt><dd><a className="underline" href={pull.url} target="_blank" rel="noreferrer">#{pull.number} · {pull.state}{pull.draft ? " · draft" : ""}</a></dd></div>
+        <div><dt className="text-muted-foreground">Pull request</dt><dd><a className="underline" href={pull.url} target="_blank" rel="noreferrer">#{pull.number} · {pull.state}{pull.merged ? " · merged" : pull.draft ? " · draft" : ""}</a></dd></div>
         <div><dt className="text-muted-foreground">Branch → target</dt><dd className="break-all">{pull.branch} → {pull.target}</dd></div>
-        <div><dt className="text-muted-foreground">Accepted base</dt><dd className="break-all font-mono">{pull.base_sha}</dd></div>
+        <div><dt className="text-muted-foreground">Accepted base</dt><dd className="break-all font-mono">{delivery.accepted_base_sha || pull.base_sha}</dd></div>
+        <div><dt className="text-muted-foreground">PR base</dt><dd className="break-all font-mono">{pull.base_sha}</dd></div>
         <div><dt className="text-muted-foreground">PR head / tree</dt><dd className="break-all font-mono">{pull.head_sha} / {pull.tree}</dd></div>
         {delivery.candidate_sha && <div><dt className="text-muted-foreground">Accepted candidate</dt><dd className="break-all font-mono">{delivery.candidate_sha}</dd></div>}
         <div><dt className="text-muted-foreground">Triggered PR checks</dt><dd>{status(checks?.state || "unknown")}</dd></div>

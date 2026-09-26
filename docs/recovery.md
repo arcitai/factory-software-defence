@@ -152,6 +152,15 @@ rebases, creates a second PR to avoid an uncertain response, or merges. Restore
 the original trusted repository/target configuration if it changed; do not
 redirect a saved intent.
 
+After publication is confirmed, readback follows the saved PR identity and
+records its current open draft/ready, closed or merged state and checks. This
+read-only refresh does not require the source branch to remain after closure or
+the PR base commit to equal today's target commit. It still checks the saved
+repository, target and branch names, PR head, and accepted delivery commit's
+tree and parent. A changed identity or candidate stays a visible conflict; a
+provider outage retains the last known publication receipt. First publication
+continues to require the accepted current base and an open draft PR.
+
 The dashboard offers reconciliation for saved `intent`, `publishing`,
 `uncertain` and safely retryable `blocked` checkpoints. Legacy accepted jobs
 without candidate-bound check, review and approval evidence are labelled

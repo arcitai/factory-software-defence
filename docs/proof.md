@@ -732,3 +732,39 @@ but that missing artifact remains a review-input limitation. Independent
 review of the full original-main to final-worktree diff is in progress. The
 lead still owns private installed-profile/qualification checks and the final
 browser inspection before acceptance.
+
+## Final #29 PR lifecycle readback repair — 26 September 2026
+
+This is the final uncommitted Build worktree based on preserved checkpoint
+`f9780b28e5ba214336e853e2a3dd91b7711566c5`, retaining package version `0.8.0`
+and the complete delivery implementation accumulated from original baseline
+`b2643a8b67b748e9f0bf99a66e7cdd091bda3a71`. The checkpoint test counts above
+describe earlier trees; they are not evidence for this final worktree.
+
+Confirmed PR readback now records ready, closed and merged lifecycle state while
+checking the exact saved PR identity, repository, target and branch names, head,
+and accepted delivery commit tree and parent. Closed PR refresh permits a
+deleted source branch and an older PR base. The original accepted base remains
+separate and unchanged. Changed remote identity or candidate data remains a
+visible conflict. A provider outage retains the known publication receipt.
+This path makes read requests only. First publication still requires current
+accepted evidence, the current target base and an open draft PR. The task view
+shows the actual PR state, merged status, immutable accepted base and current PR
+base separately.
+
+`npm ci --ignore-scripts` completed successfully. `npm run build:dashboard`
+completed with the locked dashboard dependencies. The final-tree
+`npm run check` completed successfully: 113 root/runtime/package tests and 52
+dashboard tests passed. The focused `node --test tests/delivery.test.mjs`
+completed 19/19 tests. The regressions use disposable local Git repositories
+and a fake provider; they include ready, closed, merged, deleted-branch-after-
+close, target movement, changed head/tree/parent/repository/target, immutable
+acceptance and provider-outage cases. They perform no live provider writes.
+
+No real provider credentials, Docker qualification, installed-package account
+profile check, live disposable PR or browser inspection was performed by this
+Build. The lead owns package freeze/install, private account-profile
+compatibility, all installed Docker paths and a real disposable PR exercise.
+Browser inspection remains external qualification pending; browser access on
+the lead's Mac is currently unavailable. Factory Verify and independent Review
+must consume the exact final worktree after Build returns.

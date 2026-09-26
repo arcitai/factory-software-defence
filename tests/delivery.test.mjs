@@ -135,10 +135,11 @@ function fakeGitHub(f, options = {}) {
       assert.match(input.body, new RegExp(jobID)); assert.match(input.body, /issues\/29/);
       if (options.advanceTargetOnPull) state.targetSha = '9'.repeat(40);
       state.pull = pullRecord(state.commit.sha, state.targetSha, branchName);
+      if (options.readyAfterCreate) state.pull.draft = false;
       if (state.losePull) { state.losePull = false; state.failFindOnce = options.failFindAfterLostPull !== false; throw new Error('response lost'); }
       return state.pull;
     },
-    readPull: async () => ({ ...state.pull, base: { ...state.pull.base }, head: { ...state.pull.head } }),
+    readPull: async () => state.pull && ({ ...state.pull, base: { ...state.pull.base }, head: { ...state.pull.head } }),
     readChecks: async () => structuredClone(state.checks),
   };
   return { provider, state, get finalSha() { return state.commit?.sha; }, branchName };
@@ -152,7 +153,7 @@ function commitSha(input) {
   return createHash('sha1').update(`commit ${raw.length}\0`).update(raw).digest('hex');
 }
 function pullRecord(sha, base, branch) {
-  return { number: 29, html_url: 'https://github.com/example/project/pull/29', state: 'open', draft: true,
+  return { id: 2900, node_id: 'PR_fixture', number: 29, html_url: 'https://github.com/example/project/pull/29', state: 'open', draft: true, merged: false,
     base: { ref: 'main', sha: base, repo: { full_name: 'example/project' } },
     head: { ref: branch, sha, repo: { full_name: 'example/project' } } };
 }
@@ -313,42 +314,112 @@ test('a changed remote branch or PR head is never overwritten or duplicated', as
   const f3 = testFixture(t), gh3 = fakeGitHub(f3), manager3 = service(f3, gh3.provider);
   await manager3.publish(jobID, { run_id: f3.run_id });
   gh3.state.pull.draft = false;
-  await assert.rejects(manager3.publish(jobID, { run_id: f3.run_id }), /draft state/);
-  assert.equal(gh3.state.pull.draft, false, 'an externally changed PR is preserved and not reopened or rewritten');
+  const ready = await manager3.publish(jobID, { run_id: f3.run_id });
+  assert.equal(ready.state, 'published', 'a person marking a known PR ready is ordinary lifecycle');
+  assert.equal(ready.pull_request.draft, false);
+  assert.equal(gh3.state.pull.draft, false, 'readback does not change the PR draft state');
   assert.equal(gh3.state.writes.pulls, 1);
 });
 
-test('published delivery remains resolved when readback cannot refresh and never recreates missing remote records', async t => {
+test('first publication still requires a current-base open draft PR', async t => {
+  const f = testFixture(t), gh = fakeGitHub(f, { readyAfterCreate: true }), manager = service(f, gh.provider);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /draft state/);
+  assert.equal(f.queue.get(jobID).delivery.state, 'conflict');
+  assert.equal(f.queue.get(jobID).delivery.pull_request.draft, false, 'the durable PR receipt is retained for read-only recovery');
+  assert.equal(gh.state.writes.pulls, 1, 'first-publication validation does not repeat PR creation');
+});
+
+test('published delivery refresh is read-only, allows ordinary PR lifecycle and never recreates missing remote records', async t => {
   const f = testFixture(t), gh = fakeGitHub(f), manager = service(f, gh.provider);
   await manager.publish(jobID, { run_id: f.run_id });
   const originalWrites = structuredClone(gh.state.writes);
+  const acceptedPath = join(f.folder, 'accepted.json'), acceptedBefore = readFileSync(acceptedPath);
   const configPath = join(f.state, 'factory.json'), config = JSON.parse(readFileSync(configPath, 'utf8'));
   writeFileSync(configPath, JSON.stringify({ ...config, check: 'changed after publication' }), { mode: 0o600 });
   gh.state.targetSha = '9'.repeat(40);
   gh.state.pull.base.sha = gh.state.targetSha;
+  gh.state.pull.draft = false;
   const refreshed = await manager.publish(jobID, { run_id: f.run_id });
   assert.equal(refreshed.state, 'published');
   assert.equal(refreshed.pull_request.base_sha, gh.state.targetSha);
+  assert.equal(refreshed.accepted_base_sha, f.base, 'the original accepted base remains separate from the PR base');
+  assert.equal(refreshed.pull_request.state, 'open');
+  assert.equal(refreshed.pull_request.draft, false, 'a person marking the PR ready is ordinary lifecycle');
   assert.equal(refreshed.checks.state, 'pending');
-  assert.match(refreshed.error, /base advanced from the accepted base/);
+  assert.match(refreshed.error, /immutable accepted base/);
   assert.equal(f.queue.get(jobID).delivery.state, 'published');
   assert.equal(f.queue.canRemove(f.queue.get(jobID)), true);
   assert.deepEqual(gh.state.writes, originalWrites, 'advancing the base refreshes the existing PR without writes');
+  assert.deepEqual(readFileSync(acceptedPath), acceptedBefore, 'readback leaves original accepted evidence immutable');
 
-  gh.state.targetSha = f.base;
+  gh.state.pull.state = 'closed';
+  gh.state.pull.merged = true;
   gh.state.pull.base.sha = f.base;
   gh.state.branch = null;
-  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /branch is missing/);
+  const merged = await manager.publish(jobID, { run_id: f.run_id });
+  assert.equal(merged.state, 'published');
+  assert.equal(merged.pull_request.state, 'closed');
+  assert.equal(merged.pull_request.merged, true, 'a merged PR remains the same confirmed publication');
+  assert.equal(merged.pull_request.base_sha, f.base, 'a closed PR may retain its older base after the target advances');
+  assert.equal(merged.accepted_base_sha, f.base);
   assert.equal(f.queue.get(jobID).delivery.state, 'published');
   assert.equal(f.queue.canRemove(f.queue.get(jobID)), true);
-  assert.deepEqual(gh.state.writes, originalWrites, 'published readback does not recreate a deleted branch');
+  assert.deepEqual(gh.state.writes, originalWrites, 'closed/merged readback does not recreate a deleted branch');
+  assert.deepEqual(readFileSync(acceptedPath), acceptedBefore);
 
-  gh.state.branch = { sha: gh.finalSha, node_id: 'branch-node' };
   gh.state.pull = null;
-  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /pull request is missing/);
-  assert.equal(f.queue.get(jobID).delivery.state, 'published');
-  assert.equal(f.queue.canRemove(f.queue.get(jobID)), true);
-  assert.deepEqual(gh.state.writes, originalWrites, 'published readback does not create a second pull request');
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /changed pull request/);
+  assert.equal(f.queue.get(jobID).delivery.state, 'conflict');
+  assert.equal(f.queue.get(jobID).delivery.pull_request.number, 29, 'the known receipt remains visible when its PR cannot be found');
+  assert.equal(f.queue.canRemove(f.queue.get(jobID)), false);
+  assert.deepEqual(gh.state.writes, originalWrites, 'published readback does not create another PR');
+});
+
+test('published readback records provider lifecycle and retains its receipt during provider outage', async t => {
+  const f = testFixture(t), gh = fakeGitHub(f), manager = service(f, gh.provider);
+  const original = await manager.publish(jobID, { run_id: f.run_id });
+  const savedReceipt = structuredClone(f.queue.get(jobID).delivery.pull_request);
+  const originalWrites = structuredClone(gh.state.writes);
+  gh.state.pull.state = 'closed';
+  gh.state.pull.draft = false;
+  gh.state.pull.merged = false;
+  const closed = await manager.publish(jobID, { run_id: f.run_id });
+  assert.equal(closed.state, 'published');
+  assert.equal(closed.pull_request.state, 'closed');
+  assert.equal(closed.pull_request.merged, false);
+  assert.deepEqual(gh.state.writes, originalWrites);
+
+  const observedReceipt = structuredClone(f.queue.get(jobID).delivery.pull_request);
+  gh.provider.readPull = async () => { throw new Error('provider unavailable'); };
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /readback is uncertain/);
+  assert.equal(f.queue.get(jobID).delivery.state, 'published', 'provider outage does not discard a known publication');
+  assert.deepEqual(f.queue.get(jobID).delivery.pull_request, observedReceipt);
+  assert.deepEqual(gh.state.writes, originalWrites, 'lifecycle readback and outage recovery make no remote writes');
+  assert.equal(original.pull_request.state, 'open');
+  assert.deepEqual(savedReceipt, original.pull_request);
+});
+
+test('published readback marks changed identity or candidate head/tree as conflict without changing acceptance', async t => {
+  const changes = [
+    ['head', gh => { gh.state.pull.head.sha = '7'.repeat(40); }],
+    ['repository', gh => { gh.state.pull.base.repo.full_name = 'other/project'; }],
+    ['target', gh => { gh.state.pull.base.ref = 'release'; }],
+    ['tree', gh => { gh.state.commit.tree = '8'.repeat(40); }],
+    ['parent', gh => { gh.state.commit.parents = ['6'.repeat(40)]; }],
+  ];
+  for (const [name, change] of changes) {
+    const f = testFixture(t), gh = fakeGitHub(f), manager = service(f, gh.provider);
+    await manager.publish(jobID, { run_id: f.run_id });
+    const receipt = structuredClone(f.queue.get(jobID).delivery.pull_request);
+    const acceptedPath = join(f.folder, 'accepted.json'), acceptedBefore = readFileSync(acceptedPath);
+    const originalWrites = structuredClone(gh.state.writes);
+    change(gh);
+    await assert.rejects(manager.publish(jobID, { run_id: f.run_id }));
+    assert.equal(f.queue.get(jobID).delivery.state, 'conflict', `${name} change remains visible as a conflict`);
+    assert.deepEqual(f.queue.get(jobID).delivery.pull_request, receipt, 'the known publication receipt is retained');
+    assert.deepEqual(readFileSync(acceptedPath), acceptedBefore, 'conflicting readback cannot rewrite acceptance');
+    assert.deepEqual(gh.state.writes, originalWrites, 'conflict detection performs readback only');
+  }
 });
 
 test('a target race after PR creation retains the remote identity for read-only recovery', async t => {
