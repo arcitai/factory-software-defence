@@ -876,3 +876,30 @@ Final `npm ci --ignore-scripts` completed with zero reported vulnerabilities;
 `npm run build:dashboard` passed; `npm run check` passed with 167 root/runtime/
 package tests and 52 dashboard tests. Factory Verify and independent Review
 still own subsequent verification and full-baseline review.
+
+## #29 GitHub Actions guard-semantics correction — 26 September 2026
+
+On checkpoint `1a9eed933c988dcd53bf2c3a47ac4f3cef826cd7`, the new pre-fix
+regressions failed: the shared status incorrectly allowed case-variant PR and
+push guards, a guessed `REFS/PULL/123/MERGE` guard, and a `main+` branch filter;
+the direct qualifier also mishandled case-variant `!=` controls. The saved-intent
+tests now recheck those cases at summary and publish. After the repair, known
+ASCII guard comparisons follow GitHub's case-insensitive semantics, differing
+non-ASCII comparisons and `pull_request` refs remain unknown, and only simple
+ASCII branch literals can prove a filter excludes a candidate. Glob and escape
+patterns stay possible matches. The regressions check the known event/ref,
+head/base values and assert blocked status, matching publish refusal and zero
+fake-provider writes. The unchanged current CI workflow and ordinary delivery
+tests remain positive controls.
+
+This is controlled parser/service evidence only: no GitHub workflow ran, no
+live provider was contacted, no live hostile workflow was used, and
+repository/org automation and external hooks remain outside qualification. The
+repair did not change UI assets or refresh installed, provider, Docker or
+browser qualification.
+
+Final `npm ci --ignore-scripts` and the locked dashboard dependency install
+reported zero vulnerabilities. `npm run build:dashboard` passed, and
+`npm run check` passed with 177 root/runtime/package tests and 52 dashboard
+tests. These checks cover the final code and the new regressions; Native Factory
+Verify and independent full-baseline Review remain pending.

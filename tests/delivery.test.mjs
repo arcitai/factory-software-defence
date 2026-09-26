@@ -16,6 +16,7 @@ import { effectiveExecutionConfig, executionProfile } from '../factory/execution
 import { VERSION } from '../factory/updates.mjs';
 import { githubDeliveryProvider } from '../factory/providers/github-delivery.mjs';
 import { createController } from '../factory/server.mjs';
+import { qualifyGitHubActions } from '../factory/workflow-qualification.mjs';
 
 const jobID = `job_${'a'.repeat(24)}`;
 const execFileAsync = promisify(execFile);
@@ -186,6 +187,78 @@ function pullRecord(sha, base, branch) {
 function service(f, provider) { return new DeliveryService(f.queue, f.state, { config: () => configAt(f.state), sourceAdmission: f.sourceAdapter, provider }); }
 
 const safeWorkflow = `name: CI\non: pull_request\npermissions:\n  contents: read\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo check\n`;
+
+function qualifyWorkflowText(source, { branch = 'factory/job', target = 'main' } = {}) {
+  const path = '.github/workflows/ci.yml';
+  const entry = { mode: '100644', type: 'blob', sha: '1'.repeat(40) };
+  return qualifyGitHubActions({ baseEntries: new Map([[path, entry]]), candidateEntries: new Map([[path, entry]]),
+    readBlob: () => Buffer.from(source), branch, target });
+}
+
+test('literal workflow guards use GitHub case-insensitive comparisons for known event and ref values', () => {
+  const activeCases = [
+    ['push ref and event equality', `name: CI\non: push\npermissions:\n  contents: read\njobs:\n  publish:\n    if: \u0024{{ github.ref == 'REFS/HEADS/FACTORY/JOB' && github.event_name == 'PUSH' }}\n    runs-on: self-hosted\n    permissions:\n      contents: write\n    steps:\n      - run: echo publish\n`, { branch: 'factory/job' }],
+    ['PR head, base and event equality', `name: CI\non: pull_request\npermissions:\n  contents: read\njobs:\n  publish:\n    if: \u0024{{ github.head_ref == 'FACTORY/JOB' && github.base_ref == 'MAIN' && github.event_name == 'PULL_REQUEST' }}\n    runs-on: self-hosted\n    permissions:\n      contents: write\n    steps:\n      - run: echo publish\n`, { branch: 'factory/job', target: 'main' }],
+  ];
+  for (const [name, source, options] of activeCases) {
+    const result = qualifyWorkflowText(source, options);
+    assert.equal(result.qualified, false, `${name}: case variants must not prove a privileged job inactive`);
+    assert.match(result.reason, /privileged job|can run/i);
+  }
+});
+
+test('literal workflow not-equal guards use the same case-insensitive values', () => {
+  const cases = [
+    [`name: CI\non: push\npermissions:\n  contents: read\njobs:\n  publish:\n    if: \u0024{{ github.ref != 'REFS/HEADS/FACTORY/JOB' && github.event_name != 'PUSH' }}\n    runs-on: self-hosted\n    permissions:\n      contents: write\n    steps:\n      - run: echo publish\n`, { branch: 'factory/job' }],
+    [`name: CI\non: pull_request\npermissions:\n  contents: read\njobs:\n  publish:\n    if: \u0024{{ github.head_ref != 'FACTORY/JOB' && github.base_ref != 'MAIN' && github.event_name != 'PULL_REQUEST' }}\n    runs-on: self-hosted\n    permissions:\n      contents: write\n    steps:\n      - run: echo publish\n`, { branch: 'factory/job', target: 'main' }],
+  ];
+  for (const [source, options] of cases) {
+    assert.equal(qualifyWorkflowText(source, options).qualified, true,
+      'a known case-insensitive equality makes the guarded privileged job inactive');
+  }
+});
+
+test('unknown pull request refs do not prove privileged jobs inactive from a guessed PR number', () => {
+  for (const operator of ['==', '!=']) {
+    const source = `name: CI\non: pull_request\npermissions:\n  contents: read\njobs:\n  publish:\n    if: \u0024{{ github.ref ${operator} 'REFS/PULL/123/MERGE' }}\n    runs-on: self-hosted\n    permissions:\n      contents: write\n    steps:\n      - run: echo publish\n`;
+    const result = qualifyWorkflowText(source);
+    assert.equal(result.qualified, false, `${operator} must not guess the future PR number`);
+    assert.match(result.reason, /ambiguous|guard/i);
+  }
+
+  const unsupportedUnicode = `name: CI\non: push\npermissions:\n  contents: read\njobs:\n  publish:\n    if: \u0024{{ github.event_name == 'püsh' }}\n    runs-on: self-hosted\n    permissions:\n      contents: write\n    steps:\n      - run: echo publish\n`;
+  const unicodeResult = qualifyWorkflowText(unsupportedUnicode);
+  assert.equal(unicodeResult.qualified, false, 'non-ASCII mismatches stay unknown instead of receiving invented case folding');
+  assert.match(unicodeResult.reason, /ambiguous|guard/i);
+});
+
+test('shared delivery refuses case-variant active guards, unknown PR refs and + branch filters before writes', async t => {
+  const guarded = (on, guard) => `name: Release\non:\n${on}\npermissions:\n  contents: read\njobs:\n  release:\n    if: \u0024{{ ${guard} }}\n    runs-on: self-hosted\n    permissions:\n      contents: write\n      id-token: write\n    environment: production\n    steps:\n      - run: echo release\n`;
+  const cases = [
+    ['case-variant PR plus unknown variable', guarded('  pull_request:', "github.event_name == 'PULL_REQUEST' && vars.RELEASE_ENABLED == 'true'"), /ambiguous|guard/i],
+    ['case-variant push event', guarded('  push:\n  pull_request:', "github.event_name == 'PUSH'"), /privileged job|can run/i],
+    ['lowercase push control', guarded('  push:', "github.event_name == 'push'"), /privileged job|can run/i],
+    ['unknown future PR merge ref', guarded('  pull_request:', "github.ref == 'REFS/PULL/123/MERGE'"), /ambiguous|guard/i],
+    ['plus branch filter may match main', `name: Release\non:\n  pull_request:\n    branches: ['main+']\npermissions:\n  contents: read\njobs:\n  release:\n    runs-on: self-hosted\n    permissions:\n      contents: write\n    steps:\n      - run: echo release\n`, /privileged job|can run/i],
+    ['escaped branch pattern is not treated as a simple nonmatch', `name: Release\non:\n  pull_request:\n    branches: ['topic\\+']\npermissions:\n  contents: read\njobs:\n  release:\n    runs-on: self-hosted\n    permissions:\n      contents: write\n    steps:\n      - run: echo release\n`, /privileged job|can run/i],
+  ];
+  for (const [name, source, reason] of cases) await t.test(name, async child => {
+    const f = testFixture(child, { baseWorkflows: { '.github/workflows/ci.yml': source } });
+    const gh = fakeGitHub(f), manager = service(f, gh.provider), job = f.queue.get(jobID);
+    const accepted = JSON.parse(readFileSync(join(f.folder, 'accepted.json'), 'utf8'));
+    manager.ensureIntent(job, configAt(f.state), { accepted, expectedPolicy: f.policyHash, issue: null });
+    const summary = manager.summary(job);
+    assert.equal(summary.can_publish, false, `${name}: status must not advertise publication`);
+    assert.equal(summary.workflow_qualification?.state, 'blocked');
+    assert.match(summary.error, reason);
+    let failure;
+    try { await manager.publish(jobID, { run_id: f.run_id }); } catch (error) { failure = error; }
+    assert.equal(failure?.message, summary.error, 'summary and attempted publication share the refusal');
+    assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
+    assert.equal(f.queue.get(jobID).delivery.state, 'intent', 'saved local intent remains available for explicit recovery');
+    await f.closeQueue();
+  });
+});
 
 test('added, changed, deleted and symlinked candidate workflows refuse PR writes', async t => {
   const maliciousWorkflow = `name: Candidate code\non: pull_request\npermissions:\n  contents: read\njobs:\n  run:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo untrusted\n`;

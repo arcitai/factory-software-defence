@@ -128,16 +128,23 @@ function canMatchBranchFilter(config, branch) {
   const include = config.get('branches');
   if (include) {
     const patterns = literalList(include, 'branches');
-    if (!patterns.some(pattern => /[*?![\]{}]/.test(pattern)) && !patterns.includes(branch)) return false;
+    const hasOnlySimpleLiterals = patterns.every(isSimpleBranchLiteral);
+    if (hasOnlySimpleLiterals && !patterns.includes(branch)) return false;
   }
   const exclude = config.get('branches-ignore');
   if (exclude) {
     const patterns = literalList(exclude, 'branches-ignore');
-    if (patterns.includes(branch)) return false;
+    if (patterns.some(pattern => isSimpleBranchLiteral(pattern) && pattern === branch)) return false;
   }
-  // Glob syntax is deliberately not interpreted here. It means the event may
-  // match and the job must satisfy the active-job restrictions below.
+  // Only simple exact literals can prove a branch filter excludes this event.
+  // GitHub glob and escape syntax is deliberately not interpreted here.
   return true;
+}
+
+function isSimpleBranchLiteral(pattern) {
+  // Keep the literal subset explicit. Every other character may participate
+  // in a GitHub glob or escape pattern and therefore cannot prove exclusion.
+  return /^[A-Za-z0-9._/-]+$/.test(pattern);
 }
 
 function triggerScenarios(root, branch, target, path) {
@@ -219,20 +226,30 @@ function parseGuard(value, where) {
     for (const atom of parsed) {
       let actual = atom.context.startsWith('vars.') ? UNKNOWN : scenario[atom.context.slice('github.'.length)];
       if (actual === UNKNOWN) {
-        if (atom.context === 'github.ref' && scenario.event_name === 'pull_request') {
-          if (!/^refs\/pull\/[0-9]+\/merge$/.test(atom.literal)) {
-            if (atom.operator === '==') return false;
-            continue;
-          }
-        }
+        // The future PR number/ref is unknown. Do not infer inactivity from
+        // today's usual refs/pull/<number>/merge shape.
         unknown = true;
         continue;
       }
-      const equal = actual === atom.literal;
+      const equal = githubStringEqual(actual, atom.literal);
+      if (equal === UNKNOWN) {
+        unknown = true;
+        continue;
+      }
       if (atom.operator === '==' ? !equal : equal) return false;
     }
     return unknown ? UNKNOWN : true;
   };
+}
+
+function githubStringEqual(actual, literal) {
+  if (actual === literal) return true;
+  // GitHub compares strings without ASCII case sensitivity. Avoid guessing at
+  // Unicode folding: a non-ASCII mismatch stays unknown and unsafe jobs fail
+  // closed. All supported scenario values and common ref/event names are ASCII.
+  if (!/^[\x00-\x7f]*$/.test(actual) || !/^[\x00-\x7f]*$/.test(literal)) return UNKNOWN;
+  const foldAscii = value => value.replace(/[A-Z]/g, character => character.toLowerCase());
+  return foldAscii(actual) === foldAscii(literal);
 }
 
 function expressionList(value, where, onString) {

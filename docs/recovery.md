@@ -180,14 +180,24 @@ supported literal `push`, `pull_request`, `pull_request_target` or
 evaluated with the generated branch as its selected ref, as GitHub permits
 dispatching a workflow against a selected branch ([manual workflow runs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)).
 Any declared PR activity type is treated as potentially active for that
-candidate PR. Exact branch filters are checked against the generated branch
-and configured target.
-Globs and path filters are treated as possible matches. Conditions support only
-`&&`-joined `==`/`!=` comparisons against quoted strings using
-`github.ref`, `github.event_name`, `github.head_ref`, `github.base_ref` or
-`vars.NAME`; `||`, functions and other contexts are refused. Dynamic
-permissions, malformed YAML and ambiguous guards block publication with a
-reason while leaving patch delivery available.
+candidate PR. Branch filters are interpreted only when their patterns contain
+ASCII letters, digits, `.`, `_`, `-` or `/`; exact literals are checked against
+the generated branch and configured target. Other patterns are treated as
+possible matches. This includes `*`, `**`, `?`, `+`, `[]`, `!` and escaped
+characters from GitHub's [filter syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#filter-pattern-cheat-sheet).
+Path filters are also treated as possible matches.
+
+Conditions support only `&&`-joined `==`/`!=` comparisons against quoted
+strings using `github.ref`, `github.event_name`, `github.head_ref`,
+`github.base_ref` or `vars.NAME`; `||`, functions and other contexts are
+refused. Supported ASCII string comparisons follow GitHub's case-insensitive
+[expression semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/expressions).
+Non-ASCII mismatches stay unknown rather than guessing Unicode case folding.
+For `pull_request`, `github.ref` stays unknown because the future merge ref
+cannot be established from a guessed PR number. Unknown comparisons cannot
+prove a privileged job inactive. Dynamic permissions, malformed YAML and
+ambiguous guards block publication with a reason while leaving patch delivery
+available.
 
 Each job that could run for the generated branch push, a branch-selected
 manual dispatch or a PR event must have explicit effective permissions limited
