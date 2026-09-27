@@ -28,7 +28,12 @@ test('installed CLI, controller and queue share the same phase/skill contract fo
     assert.deepEqual(output,command==='agents'?api.agents:command==='skills'?{agents:api.skills,operators:api.operator_skills}:api);
   }
   assert.equal(execFileSync(process.execPath,[join(ROOT,'bin/software-defence-factory.mjs'),'foundation'],{encoding:'utf8'}).trim(),api.operator_skills[0].content.trim());assert(!JSON.stringify(api).includes('secret-command-argument'));
-  for(const skill of api.skills) assert.equal(skill.sha256,digest(readFileSync(join(ROOT,skill.path),'utf8')));
+  assert.deepEqual(api.skills.map(skill => skill.id).sort(), ['factory-evaluate','factory-implement','factory-review','factory-security','factory-spec','factory-triage']);
+  for (const skill of [...api.skills, ...api.operator_skills]) {
+    assert.equal(skill.path, `${skill.id === 'factory-foundation' ? '.agents' : 'kit'}/skills/${skill.id}/SKILL.md`);
+    assert.equal(skill.content, readFileSync(join(ROOT, skill.path), 'utf8'));
+    assert.equal(skill.sha256, digest(skill.content));
+  }
   assert.equal(api.commands.find(phase=>phase.name==='build').executor,'pi');
   assert.equal(api.commands.find(phase=>phase.name==='verify').executor,'factory');
   const status=await(await fetch(origin+'/api/v1/status')).json();

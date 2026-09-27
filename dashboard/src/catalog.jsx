@@ -38,9 +38,9 @@ export function DefinitionPage({ section = "definition" }) {
         <p className="catalog-note">These steps form the {selected} workflow. Agent roles currently share one harness and model profile. Triage and specification happen before admission.</p>
       </>}
       {section === "skills" && <>
-        <p className="catalog-note">All six job skills are available to agent steps. Each role's instructions identify the relevant skills; availability does not grant access to systems.</p>
+        <p className="catalog-note">Read-only instructions available to Factory agents. Expand a skill to inspect its contents and source.</p>
         <SkillLibrary skills={data.skills || []} />
-        <h2 className="catalog-section-title">Operator setup</h2><p className="catalog-note">Factory Foundation prepares the repository and host. It is not mounted into execution jobs.</p><SkillLibrary skills={data.operator_skills || []} />
+        <h2 className="catalog-section-title">Operator setup</h2><p className="catalog-note">Factory Foundation guides repository and host setup. Use it explicitly before adopting Factory.</p><SkillLibrary skills={data.operator_skills || []} />
       </>}
       {section === "definition" && <>
         {config && <dl className="workflow-settings">{[["Harness",displayName(config.harness ?? config.agent)],["Model",config.model || "Harness default"],["Check command",config.check || "Not configured"],["Phase time limit",`${config.timeoutSeconds} seconds`],["Job resources",`${config.cpus} CPUs · ${config.memoryMiB} MiB`]].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}

@@ -14,7 +14,9 @@
 - [Quickstart](quickstart.md): connect a repository, configure inference, run and inspect a task.
 - [Install and update](npm.md): npm/npx, state paths, automatic updates and CI/CD.
 - [Services and SSH tunnels](services.md): boot/login startup, remote dashboards, idle updates and recovery.
-- [Architecture](architecture.md): components, ownership and evidence flow.
+- [Architecture](architecture.md): setup, runtime ownership and work lifecycle, with text alternatives.
+  Editable views: [setup/deployment](diagrams/deployment.excalidraw),
+  [runtime layers](diagrams/architecture.excalidraw), [work lifecycle](diagrams/lifecycle.excalidraw).
 - [Recovery](recovery.md): stopped, failed and interrupted attempts.
 - [Defence integration](defence-integration.md): private incident intake and limits.
 - [Usage measurements](usage.md): reported tokens, partial coverage and cost limits.
@@ -22,6 +24,9 @@
 - [Ownership](ownership.md): original code, adapted interface and licensing.
 
 For the portable method, start with [the adoption guide](../kit/README.md).
+The [runtime catalog](../kit/skills/README.md) owns the six job skills;
+[repository/operator guidance](../.agents/skills/README.md) owns explicit adoption
+and [Foundation](../.agents/skills/factory-foundation/SKILL.md).
 
 ## Feature map
 

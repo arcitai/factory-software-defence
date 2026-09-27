@@ -104,8 +104,8 @@ installation or retained attempt needs them.
 
 ## Protected evidence compatibility
 
-Factory 0.12.0 recognizes version-1 execution profiles emitted by native
-**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2 and 0.12.0**. This is an exact allowlist in
+Factory 0.13.0 recognizes version-1 execution profiles emitted by native
+**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2, 0.12.0 and 0.13.0**. This is an exact allowlist in
 `factory/execution-profile.mjs`, independent of the installed package version;
 it is not a semver range or an automatic promise for later releases. Unknown
 runtime strings, unknown profile formats and incomplete legacy acceptance
@@ -152,6 +152,20 @@ malformed patch remains blocked and unchanged; follow the [recovery guidance](re
 Version 0.12.0 adds the all-work Inbox read model and restores the retained
 overview. Protected execution writers and acceptance/publication guards are
 unchanged; the explicit compatible-writer entry preserves all checks above.
+
+Version 0.13.0 relocates byte-identical runtime skill instructions to
+`kit/skills/` and adds a read-only alias of that catalog for Codex discovery.
+The audit covers `execution-profile.mjs`, `processes.mjs`, executor candidate,
+check, review and acceptance writers, `execution-evidence.mjs` and both delivery
+capability/validation paths. The v1 schema, candidate reconstruction, current
+policy checks, isolation and model credential rules are unchanged. Foundation
+is outside the job catalog. Supported old immutable evidence remains subject
+to every existing guard; unknown later versions receive no automatic trust.
+
+Old installed releases retain their own files and mount paths until an idle,
+reviewed update. No installed catalog, execution profile or historical hash is
+rewritten by this layout change. Qualify the exact updated package/image before
+resuming work; retained releases/evidence stay available for recovery.
 
 New publication still requires the current remote target to equal the original
 accepted base; reviewed-candidate continuation preserves that baseline, while
