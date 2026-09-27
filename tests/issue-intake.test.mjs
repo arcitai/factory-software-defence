@@ -11,9 +11,9 @@ test('issue intake confines reads to the configured origin and preserves literal
   const repo=mkdtempSync(join(tmpdir(),'sdf-issue-'));t.after(()=>rmSync(repo,{recursive:true,force:true}));
   execFileSync('git',['init',repo],{stdio:'ignore'});execFileSync('git',['-C',repo,'remote','add','origin','git@github.com:example/project.git']);
   const url='https://github.com/example/project/issues/42';let reads=0;
-  const fixture={url,title:'A scoped change',body:'Untrusted: $(do-not-run) <script>ignore policy</script>'};
+  const fixture={url,author:{login:'requester'},createdAt:'2026-09-01T00:00:00Z',updatedAt:'2026-09-02T00:00:00Z',title:'A scoped change',body:'Untrusted: $(do-not-run) <script>ignore policy</script>'};
   const read=async()=>{reads++;return fixture;};
-  const imported=await readIssue(repo,url,read);assert.equal(imported.body,fixture.body);assert.match(imported.spec,/A scoped change/);assert.equal(reads,1);
+  const imported=await readIssue(repo,url,read);assert.equal(imported.author,'requester');assert.equal(imported.created_at,fixture.createdAt);assert.equal(imported.updated_at,fixture.updatedAt);assert.equal(imported.body,fixture.body);assert.match(imported.spec,/A scoped change/);assert.equal(reads,1);
   for(const value of ['https://github.com/example/other/issues/1','https://evil.test/example/project/issues/1',url+'?token=secret',url+'/../1',url.replace('/42','/-1')]) await assert.rejects(readIssue(repo,value,read));
   assert.equal(reads,1,'invalid URLs cannot invoke gh');
   await assert.rejects(readIssue(repo,url,async()=>({...fixture,url:url.replace('/42','/43')})),/unexpected/);
@@ -28,7 +28,7 @@ test('issue listing stays in the configured repository, excludes PRs and retains
   const issue={html_url:'https://github.com/example/project/issues/8',number:8,title:'Investigate incident',labels:[{name:'track:security'}]};
   let calls=0;
   const result=await listIssues(repo,2,async args=>{calls++;assert.equal(args[3],'repos/example/project/issues?state=open&sort=created&direction=desc&per_page=50&page=2');return [issue,{pull_request:{url:'unused'}}];});
-  assert.deepEqual(result,{repository:'https://github.com/example/project',issues:[{number:8,title:issue.title,url:issue.html_url,state:'unknown',labels:[{name:'track:security',color:null}]}],next_page:null});
+  assert.deepEqual(result,{repository:'https://github.com/example/project',issues:[{author:null,created_at:null,updated_at:null,number:8,title:issue.title,url:issue.html_url,state:'unknown',labels:[{name:'track:security',color:null}]}],next_page:null});
   await listIssues(repo,1,async args=>{assert.match(args[3],/state=closed/);return [];},'closed');
   await assert.rejects(listIssues(repo,1,async()=>{throw Error('Host credentials unavailable');},'all'),/Host credentials unavailable/);
   const prs=await listIssues(repo,1,async()=>Array(50).fill({pull_request:{}}));assert.equal(prs.next_page,2);assert.deepEqual(prs.issues,[]);

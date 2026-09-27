@@ -2,32 +2,26 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("Inbox shares responsive header gutters, avoids nested history gutters and pairs tab theme colors", async () => {
+test("Inbox shares responsive header gutters without nested overview gutters", async () => {
   const styles = await readFile(new URL("./styles.css", import.meta.url), "utf8");
   const shared = [...styles.matchAll(/\.project-header:not\(\.project-header-compact\),[^{}]+\{([^}]+)\}/g)];
   assert.equal(shared.length, 4, "desktop and all three narrow gutter rules");
   for (const rule of shared) assert.match(rule[0], /, \.inbox-page[, {]/);
   assert.match(styles, /\.inbox-page > \.runs-page \{[^}]*width: 100%;[^}]*margin-inline: 0;[^}]*padding-inline: 0;/);
-  for (const state of ['[aria-pressed="true"]', ':hover', ':focus-visible']) {
-    const selector = `.inbox-tabs button${state}`;
-    const block = styles.slice(styles.indexOf(selector)).split('}')[0];
-    assert(styles.includes(selector), selector);
-    assert.match(block, /background: var\(--muted\)/);
-    assert.match(block, /color: var\(--foreground\)/);
-  }
-  assert.match(styles, /\.inbox-tabs button:focus-visible[^}]*outline: 2px solid var\(--ring\)/);
+
 });
 
 test("project view leads with identity and each control plane view keeps its page heading", async () => {
-  const [main, analytics, catalog] = await Promise.all([
+  const [main, analytics, catalog, overview] = await Promise.all([
     readFile(new URL("./main.jsx", import.meta.url), "utf8"),
     readFile(new URL("./analytics.jsx", import.meta.url), "utf8"),
     readFile(new URL("./catalog.jsx", import.meta.url), "utf8"),
+    readFile(new URL("./runs-overview.jsx", import.meta.url), "utf8"),
   ]);
 
   assert.match(main, /<ProjectContext identity=\{identity\}/);
-  assert.match(main, /<h2[^>]*>Executions<\/h2>/);
-  assert.match(main, /aria-label="Search executions"/);
+  assert.match(overview, /<h2[^>]*>Inbox work<\/h2>/);
+  assert.match(overview, /aria-label="Search loaded work"/);
   assert.match(analytics, /<PageHeading title="Issue analytics"/);
   assert.match(catalog, /<Page title="Infrastructure"/);
   assert.match(catalog, /<Page title=\{displayName\(section\)\}/);
@@ -41,7 +35,7 @@ test("narrow navigation and status filters collapse into labelled controls", asy
 
   assert.match(main, /className="mobile-nav"/);
   assert.match(main, /aria-label="Open navigation"/);
-  assert.match(main, /aria-label="Filter executions by status"/);
+  assert.match(await readFile(new URL("./runs-overview.jsx", import.meta.url), "utf8"), /aria-label="Filter work by status"/);
   assert.match(styles, /\.mobile-nav \{ position: relative; display: block;/);
   assert.match(styles, /\.project-header h1 \{[^}]*font-size: 36px/);
   assert.match(styles, /grid-template-columns: 212px minmax\(0, 1fr\)/);

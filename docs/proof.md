@@ -57,6 +57,51 @@ publication and adoption remain pending. No UI source changed; #90 remains the
 next restoration slice before #62/#63. See [recovery](recovery.md) for preserving
 old malformed evidence and the separately reviewed maintainer/new-attempt routes.
 
+## Qualified primary Inbox (#90 / #94)
+
+The 0.12.0 candidate restores the compact primary list/Kanban, status rail,
+shared checkbox filters and progressive detail with linked attempts. Canonical
+`work_records` combine loaded repository issues, retained histories and local
+requests in CLI/API and dashboard. Unknown assignments remain unknown;
+readiness is distinct from execution state. Creation and Start work remain
+separate, with the original #60 lifecycle and protected evidence/delivery guards.
+
+Implementation and installed qualification are complete for candidate
+`ed3292ccd079a182ee573d6baf01e2fe1d9c3223` (tree
+`467b9375dca757a521bc523e86c6c565f5bc0fd6`). Native independent aggregate Review
+`run_c2ba3c93edf433e60e364c4f` passed with no actionable defects against original
+delivery base `a7095949a3c3aa632a419e5ad1752b53963a5480`. The lead's
+[qualification evidence](https://github.com/arcitai/software-and-defence-factory/issues/90#issuecomment-5857634334)
+records these boundaries:
+
+- **Source/Verify:** locked install, dashboard build and full checks passed:
+  302 runtime/package and 61 dashboard tests. #94 covers same-directory atomic
+  JSON fixture publication in the generated Docker client and concurrent parent
+  updates, deterministically observing complete old/new JSON without weakening
+  cancellation/recovery assertions.
+- **Actual installed read-only integration:** CLI/API `work_records` agreed for
+  25 live source issues; zero jobs were admitted. All eight served assets were
+  byte-identical to the installed tarball. The private controller is stopped.
+- **Isolated Chromium:** all six interaction cases passed at 1440/390/320px in
+  light/dark. Coverage includes mixed retained histories; combined label/type/model
+  filters, Select all/reset; stable Repository overlay; search/no-match; keyboard
+  board scrolling; previous/next/close/Escape and scroll restoration; operator
+  brief retention after stale-start refusal; active-attempt refusal; source
+  failure/recovery; and creation-only retry with a stable request key and no
+  implicit jobs.
+- **Visual acceptance:** the restored composition passed comparison with live
+  Build by Warp. First-row tops were 263.5/424.5/466.5px at the respective widths,
+  with no page overflow. UI writes and error replies used controlled replay,
+  separate from actual read-only provider integration. Raw Markdown body
+  rendering remains #37.
+
+Private artifacts remain outside source/npm. Protected release and adoption
+are pending. The documentation-only continuation requires refreshed aggregate
+Review from the original base and lead verification that every final installed
+package file except the edited proof document is byte-identical to the qualified
+package before reusing UI/API proof and granting handoff. Qualification does not
+claim publication, live provider mutations or customer application jobs.
+
 ## Remaining limits
 
 - Namespace/account migration and automated GitHub Releases remain separate work

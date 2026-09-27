@@ -16,7 +16,7 @@ import {
 } from "./runs-board.js";
 
 test("list and Kanban use one exhaustive status partition without merging approvals or cancellations", () => {
-  const jobs = ["queued", "running", "cancelling", "failed", "timed_out", "blocked", "interrupted", "awaiting_approval", "succeeded", "cancelled", "new_runtime_state"].map(state => ({ id: state, state }));
+  const jobs = ["not_started", "queued", "running", "cancelling", "failed", "timed_out", "blocked", "interrupted", "awaiting_approval", "succeeded", "cancelled", "new_runtime_state"].map(state => ({ id: state, state }));
   const groups = groupJobsByBoardColumn(jobs);
   for (const group of statusGroups) assert.deepEqual(groups[group.id], filterJobs(jobs, group.id));
   assert.equal(Object.values(groups).flat().length, jobs.length);
@@ -57,7 +57,7 @@ test("filters and counts use runtime state groups and expose failed review revis
   assert.deepEqual(ids("other"), ["unknown"]);
 
   assert.deepEqual(jobCounts(jobs), {
-    all: 12, active: 3, failed: 3, needsAttention: 5, reviewFailed: 1,
+    all: 12, notStarted: 0, active: 3, failed: 3, needsAttention: 5, reviewFailed: 1,
     reviewChanges: 1, queued: 1, running: 1, cancelling: 1, blocked: 1, interrupted: 1,
     awaitingApproval: 1, succeeded: 1, cancelled: 1, other: 1,
   });

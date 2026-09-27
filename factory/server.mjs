@@ -1,4 +1,4 @@
-import { associateIssue, backlogHistory, readinessMapping } from './issue-lifecycle.mjs';
+import { associateIssue, backlogHistory, readinessMapping, workRecords } from './issue-lifecycle.mjs';
 import { harnessOf } from './lib.mjs';
 import http from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -88,7 +88,7 @@ export function createController(state, adapter = executors(state), integrations
           delivery_removal_blocked: Boolean(job.delivery && !['published', 'abandoned'].includes(job.delivery.state)),
           delivery_status: delivery.summary(job), runs: job.runs.map(attempt => attemptPresentation({ ...attempt,
           outcome: attempt.outcome || (attempt.state === 'succeeded' ? 'complete' : undefined) }, adapter.usage?.(job, attempt))) }));
-        return send(200, { version: 1, runtime_version: VERSION, maintenance: queue.maintenance, workflows: Object.keys(definitions.workflows), commands: [], triggers: [], jobs, issue_history: backlogHistory(jobs, []), csrf_token: csrf,
+        return send(200, { version: 1, runtime_version: VERSION, maintenance: queue.maintenance, workflows: Object.keys(definitions.workflows), commands: [], triggers: [], jobs, issue_history: backlogHistory(jobs, []), work_records: workRecords(jobs, []), csrf_token: csrf,
           infrastructure: { host, controller: { connected: !queue.closing }, workers: [{ id: 'local-executor', name: 'Local worker', host: host.hostname, connected: !queue.closing }] },
           automations: [], automation_control: definitions.automations, issue_provider: providerInfo(provider),
           delivery_configuration: deliveryProviderInfo(configAt(state), deliveryAdapter),
@@ -106,7 +106,7 @@ export function createController(state, adapter = executors(state), integrations
           const result = provider.supported ? await provider.list(page, state) : {repository:provider.repository, issues:[],next_page:null};
           const jobs = queue.all(), issues = result.issues.map(issue => associateIssue(issue, jobs, readinessMapping(config.issueReadinessLabels)));
           return send(200, { ...result, issues, provider:providerInfo(provider), page, state, loaded_count:issues.length, total:null,
-            history:backlogHistory(jobs, issues) });
+            history:backlogHistory(jobs, issues), work_records:workRecords(jobs, issues) });
         }
         catch (error) { throw new QueueError(error.message, error.status || 400); }
       }

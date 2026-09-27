@@ -57,3 +57,28 @@ export function backlogHistory(jobs, issues) {
   }
   return [...grouped.values()];
 }
+
+// Canonical all-work read model, shared by headless readers and the dashboard.
+// A source page is a bounded snapshot, never evidence that other sources closed.
+export function workRecords(jobs = [], issues = []) {
+  const sources = new Map(issues.map(issue => [issue.identity.key, issue]));
+  const histories = backlogHistory(jobs, []);
+  const rows = new Map(histories.map(row => [row.key, row]));
+  for (const [key, issue] of sources) rows.set(key, {
+    ...issue, key, ...executionAssociation(jobs, issue.identity),
+  });
+  return [...rows.values()].map(row => {
+    const issue = sources.get(row.key) || null;
+    const execution = row.active_execution || row.latest_execution || row.executions[0] || null;
+    return {
+      key: row.key, identity: row.identity, title: issue?.title || row.title,
+      url: row.url, source_status: issue ? 'loaded' : row.identity ? 'not_loaded' : 'local',
+      issue, executions: row.executions, active_execution: row.active_execution || null,
+      latest_execution: row.latest_execution || execution,
+      execution_id: execution?.id || null,
+      state: execution?.state || 'not_started',
+      workflow: execution?.workflow || null,
+      phase: execution?.phase || null,
+    };
+  });
+}

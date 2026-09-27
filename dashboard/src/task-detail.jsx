@@ -1,3 +1,4 @@
+import { canonicalIssue } from "../../factory/issue-lifecycle.mjs";
 import React, { useEffect, useState } from "react";
 import { ArrowRight, Check, ChevronUp, ChevronDown, Link2, X, FileText, GitBranch, Coins } from "lucide-react";
 import { Tabs } from "@/components/ui/tabs";
@@ -17,6 +18,7 @@ import {
 } from "./task-display.jsx";
 
 export function TaskDetail({
+  source,
   identity,
   links,
   navigation = [],
@@ -32,19 +34,14 @@ export function TaskDetail({
   onWorkflowAction,
 }) {
   const artifacts = useTaskArtifacts(job, csrfToken);
-  const [copyStatus, setCopyStatus] = useState("");
-  useEffect(() => {
-    setCopyStatus("");
-    const escape = event => {
-      if (event.key === "Escape" && !event.target.closest?.("input, textarea, select")) window.location.hash = "#/runs";
-    };
-    window.addEventListener("keydown", escape);
-    return () => window.removeEventListener("keydown", escape);
-  }, [job?.id]);
-  async function copyLink() {
-    try { await navigator.clipboard.writeText(`${window.location.origin}/#/runs/${encodeURIComponent(job.id)}`); setCopyStatus("Link copied"); }
-    catch { setCopyStatus("Unable to copy link"); }
-  }
+  if (!job && source) return <div className="task-detail-layout">
+    <div className="task-detail-main">
+      <DetailToolbar item={source} navigation={navigation} />
+      <header className="task-detail-heading"><TaskStateIcon value="not_started" /><h2>{source.title}</h2></header>
+      {source.panel}
+    </div>
+    <aside className="task-metadata" aria-label="Issue details"><h3><FileText size={15} />Metadata</h3>{source.metadata}</aside>
+  </div>;
   if (!job)
     return (
       <div className="p-8">
@@ -67,22 +64,12 @@ export function TaskDetail({
   return (
     <div className="task-detail-layout">
       <div className="task-detail-main">
-      <div className="detail-toolbar">
-        <div className="detail-position"><span>{navigation.findIndex(item => item.id === job.id) >= 0 ? `${navigation.findIndex(item => item.id === job.id) + 1} / ${navigation.length}` : "Issue"}</span><div>
-          {[-1, 1].map((delta) => {
-            const index = navigation.findIndex(item => item.id === job.id);
-            const adjacent = index >= 0 ? navigation[index + delta] : undefined;
-            const Icon = delta < 0 ? ChevronUp : ChevronDown;
-            const label = delta < 0 ? "Previous issue" : "Next issue";
-            return adjacent ? <a key={delta} href={`#/runs/${encodeURIComponent(adjacent.id)}`} aria-label={label} title={adjacent.title}><Icon size={14} /></a> : <span key={delta} aria-label={`${label} unavailable`}><Icon size={14} /></span>;
-          })}
-        </div></div>
-        <div className="detail-toolbar-actions"><span role="status" className="copy-status">{copyStatus}</span><button type="button" aria-label="Copy issue link" title="Copy issue link" onClick={copyLink}><Link2 size={16} /></button><a href="#/runs" aria-label="Close issue detail" title="Close issue detail (Esc)"><X size={18} /></a></div>
-      </div>
+      <DetailToolbar item={source || {id:job.id, href:`#/runs/${encodeURIComponent(job.id)}`}} navigation={navigation} />
       <header className="task-detail-heading">
-        <TaskStateIcon value={job.state} /><h2>{jobDisplayTitle(job)}</h2>
+        <TaskStateIcon value={job.state} /><h2>{source?.title || jobDisplayTitle(job)}</h2>
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       </header>
+      {source?.panel}
       {stages.length > 1 && (
         <ol
           className="task-progress flex flex-wrap items-center gap-3 text-sm"
@@ -313,6 +300,7 @@ export function TaskDetail({
       </div>
       <aside className="task-metadata" aria-label="Issue details">
         <h3><FileText size={15} />Metadata</h3>
+        {source?.metadata}
         <dl>
           <div><dt>Factory job</dt><dd><code className="source-revision-sha">{job.id}</code></dd></div>
           <div><dt>Status</dt><dd><State value={job.state} /></dd></div>
@@ -332,6 +320,7 @@ export function TaskDetail({
           {job.continuation && <div><dt>Selected reviewed checkpoint</dt><dd><code className="source-revision-sha">{job.continuation.head}</code>Review <code className="source-revision-sha">{job.continuation.review_run_id}</code>Original baseline <code className="source-revision-sha">{job.continuation.original_base}</code></dd></div>}
           {(job.source_history || []).length > 0 && <div><dt>Previous source commits</dt><dd>{job.source_history.map((source, index) => <code className="source-revision-sha" key={`${source.resolved_sha}-${index}`} title={source.resolved_sha}>{source.resolved_sha}</code>)}</dd></div>}
           {links?.repository && <div><dt>Repository</dt><dd><a className="metadata-link" href={links.repository} target="_blank" rel="noreferrer"><GitBranch size={13} />View repo</a></dd></div>}
+          {canonicalIssue(job.task?.source_url) && <div><dt>Issue history</dt><dd><a href={`#/issues/${encodeURIComponent(canonicalIssue(job.task.source_url).key)}`}>Context and all executions</a></dd></div>}
           {job.task?.source_url && /^https?:\/\//.test(job.task.source_url) && <div><dt>Source</dt><dd><a className="metadata-link" href={job.task.source_url} target="_blank" rel="noreferrer"><Link2 size={13} />Open source</a></dd></div>}
         </dl>
       </aside>
@@ -695,4 +684,31 @@ function resultTitle(job, result) {
     default:
       return `${command} · ${stateLabel(job.state)}`;
   }
+}
+
+function DetailToolbar({ item, navigation }) {
+  const [copyStatus, setCopyStatus] = useState('');
+  useEffect(() => {
+    setCopyStatus('');
+    const escape = event => {
+      if (event.key === 'Escape' && !event.defaultPrevented && !event.target.closest?.('input, textarea, select')) window.location.hash = '#/inbox';
+    };
+    window.addEventListener('keydown', escape);
+    return () => window.removeEventListener('keydown', escape);
+  }, [item.id]);
+  const index = navigation.findIndex(entry => entry.id === item.id || entry.executionID === item.id);
+  return <div className="detail-toolbar">
+    <div className="detail-position"><span>{index >= 0 ? `${index + 1} / ${navigation.length}` : 'Execution'}</span><div>
+      {[-1,1].map(delta => {
+        const adjacent = index >= 0 ? navigation[index + delta] : null;
+        const Icon = delta < 0 ? ChevronUp : ChevronDown;
+        const label = delta < 0 ? 'Previous issue' : 'Next issue';
+        return adjacent ? <a key={delta} href={adjacent.href || `#/runs/${encodeURIComponent(adjacent.id)}`} aria-label={label} title={adjacent.title}><Icon size={14} /></a> : <span key={delta} aria-label={`${label} unavailable`}><Icon size={14} /></span>;
+      })}
+    </div></div>
+    <div className="detail-toolbar-actions"><span role="status" className="copy-status">{copyStatus}</span><button type="button" aria-label="Copy issue link" onClick={async () => {
+      try { await navigator.clipboard.writeText(`${window.location.origin}/${item.href}`); setCopyStatus('Link copied'); }
+      catch { setCopyStatus('Unable to copy link'); }
+    }}><Link2 size={16} /></button><a href="#/inbox" aria-label="Close issue detail" title="Close issue detail (Esc)"><X size={18} /></a></div>
+  </div>;
 }

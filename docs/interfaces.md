@@ -11,7 +11,7 @@ shell endpoint or a second scheduler.
 | --- | --- | --- | --- | --- |
 | Project/queue/attempt state | `status`, `inbox --source factory` JSON | `GET /api/v1/status` | Project, tasks, details/history | Stable versioned agent result/error contract |
 | Start local work | `issue start --file --title` or `--draft`, explicit `--workflow`, optional `--model` | `POST /api/v1/jobs` | Local execution only → review → Create & start locally | Persistent unstarted drafts and typed incident intake remain separate |
-| Browse repository Inbox | `inbox [--page N] [--issue-state open/closed/all]` (also `issue list --source inbox`), `issue preview --url URL` via controller provider | Authenticated `GET /api/v1/issues`, `POST /api/v1/issues/preview` using shared readers | Inbox with provider/state/readiness, loaded-page counts, linked attempts, local/off-page history; explicit Start work for either type | Issue → execution links retained; no implicit polling |
+| Browse repository Inbox | `inbox [--page N] [--issue-state open/closed/all]` (also `issue list --source inbox`), `issue preview --url URL` via controller provider | Authenticated `GET /api/v1/issues`, `POST /api/v1/issues/preview` using shared readers | Primary list/Board with shared status/search/workflow/model/label filters, compact Repository tools/loaded scope, item count with secondary issue/execution totals and progressive linked detail; explicit Start work for either type | Issue → execution links retained; no implicit polling |
 | Start repository work | `issue start --url URL --workflow software/defence [--brief-file operator.md]` | `POST /api/v1/issues/start` | Issue context → explicit Start work with operator brief | Rechecks current content and active admission |
 | Create repository issue / recovery | `issue connection`, `create --key`, `submissions`, `recover --key` | Authenticated connection, `POST /issues`, receipts and recovery | Display destination/actor, create without execution, recover uncertain result | GitHub adapter first; assignees/projects and other providers unimplemented |
 | Repository issue templates | `issue templates`, `issue draft --template --sha --file` | Authenticated template list and draft compilation | Chooser, fields/defaults/validation, review | Supports Markdown and YAML markdown/input/textarea/dropdown/checkboxes; unsupported templates link to GitHub |
@@ -106,3 +106,25 @@ Definition exposes `configuration.issueReadinessLabels`. The optional private
 config field has exactly triage/spec/ready/blocked keys with four distinct label
 names; defaults are factory:triage/spec/ready/blocked. Configuration is validated,
 not inferred from issue content. No browsing path changes labels or comments.
+
+The additive `work_records` read model is returned by `GET /api/v1/issues`
+(and CLI `inbox` / `issue list --source inbox`) alongside the existing `issues`
+and `history` fields. `status` returns the same model for retained history without
+fetching a provider page. Each record includes a canonical `key`, source `identity`,
+`source_status` (`loaded`, `not_loaded`, `local`), optional source `issue`, all
+`executions`, representative `execution_id`, actual `state`, `workflow` and `phase`.
+Active/unresolved execution takes precedence over the latest terminal execution.
+Without an execution, state is `not_started`, workflow/phase and execution ID are
+null. Readiness lives on the source issue, separate from execution state. Dashboard
+projection uses this same pure read-model function with its bounded page snapshot
+and latest status; grouping/filtering does not admit execution. Individual
+`#/runs/JOB_ID` links remain valid; `#/issues/KEY` opens canonical source detail.
+
+The dashboard's Repository disclosure beside the item count holds source-state
+selection, refresh, available previous/next page actions and Local execution
+request. It also explains read time, remote total, the loaded search boundary
+and separate issue/local request/execution counts. Loading and source errors
+remain visible when it is closed. Rows and cards share compact metadata; source
+readiness remains distinct from the runtime badge, and full assignments and
+linked attempts remain in detail. These presentation controls do not change
+headless records or admission semantics.

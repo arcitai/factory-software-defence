@@ -92,7 +92,6 @@ test("project identity stays visible, app keeps its submission key, and stale or
   mountedRoot = (await server.ssrLoadModule("/src/main.jsx")).appRoot;
   await eventually(() => assert.match(projectContext().textContent, /Loading configured project/));
   assert.match(projectContext().textContent, /Loading status/);
-  button("Execution history").click();
   await eventually(() => assert.ok(document.querySelector('button[aria-label="Filter by statuses"]')));
 
   await eventually(() => assert.equal(statusCalls, 1));
@@ -144,7 +143,7 @@ test("project identity stays visible, app keeps its submission key, and stale or
   await eventually(() => assert.match(projectName().textContent, /Project identity unavailable/));
   assert.match(projectContext().textContent, /Status current/);
   window.location.hash = "#/runs";
-  await eventually(() => assert.ok([...document.querySelectorAll("h2")].some((heading) => heading.textContent === "Executions")));
+  await eventually(() => assert.ok(projectContext().querySelector(".new-issue-action"), "return completes before using the project action"));
   button("New issue").click();
   await eventually(() => assert.match(document.querySelector('#start-work-description').textContent, /Project identity unavailable/));
   document.querySelector('button[aria-label="Close start work form"]').click();

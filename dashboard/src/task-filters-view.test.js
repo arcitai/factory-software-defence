@@ -24,14 +24,16 @@ test('workflow, model, badge and search compose; task navigation preserves the f
   let root;
   t.after(async()=>{await act(()=>root?.unmount());await server.close();dom.window.close();for(const [key,descriptor]of prior){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
   await act(async()=>{root=(await server.ssrLoadModule('/src/main.jsx')).appRoot;});
-  assert.match(document.body.textContent,/5 issues loaded on page 1.*total unknown/);
-  assert.equal(document.querySelectorAll('.inbox-row').length,5);
+  assert.match(document.querySelector('[aria-label="Repository"]').textContent,/5 loaded · Page 1/);
+  await act(()=>document.querySelector('[aria-label="Repository"]').click());
+  assert.match(document.querySelector('.repository-popover').textContent,/5 issues loaded on page 1.*total unknown/);
+  await act(()=>document.querySelector('[aria-label="Repository"]').click());
+  assert.equal(document.querySelectorAll('.task-row').length,8);
   for(const link of document.querySelectorAll('a[href="#/inbox"]')) {
     assert.equal(link.textContent,'Inbox','repository navigation must not use the three execution jobs as an issue total');
     assert.equal(link.querySelector('.nav-count'),null);
   }
-  await act(()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Execution history').click());
-  assert.match(document.body.textContent,/All executions/);
+  assert.match(document.body.textContent,/All work/);
   assert.doesNotMatch(document.body.textContent,/All issues/);
   const rows=()=>[...document.querySelectorAll('.task-list a')].map(a=>a.textContent);
   const setSelect=async(label,value)=>{
@@ -43,7 +45,7 @@ test('workflow, model, badge and search compose; task navigation preserves the f
   };
   const click=async selector=>act(()=>document.querySelector(selector).click());
   const route=async hash=>act(async()=>{window.location.hash=hash;await new Promise(resolve=>setTimeout(resolve,10));});
-  assert.equal(rows().length,3);
+  assert.equal(rows().length,8);
   assert.equal(document.querySelector('[aria-label="Factory home"]').getAttribute('href'),'#/runs');
   assert.equal(document.querySelector('.repo-action').href,status.project_links.repository);
   assert.equal(document.querySelectorAll('.repo-action')[1].textContent.trim(),'New issue');
@@ -52,7 +54,7 @@ test('workflow, model, badge and search compose; task navigation preserves the f
   await route('#/runs/job_alpha');assert.match(document.querySelector('.detail-position').textContent,/1 \/ 1/);
   assert.equal(document.querySelector('a[aria-label="Next issue"]'),null);
   await route('#/runs');assert.equal(rows().length,1);assert.match(document.querySelector('[aria-label="Filter by work type"]').textContent,/1/);
-  await click('.active-filters button');assert.equal(rows().length,3);
+  await click('.task-list-actions button');assert.equal(rows().length,8);
   // Multiple selections OR within a facet, while other facets/search intersect.
   await setSelect('Filter by workflow','software');
   await act(()=>document.querySelector('button[aria-label="Filter by work type"]').click());
@@ -62,20 +64,20 @@ test('workflow, model, badge and search compose; task navigation preserves the f
   assert(document.querySelector('.facet-popover'),'window blur must not dismiss an active filter');
   assert.equal(document.querySelector('.facet-select-all').getAttribute('aria-checked'),'true');
   await act(()=>document.querySelector('.facet-popover-heading button').click());
-  assert.equal(rows().length,3);assert.equal(document.querySelector('.facet-select-all').getAttribute('aria-checked'),'false');
+  assert.equal(rows().length,8);assert.equal(document.querySelector('.facet-select-all').getAttribute('aria-checked'),'false');
   assert(document.querySelector('.facet-popover'),'Reset keeps the dropdown open');
   assert.equal(document.querySelector('.facet-popover-heading button').disabled,false,'Reset remains focusable after clearing');
   await act(()=>document.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));
   assert.equal(document.activeElement.getAttribute('aria-label'),'Filter by work type');
-  await click('.filter-card-main');assert.equal(rows().length,0);assert.match(document.body.textContent,/No matching executions/);
-  await click('.filter-card-main');assert.equal(rows().length,3,'clicking the selected status clears it');
+  await click('.tone-violet .filter-card-main');assert.equal(rows().length,0);assert.match(document.body.textContent,/No matching work/);
+  await click('.tone-violet .filter-card-main');assert.equal(rows().length,8,'clicking the selected status clears it');
 
   await click('button[aria-label="Filter by Timed out badge"]');assert.equal(rows().length,1);assert.match(rows()[0],/Beta/);
-  await click('.active-filters button');
+  await click('.task-list-actions button');
   await setSelect('Filter by badge','succeeded');assert.equal(rows().length,2);
-  await act(()=>{const search=document.querySelector('[aria-label="Search executions"]');Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value').set.call(search,'Gamma');search.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
+  await act(()=>{const search=document.querySelector('[aria-label="Search loaded work"]');Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value').set.call(search,'Gamma');search.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
   assert.equal(rows().length,1);assert.match(rows()[0],/Gamma/);
   await route('#/runs/job_gamma');await act(()=>window.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape'})));await route('#/runs');assert.equal(rows().length,1);
-  await click('.active-filters button');
+  await click('.task-list-actions button');
   await route('#/runs/job_alpha');assert.equal(document.querySelector('a[aria-label="Next issue"]').getAttribute('href'),'#/runs/job_beta');
 });

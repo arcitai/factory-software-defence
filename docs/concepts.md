@@ -18,8 +18,10 @@ The CLI `definition` command and dashboard Definition page read that same catalo
 | Automation | External schedule and agent context | Owned by the selected harness; calls Factory CLI/API, no Factory cron |
 | Definition | Effective roles, workflows, skills and settings | Installed method plus private factory.json; read-only catalog |
 
-Inbox contains execution history, not a copied remote issue backlog. New issue
-can create a repository issue without execution; Start work admits execution
+Inbox combines an explicitly loaded provider page with retained execution
+history in one list/board, grouped by canonical issue identity. Off-page sources
+remain unknown; local requests keep separate identities. New issue
+creates a repository issue without execution; Start work admits execution
 separately. The provider owns issue content/state; SQLite owns queue/attempts and
 creation receipts for recovery. An unfinished local form is not a saved backlog.
 An agent role is neither a machine nor a skill. Check is deterministic, and

@@ -23,7 +23,7 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   const holdDelivery=()=>{let release;const pending=new Promise(resolve=>{release=resolve;});deliveryPending=pending;return async()=>{deliveryPending=null;release();await act(async()=>{await pending;await new Promise(resolve=>setTimeout(resolve,0));});};};
   await render();
   const close = document.querySelector('a[aria-label="Close issue detail"]');
-  assert.equal(close.getAttribute('href'), '#/runs');
+  assert.equal(close.getAttribute('href'), '#/inbox');
   let copied;
   Object.defineProperty(navigator, 'clipboard', { configurable:true, value:{writeText:async value=>{copied=value;}} });
   await click(document.querySelector('button[aria-label="Copy issue link"]'));

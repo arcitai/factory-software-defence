@@ -26,6 +26,7 @@ async function composer(t, api, projectLinks={repository:'https://github.com/exa
   const button=label=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===label);
   const click=async label=>act(()=>{assert(button(label),label);button(label).click();});
   const input=async(selector,value)=>act(()=>{const field=document.querySelector(selector),proto=field.tagName==='TEXTAREA'?dom.window.HTMLTextAreaElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(field,value);field.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
+  if(integration.local)await act(()=>document.querySelector('[aria-label="Repository"]').click());
   await click(integration.local ? 'Local execution request' : 'New issue');
   return {created,button,click,input};
 }
