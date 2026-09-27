@@ -104,8 +104,8 @@ installation or retained attempt needs them.
 
 ## Protected evidence compatibility
 
-Factory 0.11.1 recognizes version-1 execution profiles emitted by native
-**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0 and 0.11.1**. This is an exact allowlist in
+Factory 0.11.2 recognizes version-1 execution profiles emitted by native
+**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1 and 0.11.2**. This is an exact allowlist in
 `factory/execution-profile.mjs`, independent of the installed package version;
 it is not a semver range or an automatic promise for later releases. Unknown
 runtime strings, unknown profile formats and incomplete legacy acceptance
@@ -142,6 +142,12 @@ objects must also be present and agree. An old runtime string alone never makes
 a checkpoint usable. Browser-disabled 0.8.0 records cannot satisfy a newly
 enabled browser policy. Missing or unsupported records stay unchanged and
 unavailable; no schema migration, profile relabeling or policy repair occurs.
+
+Version 0.11.2 retains the v1 profile/evidence schema and current provenance
+rules while preserving exact patch bytes and requiring reconstruction before
+new acceptance. Older writers remain compatible only when their retained patch
+passes the current digest and tree reconstruction checks. A digest-matching
+malformed patch remains blocked and unchanged; follow the [recovery guidance](recovery.md#already-accepted-malformed-patches-91).
 
 New publication still requires the current remote target to equal the original
 accepted base; reviewed-candidate continuation preserves that baseline, while

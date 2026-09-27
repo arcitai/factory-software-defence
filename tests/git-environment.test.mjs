@@ -5,7 +5,7 @@ import { lstatSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SourceAdmissionStore, restoreRetainedCheckout } from '../factory/source-admission.mjs';
-import { hostGitEnvironment, runCandidateGit } from '../factory/git-environment.mjs';
+import { hostGitEnvironment, runCandidateGit, runCandidateGitRaw } from '../factory/git-environment.mjs';
 import { advanceAndPruneSourceFixture, createRetainedSourceFixture } from '../scripts/retained-source-fixture.mjs';
 
 const rawGit = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
@@ -76,6 +76,7 @@ test('host Git operations ignore hostile repository, index, object and config en
   restoreRetainedCheckout(state, jobId, admission, candidate);
 
   const candidateBase = runCandidateGit(candidate, 'rev-parse', 'HEAD');
+  assert.deepEqual(runCandidateGitRaw(candidate, 'rev-parse', 'HEAD'), Buffer.from(sourceSha + '\n'));
   assert.equal(candidateBase, sourceSha, 'candidate initialization uses the admitted source');
   writeFileSync(join(candidate, 'source.txt'), 'candidate change\n');
   writeFileSync(join(candidate, 'new-file.txt'), 'candidate addition\n');

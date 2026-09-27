@@ -10,7 +10,7 @@ import { createServer as createNetServer } from 'node:net';
 import { JobQueue } from '../factory/queue.mjs';
 import { DeliveryService } from '../factory/delivery.mjs';
 import { SourceAdmissionStore, publicSourceAdmission, restoreRetainedCheckout } from '../factory/source-admission.mjs';
-import { runCandidateGit } from '../factory/git-environment.mjs';
+import { runCandidateGit, runCandidateGitRaw } from '../factory/git-environment.mjs';
 import { API_TIMEOUT_MS, PUBLICATION_API_TIMEOUT_MS, configAt, digest } from '../factory/lib.mjs';
 import { effectiveExecutionConfig, executionProfile } from '../factory/execution-profile.mjs';
 import { VERSION } from '../factory/updates.mjs';
@@ -77,8 +77,7 @@ function testFixture(t, { delivery = true, port = 7331, harness = 'codex', model
   runCandidateGit(checkout, 'add', '-A');
   runCandidateGit(checkout, '-c', 'user.name=Factory candidate', '-c', 'user.email=factory@localhost', 'commit', '--no-verify', '-m', 'Candidate');
   const head = git(checkout, 'rev-parse', 'HEAD'), tree = git(checkout, 'rev-parse', 'HEAD^{tree}');
-  const patchText = runCandidateGit(checkout, '--no-pager', 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', base, head);
-  const patch = patchText ? `${patchText}\n` : '';
+  const patch = runCandidateGitRaw(checkout, '--no-pager', 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', base, head);
   const policyHash = digest(JSON.stringify(effectiveExecutionConfig(config, taskModel, join(state, 'model.env'))));
   const patchHash = digest(Buffer.from(patch));
   // Success fixtures model the private protected provenance for native Codex/Pi
@@ -486,7 +485,7 @@ test('saved delivery intent rechecks workflow evidence after its earlier qualifi
 });
 
 // These are controlled retained-record/provider fixtures, not production or model proof.
-for (const runtimeVersion of ['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1']) {
+for (const runtimeVersion of ['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1', '0.11.2']) {
   test(`retained ${runtimeVersion} evidence is recognized without rewriting its provenance`, async t => {
     const f = testFixture(t, { runtimeVersion }), gh = fakeGitHub(f), manager = service(f, gh.provider);
     const jobBefore = structuredClone(f.queue.get(jobID));
@@ -540,7 +539,7 @@ async function assertPublicationRefused(f, gh, manager) {
 
 test('compatible runtime alone never authorizes incomplete, stale or inconsistent protected evidence', async t => {
   const defects = [
-    ...['0.7.0', '0.8.1', '0.9.2', '0.11.2', '1.0.0', '0.9.1-dev', 'v0.8.0', '', null].map(version =>
+    ...['0.7.0', '0.8.1', '0.9.2', '0.11.3', '1.0.0', '0.9.1-dev', 'v0.8.0', '', null].map(version =>
       [`unknown runtime ${JSON.stringify(version)}`, f => changeProfile(f, p => { p.runtimeVersion = version; })]),
     ['unknown schema', f => changeProfile(f, p => { p.version = 2; })],
     ['missing schema', f => changeProfile(f, p => { delete p.version; })],
@@ -1433,4 +1432,28 @@ test('GitHub adapter keeps unknown and pending PR checks visible without treatin
   const missingCount = await missingPaginationCount.readChecks('https://github.com/example/project', 'a'.repeat(40), 29);
   assert.equal(missingCount.state, 'unknown', 'absent pagination totals cannot prove a complete result');
   assert.equal(missingCount.pagination_complete, false);
+});
+
+
+test('old accepted malformed patch with matching digest refuses publication and preserves evidence', async t => {
+  const f = testFixture(t, { runtimeVersion: '0.11.1',
+    baseWorkflows: { 'z-context.txt': 'old\ncontext\n\n\n' },
+    candidateFiles: { 'z-context.txt': 'new\ncontext\n\n\n' } });
+  const path = join(f.folder, 'delivery-input', 'candidate.patch');
+  const exact = readFileSync(path), malformed = Buffer.from(exact.toString().trim() + '\n');
+  assert.equal(exact.length - malformed.length, 4, 'historical writer loses exactly two blank context lines');
+  writeFileSync(path, malformed);
+  const acceptedPath = join(f.folder, 'accepted.json');
+  const accepted = JSON.parse(readFileSync(acceptedPath));
+  accepted.patch_sha256 = digest(malformed);
+  save(acceptedPath, accepted); // Fixture models an already accepted old writer, not recovery.
+  const before = readFileSync(acceptedPath);
+  const gh = fakeGitHub(f), manager = service(f, gh.provider);
+  const summary = manager.summary(f.queue.get(jobID));
+  assert.equal(summary.can_publish, false);
+  assert.match(summary.error, /Could not reconstruct/);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /Could not reconstruct/);
+  assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
+  assert.deepEqual(readFileSync(acceptedPath), before);
+  assert.deepEqual(readFileSync(path), malformed);
 });

@@ -16,11 +16,21 @@ export function runHostGit(args, options = {}) {
   return run('git', args, { ...options, env: hostGitEnvironment() });
 }
 
-export function runCandidateGit(workspace, ...args) {
+function candidateGit(workspace, args, options) {
   return runHostGit([
     '-c', 'core.hooksPath=/dev/null',
     '-c', 'core.fsmonitor=false',
     '-C', workspace,
     ...args,
-  ]);
+  ], options);
+}
+
+// Scalar queries retain their historical trimming. Byte-bearing output must
+// explicitly opt into Buffer stdout, with identical environment and limits.
+export function runCandidateGit(workspace, ...args) {
+  return candidateGit(workspace, args);
+}
+
+export function runCandidateGitRaw(workspace, ...args) {
+  return candidateGit(workspace, args, { encoding: null });
 }
