@@ -202,19 +202,21 @@ try {
     if (command === 'definition' && positional.length) {
       const action = positional[0];
       if (!['export', 'validate', 'diff', 'apply', 'rollback'].includes(action) || positional.length !== 1) throw new Error('Choose definition export|validate|diff|apply|rollback');
-      let value;
+      let value, bindings;
       if (['validate', 'diff', 'apply'].includes(action)) {
         if (!flags.file) throw new Error('--file is required');
         value = JSON.parse(readFileSync(resolve(flags.file), 'utf8'));
+        if (flags['bindings-file']) bindings = JSON.parse(readFileSync(resolve(flags['bindings-file']), 'utf8'));
       }
       let result;
       if (action === 'export') result = inspectDefinition(state).definition;
       else if (action === 'rollback' && !flags['expected-revision']) result = previewRollback(state);
+      else if (action === 'validate' && bindings !== undefined && !existsSync(join(state, 'factory.json'))) throw new Error('Local binding validation requires an installation');
       else if (action === 'validate' && !existsSync(join(state, 'factory.json'))) result = { valid: true, definition: parseRoleDefinition(value), capabilities: ROLE_CAPABILITIES, resolution: 'Requires an installation for inherited settings' };
-      else if (['validate', 'diff'].includes(action)) result = previewDefinition(state, value);
+      else if (['validate', 'diff'].includes(action)) result = previewDefinition(state, value, bindings);
       else {
         if (!flags['expected-revision']) throw new Error('--expected-revision from the current preview is required');
-        result = await api(state, `/api/v1/definition/${action}`, { expected_revision: flags['expected-revision'], ...(action === 'apply' ? { definition: value } : {}) });
+        result = await api(state, `/api/v1/definition/${action}`, { expected_revision: flags['expected-revision'], ...(action === 'apply' ? { definition: value, ...(bindings === undefined ? {} : { local_bindings: bindings }) } : {}) });
       }
       console.log(JSON.stringify(result, null, 2));
       process.exit(0);
@@ -343,7 +345,7 @@ Compatibility executable: software-defence-factory (same runtime and state)
   web probe --state PATH                    Execute the pinned local Chromium readiness probe
   foundation                              Read the operator setup skill; no installation required
   definition | agents | skills            Inspect roles, instructions and installation settings
-  definition export|validate|diff          Portable roles; validate/diff require --file PATH
+  definition export|validate|diff          Portable roles; validate/diff require --file PATH; optional --bindings-file PRIVATE_PATH
   definition apply --file PATH --expected-revision HASH
   definition rollback --expected-revision HASH   Idle controller only
   inbox [--page N] [--issue-state open|closed|all] [--source inbox|factory]

@@ -1,3 +1,4 @@
+import { parseLocalBindings, LOCAL_REASONING_EFFORTS, validBindingReference, localRoleCommand, publicLocalBinding, LOCAL_PROVIDER } from './local-inference.mjs';
 import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { harnessOf } from './lib.mjs';
@@ -8,6 +9,8 @@ export const ROLE_CAPABILITIES = Object.freeze({
   version: 1, roles: Object.keys(ROLE_PHASES), harnesses: ['inherit', 'codex', 'pi'],
   reasoningEffort: { codex: ['low', 'medium', 'high'], pi: [] },
   model: 'user-selected; availability and quality unqualified',
+  localBindings: { adapter: 'pi-openai-completions', authentication: 'keyless', maxOutputTokens: 32000,
+    reasoningEffort: LOCAL_REASONING_EFFORTS, thinking: 'typed request only; server semantics unqualified', sampling: 'unsupported', allocation: 'unknown', quality: 'unqualified' },
   skills: 'all six packaged runtime skills are shared read-only; recommendations are not access controls',
   resources: 'shared private installation', triage_spec: 'pre-admission instructions; no executable roles',
   automation: 'harness-owned; discovery unavailable; application never starts work',
@@ -27,7 +30,10 @@ export function parseRoleDefinition(value) {
   for (const role of Object.keys(ROLE_PHASES)) {
     const profile = value.roles[role] ?? {};
     if (Object.hasOwn(value.roles, role) && value.roles[role] === null) throw new DefinitionError(`${role} must be an object`);
-    object(profile, ['harness', 'model', 'reasoningEffort'], role);
+    object(profile, ['harness', 'model', 'reasoningEffort', 'localBinding'], role);
+    if (Object.hasOwn(profile, 'localBinding') && (!validBindingReference(profile.localBinding) || profile.harness !== 'pi'
+      || Object.hasOwn(profile, 'model') || Object.hasOwn(profile, 'reasoningEffort')))
+      throw new DefinitionError(`${role}: localBinding requires explicit Pi and cannot be combined with model or reasoningEffort`);
     const harness = profile.harness ?? 'inherit';
     if (Object.hasOwn(profile, 'harness') && !ROLE_CAPABILITIES.harnesses.includes(profile.harness)) throw new DefinitionError(`${role}: unsupported harness`);
     if (Object.hasOwn(profile, 'model') && profile.model !== null
@@ -36,8 +42,8 @@ export function parseRoleDefinition(value) {
     if (Object.hasOwn(profile, 'reasoningEffort') && !ROLE_CAPABILITIES.reasoningEffort.codex.includes(profile.reasoningEffort))
       throw new DefinitionError(`${role}: unsupported reasoning effort`);
     if (harness === 'pi' && profile.reasoningEffort !== undefined) throw new DefinitionError(`${role}: Pi reasoning effort is unavailable in this adapter`);
-    if (harness === 'pi' && !inferenceProviderFromModel(profile.model)) throw new DefinitionError(`${role}: explicit Pi requires provider/model (a supported provider prefix)`);
-    roles[role] = { harness, ...(Object.hasOwn(profile, 'model') ? { model: profile.model } : {}),
+    if (harness === 'pi' && !profile.localBinding && !inferenceProviderFromModel(profile.model)) throw new DefinitionError(`${role}: explicit Pi requires provider/model (a supported provider prefix)`);
+    roles[role] = { harness, ...(profile.localBinding ? { localBinding: profile.localBinding } : {}), ...(Object.hasOwn(profile, 'model') ? { model: profile.model } : {}),
       ...(profile.reasoningEffort === undefined ? {} : { reasoningEffort: profile.reasoningEffort }) };
   }
   return { version: 1, roles };
@@ -124,6 +130,15 @@ function codexRoleCommand(command, selection, role) {
 export function resolveRoleProfiles(config, definition = config.roleDefinition || inheritedDefinition(), environmentPath) {
   const parsed = parseRoleDefinition(definition), result = {}, overrides = hasRoleOverrides(parsed);
   for (const [role, selection] of Object.entries(parsed.roles)) {
+    if (selection.localBinding) {
+      const bindings = parseLocalBindings(config.localBindings);
+      const binding = Object.hasOwn(bindings, selection.localBinding) ? bindings[selection.localBinding] : null;
+      if (!binding) throw new DefinitionError(`${role}: missing local binding ${selection.localBinding}; explicitly adopt installation connection settings`);
+      result[role] = { harness: 'pi', model: binding.model, command: localRoleCommand(binding),
+        inferenceProvider: LOCAL_PROVIDER, reasoningEffort: null, source: 'preset', modelSource: 'local_binding',
+        localBinding: { reference: selection.localBinding, ...binding } };
+      continue;
+    }
     const inherited = selection.harness === 'inherit', harness = inherited ? harnessOf(config) : selection.harness;
     if (overrides && inherited && harness === 'codex') {
       const argv = config.command || [];
@@ -162,7 +177,7 @@ export function resolveRoleProfiles(config, definition = config.roleDefinition |
   return result;
 }
 export function publicRoleProfiles(profiles) {
-  return Object.fromEntries(Object.entries(profiles).map(([role, { command, ...profile }]) => [role, profile]));
+  return Object.fromEntries(Object.entries(profiles).map(([role, { command, localBinding, ...profile }]) => [role, { ...profile, ...(localBinding ? { localBinding: publicLocalBinding(localBinding) } : {}) }]));
 }
 export function installedRoleRecord(state) {
   const path = join(state, 'role-definition.json');
@@ -174,8 +189,14 @@ export function installedRoleRecord(state) {
   }
   if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || stat.size > 256000)
     throw new DefinitionError('Private definition record must be a regular private file, never a repository symlink');
-  const record = JSON.parse(readFileSync(path, 'utf8'));
-  if (record.version !== 1 || !Number.isSafeInteger(record.sequence) || record.sequence < 1 || !Array.isArray(record.history) || record.history.length > 10)
+  return parseRoleRecord(JSON.parse(readFileSync(path, 'utf8')));
+}
+// Shared by disk reads and pre-replacement validation of the serialized record.
+export function parseRoleRecord(record) {
+  if (![1, 2].includes(record.version) || !Number.isSafeInteger(record.sequence) || record.sequence < 1 || !Array.isArray(record.history) || record.history.length > 10)
     throw new DefinitionError('Invalid private definition record; restore the last valid private backup');
-  return { ...record, definition: parseRoleDefinition(record.definition), history: record.history.map(parseRoleDefinition) };
+  return { ...record, definition: parseRoleDefinition(record.definition),
+    localBindings: parseLocalBindings(record.localBindings),
+    history: record.history.map(item => record.version === 1 ? { definition: parseRoleDefinition(item), localBindings: {} }
+      : { definition: parseRoleDefinition(item.definition), localBindings: parseLocalBindings(item.localBindings) }) };
 }

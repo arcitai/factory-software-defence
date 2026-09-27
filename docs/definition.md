@@ -1,4 +1,4 @@
-# Role definitions (0.14.0)
+# Role definitions (0.15.0)
 
 The portable definition selects harness/model profiles for **Implement**, **Review**
 and **Investigate**. CLI, local API and the existing Agents/Definition pages use
@@ -18,8 +18,8 @@ does not make skills, resources, access, workflow gates or schedules editable.
 
 The root accepts exactly `version` and `roles`. Version must be numeric `1`;
 role names are exactly `implement`, `review`, `investigate`. Missing roles and
-missing `harness` mean `inherit`. Each role accepts only `harness`, `model` and
-`reasoningEffort`; unknown fields, roles, versions and incompatible combinations
+missing `harness` mean `inherit`. Each role accepts only `harness`, `model`, `reasoningEffort` and
+`localBinding`; unknown fields, roles, versions and incompatible combinations
 fail explicitly. The authoritative implementation and capability matrix are in
 [role-definition.mjs](../factory/role-definition.mjs), not a second schema copy.
 
@@ -41,14 +41,16 @@ fail explicitly. The authoritative implementation and capability matrix are in
   positional prompt and duplicate model flags left by an effort-only selection
   are refused before adoption. Use the Codex preset or correct the private
   command while stopped. All-inherit commands remain byte-for-byte unchanged.
-- Explicit `codex` or `pi` uses the same maintained preset as `init`, even when
+- Explicit `codex` or hosted `pi` uses the same maintained preset as `init`, even when
   the installed harness has the same name. No command, path, privilege, network,
   credential or provider-authorization argument can enter the portable payload.
 - `model` is a user-selected identifier (1–128 identifier characters, no paths,
   URLs, whitespace or command switches). Omit it for the explicit harness default;
-  `null` also requests that default. Explicit Pi requires a supported
+  `null` also requests that default. Explicit hosted Pi requires a supported
   `provider/model` prefix so credential selection is unambiguous. For inherited Pi,
   a model must agree with any installed private `inferenceProvider`.
+- `localBinding` selects an explicitly adopted private keyless Pi binding instead
+  of a hosted model; see the opt-in contract below.
 - This slice exposes Codex `reasoningEffort` values `low`, `medium`, `high`, passed
   as `-c model_reasoning_effort="VALUE"`. Omission preserves private/default
   behavior; it does not attest a detected effort. Pi effort control is unavailable.
@@ -124,7 +126,7 @@ the complete new record and history are present. Incomplete temporary files are
 not loaded. The adopted record must be a regular private file; repository symlinks
 are refused. Revisions include a monotonic sequence and the private base settings,
 so an old revision is stale even after rollback. Back up the entire private state
-while stopped; rollback restores portable roles only, not separately edited base
+while stopped; rollback restores roles and adopted local bindings, not separately edited base
 settings, credentials or historical attempts. New reads do not use a startup cache.
 
 Before each attempt, trusted configuration resolves and freezes **all roles** in
@@ -135,7 +137,7 @@ phase settings. Protected v2 execution evidence records role, requested model,
 provider, explicit effort and a digest binding the exact private command selection.
 The executor checks that binding before launching. Role overrides require v2;
 old v1 evidence cannot attest them. Unchanged legacy configurations still emit
-v1 with the actual 0.14.0 runtime version. See [compatibility](npm.md#protected-evidence-compatibility).
+v1 with the actual installed runtime version. See [compatibility](npm.md#protected-evidence-compatibility).
 
 Changing a role invalidates prior acceptance/checkpoint evidence under that
 policy. Rollback can restore the exact prior policy; it never edits evidence or
@@ -149,8 +151,8 @@ existing task-model behavior.
 Only the selected provider's inference settings reach each agent phase. Codex
 account-auth data never reaches Pi, including Pi using OpenAI. Check and Handoff
 receive no inference credentials. Git/issue-provider identity remains on the
-controller. No new credentials, endpoint binding, model download or provider is
-created by a definition.
+controller. Portable roles create no credentials or model downloads. The opt-in local binding
+contract below explicitly adopts private endpoint details separately.
 
 ## Role and output boundaries
 
@@ -186,3 +188,123 @@ inspection in both themes remain separate gates. #53 stays open for per-role
 skills/resources/access, broader project/flow/automation definitions and readiness
 attestation. #69 owns local/hybrid model benchmarks, #51 measurement and #70
 improvement proposals.
+
+## Opt-in local bindings (0.15.0, #69)
+
+A portable role can select `{"harness":"pi","localBinding":"local-worker"}`
+instead of a hosted `model`. The same reference can serve Implement, Review and
+Investigate, or any role can retain Codex/a hosted Pi model for a hybrid setup.
+Binding references cannot be combined with a role model or reasoning effort.
+They require the maintained Pi preset; private wrappers are not binding adapters.
+
+Connection details belong to explicitly adopted **private installation state**,
+not the portable definition. No repository filename, issue or model response is
+an active configuration source. Save a private JSON binding map, for example:
+
+```json
+{
+  "local-worker": {
+    "endpoint": "http://operator-selected-host:8080/v1",
+    "model": "exact-installed-model-id",
+    "contextWindow": 32768,
+    "maxTokens": 4096,
+    "reasoningEffort": "default",
+    "compat": {
+      "maxTokensField": "max_tokens",
+      "supportsUsageInStreaming": true,
+      "requiresToolResultName": false
+    }
+  }
+}
+```
+
+These illustrative values are not defaults or measured recommendations. Select
+the endpoint, exact model and limits for your installation. `endpoint` is a base
+URL for OpenAI **chat completions**, not a full `/chat/completions` URL. The job's
+isolated network must reach it; its loopback address is not the host's loopback.
+Factory neither opens ports nor adjusts networking or inference services.
+
+```sh
+factory definition diff --state PRIVATE_STATE --file roles.json --bindings-file PRIVATE_BINDINGS.json
+factory definition apply --state PRIVATE_STATE --file roles.json --bindings-file PRIVATE_BINDINGS.json --expected-revision HASH_FROM_DIFF
+factory definition rollback --state PRIVATE_STATE --expected-revision CURRENT_HASH
+```
+
+`validate`, `diff` and `apply` accept `--bindings-file`. Without it they retain the
+installed binding map. Providing a map replaces it in full, so removing a referenced
+binding fails until its roles are changed in the same request. `export` includes
+only portable roles/references. CLI `definition` inspects private bindings locally.
+The authenticated API adds optional `local_bindings` beside `definition` to
+validate/diff/apply; `GET /api/v1/definition` returns both. Diff returns
+`binding_changes`. Unauthenticated `/api/v1/definitions` omits endpoint maps;
+authenticated readback includes them. The existing Agents/Definition editor uses
+this same contract and shows a binding diff before Apply, including connection-only
+changes. Configuration makes no inference/model-list requests and never starts work.
+
+Bindings and roles share one revision, idle check, atomic record and at most ten
+rollback snapshots. Rollback restores both together; stale/busy/invalid writes
+preserve the prior state. Endpoint normalization is idempotent; URLs whose normalized
+form contains forbidden escapes (including Unicode path characters) are rejected.
+The complete serialized record and history are validated before replacement.
+The version-2 private record reads old version-1 role
+records without rewriting them. An old runtime cannot read a newly adopted v2
+record: roll back profiles first and restore a stopped pre-upgrade private-state
+backup before downgrading binaries. Do not hand-edit histories or frozen attempts.
+
+The binding contract supports at most 16 named, keyless HTTP(S) endpoints. URLs
+with user information, queries, fragments, escapes or malformed syntax are refused.
+Model identifiers cannot contain shell syntax, whitespace or traversal. Context
+must be 1,024–1,048,576 tokens; output must be 1–32,000 and smaller than context.
+The output ceiling follows pinned Pi 0.73.1's simple chat adapter. Range acceptance
+is **not** evidence of server allocation or useful task capacity. Only the three
+shown compatibility fields are supported. Authentication, custom headers, shell
+credential commands, arbitrary request fields, sampling overrides, custom thinking
+maps and provider plugins are unsupported. Factory does not spoof local inference
+as the hosted OpenAI provider.
+
+The optional binding `reasoningEffort` accepts only these OpenAI-style requests:
+
+| Binding choice | Chat-completions request |
+| --- | --- |
+| Omitted or `default` | No `reasoning_effort` override; server default applies |
+| `none` | `reasoning_effort: "none"` |
+| `low`, `medium`, `high` | `reasoning_effort` set to that exact value |
+
+This is a request choice, not a measured thinking budget or quality claim. The
+pinned Pi 0.73.1 adapter uses a fixed internal `thinkingLevelMap.off="none"` for
+`none`; `--thinking off` alone does **not** disable a server's default thinking.
+Low/medium/high use the corresponding explicit Pi thinking level. Existing
+bindings with no choice retain their omitted request and private policy shape;
+no default is inserted into their saved configuration. The binding editor,
+CLI/API diff, private readback, frozen selection and rollback share this choice.
+Separate role bindings can request different efforts. Endpoint support and actual
+behavior remain unqualified until tested on that installation. A server rejection
+fails the job without fallback or retrying with a different choice; a server that
+silently ignores the field cannot be detected from successful transport alone.
+
+Before admission, all selected references must resolve. Each attempt freezes the
+chosen endpoint, exact model, declared limits, reasoning request, compatibility settings and maintained
+command along with the common resource/timeout/skill policy. Unselected bindings
+are not included. Local/hybrid attempts emit protected **v3** evidence across all
+phases, binding the selection digest and common policy. Public facts show configured
+context/output, unknown actual allocation and unqualified quality. Old v1/v2 writers
+cannot attest local bindings; unchanged legacy profiles keep their policy bytes and
+compatible evidence. See [the compatibility audit](npm.md#protected-evidence-compatibility).
+
+For the selected local role only, the executor creates a private single-model
+`models.json` and deterministic launcher, mounted read-only at `/factory-local`.
+`PI_CODING_AGENT_DIR` selects that directory; HOME is still ephemeral. The launcher
+checks explicit provider/model argv, removes inherited credential/override inputs
+and propagates Pi JSON provider failures even if Pi exits zero. The registry uses
+Pi's required fixed non-secret key placeholder (`factory-local-keyless`), which may
+be sent as a bearer value; this is not endpoint authentication. No host home, provider
+catalog or credential store is mounted. Repository files cannot replace this mount.
+Files are removed after confirmed container shutdown; uncertain shutdown retains
+them behind the existing recovery fence until normal recovery confirms absence.
+
+Local roles receive no cloud model environment; cloud roles receive no local
+registry/override. Verify and Handoff receive neither. The local preset disables
+automatic skills/extensions/templates but explicitly adds `--skill /factory-skills`,
+preserving the six packaged skills. Recommendations remain guidance, not per-role
+access controls. Build still returns to Factory's independent Review and operator
+handoff; no duplicate review workflow is launched.

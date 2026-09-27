@@ -23,6 +23,7 @@ function clearStoppedFence(state, jobId, expectedPid) {
     throw new Error('Stopped executor identity does not match the retained recovery fence');
   if (/^run_[a-z0-9]+$/.test(previous.attempt || '') && credentialedPhases.has(previous.phase)) {
     const runFolder = join(folder, previous.attempt), modelEnvironment = join(runFolder, `.model-${previous.phase}.env`);
+    rmSync(join(runFolder, `.local-${previous.phase}`), { recursive: true, force: true });
     if (existsSync(modelEnvironment)) redactRetainedPhaseOutputs(runFolder, previous.phase, selectedInferenceSecrets(modelEnvironment));
   }
   if (previous.phase === 'verify') {

@@ -459,3 +459,127 @@ test('repository definitions are never auto-adopted and a symlink cannot turn pr
   chmodSync(privatePath, 0o600);
   assert.deepEqual(inspectDefinition(state), applied);
 });
+
+test('local binding CLI/API adoption uses one private CAS record and excludes endpoints from public catalog/export', async t => {
+  const { state, config } = installation(t);
+  const controller = createController(state, { execute: async () => ({ outcome: 'blocked' }), stop: async () => {}, reconcile: async () => {} });
+  await new Promise(resolve => controller.server.listen(0, '127.0.0.1', resolve)); t.after(() => controller.close());
+  config.port = controller.server.address().port; writeFileSync(join(state, 'factory.json'), JSON.stringify(config));
+  const origin = `http://127.0.0.1:${config.port}`;
+  const post = (action, body, auth = true) => fetch(`${origin}/api/v1/definition/${action}`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer fixture-token' } : {}) }, body: JSON.stringify(body) });
+  const proposal = { version: 1, roles: { implement: { harness: 'pi', localBinding: 'local-box' } } };
+  const bindings = { 'local-box': { endpoint: 'http://private-inference.invalid:8999/v1', model: 'fixture:small', contextWindow: 65536, maxTokens: 4096 } };
+  const file = join(state, 'roles.json'), bindingsFile = join(state, 'bindings.json');
+  writeFileSync(file, JSON.stringify(proposal)); writeFileSync(bindingsFile, JSON.stringify(bindings));
+  const preview = await (await post('diff', { definition: proposal, local_bindings: bindings })).json();
+  const cliPreview = await cli(state, ['diff', '--file', file, '--bindings-file', bindingsFile]);
+  assert.equal(cliPreview.code, 0, cliPreview.stderr); assert.deepEqual(JSON.parse(cliPreview.stdout), preview);
+  assert.equal((await post('apply', { definition: proposal, local_bindings: bindings, expected_revision: preview.revision }, false)).status, 403);
+  const applied = await cli(state, ['apply', '--file', file, '--bindings-file', bindingsFile, '--expected-revision', preview.revision]);
+  assert.equal(applied.code, 0, applied.stderr);
+  assert.equal(controller.queue.all().length, 0);
+  const publicCatalog = await (await fetch(origin + '/api/v1/definitions')).json();
+  assert.doesNotMatch(JSON.stringify(publicCatalog), /private-inference/);
+  const privateCatalog = await (await fetch(origin + '/api/v1/definitions', { headers: { Authorization: 'Bearer fixture-token' } })).json();
+  assert.equal(privateCatalog.role_definition.local_bindings['local-box'].endpoint, bindings['local-box'].endpoint);
+  assert.equal((await fetch(origin + '/api/v1/definition')).status, 403);
+  const exported = await cli(state, ['export']); assert.equal(exported.code, 0);
+  assert.equal(JSON.parse(exported.stdout).roles.implement.localBinding, 'local-box'); assert.doesNotMatch(exported.stdout, /endpoint|private-inference/);
+  const before = readFileSync(join(state, 'role-definition.json'));
+  assert.equal((await post('apply', { definition: proposal, expected_revision: preview.revision, local_bindings: bindings })).status, 409);
+  assert.equal((await post('apply', { definition: proposal, expected_revision: inspectDefinition(state).revision, local_bindings: {} })).status, 400);
+  assert.deepEqual(readFileSync(join(state, 'role-definition.json')), before);
+  assert.equal((await post('rollback', { expected_revision: inspectDefinition(state).revision })).status, 200);
+  assert.deepEqual(inspectDefinition(state).local_bindings, {});
+});
+
+test('local v3 protected evidence requires exact frozen bindings and cannot be downgraded to a legacy writer', t => {
+  const { state } = installation(t);
+  const local = { version: 1, roles: { review: { harness: 'pi', localBinding: 'worker' } } };
+  changeDefinition(state, idle(), { expected_revision: inspectDefinition(state).revision, definition: local,
+    local_bindings: { worker: { endpoint: 'http://fixture.invalid/v1', model: 'fixture:small', contextWindow: 65536, maxTokens: 4096 } } });
+  const common = effectiveExecutionConfig(configAt(state)), profile = executionProfile(common, 'review');
+  const job = { id: 'job_local' }, run = { id: 'run_local', execution: profile }, folder = join(state, 'jobs', job.id);
+  const artifact = join(folder, 'artifacts', run.id, 'execution.json'), frozen = join(folder, run.id, 'execution-config.json');
+  save(artifact, profile); save(frozen, common);
+  assert.equal(trustedExecutionProfile(state, job, run, 'review', profile.policyHash), true);
+  const forged = { ...profile, version: 2, runtimeVersion: '0.14.0' }; delete forged.localBinding;
+  save(artifact, forged); run.execution = forged;
+  assert.equal(trustedExecutionProfile(state, job, run, 'review', profile.policyHash), false);
+  save(artifact, profile); run.execution = profile;
+  const changed = structuredClone(common); changed.resolvedRoleProfiles.review.localBinding.contextWindow = 131072;
+  save(frozen, changed);
+  assert.equal(trustedExecutionProfile(state, job, run, 'review', profile.policyHash), false);
+  save(frozen, common);
+  assert.equal(trustedExecutionProfile(state, job, run, 'review', profile.policyHash), true);
+});
+
+for (const route of ['store', 'CLI', 'API']) for (const selected of [false, true]) {
+  test(`${route} rejects ${selected ? 'selected' : 'unused'} non-roundtrippable endpoint without changing state/history`, async t => {
+    const { state, config } = installation(t);
+    const controller = createController(state, { execute: async () => ({ outcome: 'blocked' }), stop: async () => {}, reconcile: async () => {} });
+    await new Promise(resolve => controller.server.listen(0, '127.0.0.1', resolve)); t.after(() => controller.close());
+    config.port = controller.server.address().port; writeFileSync(join(state, 'factory.json'), JSON.stringify(config));
+    const initial = inspectDefinition(state);
+    const previous = changeDefinition(state, idle(), { expected_revision: initial.revision, definition });
+    const path = join(state, 'role-definition.json'), bytes = readFileSync(path);
+    const proposal = selected ? { version: 1, roles: { implement: { harness: 'pi', localBinding: 'candidate' } } } : definition;
+    const bindings = { candidate: { endpoint: 'http://inference.invalid/café/v1', model: 'fixture:model', contextWindow: 32768, maxTokens: 1024 } };
+    const input = { expected_revision: previous.revision, definition: proposal, local_bindings: bindings };
+    if (route === 'store') assert.throws(() => changeDefinition(state, idle(), input), /endpoint/);
+    else if (route === 'CLI') {
+      const file = join(state, 'roles.json'), bindingsFile = join(state, 'bindings.json');
+      writeFileSync(file, JSON.stringify(proposal)); writeFileSync(bindingsFile, JSON.stringify(bindings));
+      const result = await cli(state, ['apply', '--file', file, '--bindings-file', bindingsFile, '--expected-revision', previous.revision]);
+      assert.notEqual(result.code, 0); assert.match(result.stderr, /endpoint/);
+    } else {
+      const response = await fetch(`http://127.0.0.1:${config.port}/api/v1/definition/apply`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer fixture-token' }, body: JSON.stringify(input) });
+      assert.equal(response.status, 400); assert.match(await response.text(), /endpoint/);
+    }
+    assert.deepEqual(readFileSync(path), bytes);
+    assert.deepEqual(inspectDefinition(state), previous);
+    const restored = changeDefinition(state, idle(), { expected_revision: previous.revision }, true);
+    assert.deepEqual(restored.definition, initial.definition);
+    assert.deepEqual(restored.local_bindings, initial.local_bindings);
+  });
+}
+
+test('local reasoning choice shares CLI/API inspect, diff, apply and rollback without changing portable roles', async t => {
+  const { state, config } = installation(t);
+  const controller = createController(state, { execute: async () => ({ outcome: 'blocked' }), stop: async () => {}, reconcile: async () => {} });
+  await new Promise(resolve => controller.server.listen(0, '127.0.0.1', resolve)); t.after(() => controller.close());
+  config.port = controller.server.address().port; writeFileSync(join(state, 'factory.json'), JSON.stringify(config));
+  const origin = `http://127.0.0.1:${config.port}`, headers = { 'Content-Type': 'application/json', Authorization: 'Bearer fixture-token' };
+  const post = (action, body) => fetch(`${origin}/api/v1/definition/${action}`, { method: 'POST', headers, body: JSON.stringify(body) });
+  const proposal = { version: 1, roles: { review: { harness: 'pi', localBinding: 'reviewer' } } };
+  const binding = { endpoint: 'http://inference.invalid/v1', model: 'fixture:model', contextWindow: 65536, maxTokens: 8192 };
+  const file = join(state, 'roles.json'), bindingsFile = join(state, 'bindings.json');
+  writeFileSync(file, JSON.stringify(proposal));
+  const base = changeDefinition(state, idle(), { definition: proposal, local_bindings: { reviewer: binding }, expected_revision: inspectDefinition(state).revision });
+  for (const reasoningEffort of ['default', 'none', 'low', 'medium', 'high']) {
+    const bindings = { reviewer: { ...binding, reasoningEffort } };
+    writeFileSync(bindingsFile, JSON.stringify(bindings));
+    const preview = await (await post('diff', { definition: proposal, local_bindings: bindings })).json();
+    const cliPreview = await cli(state, ['diff', '--file', file, '--bindings-file', bindingsFile]);
+    assert.equal(cliPreview.code, 0, cliPreview.stderr); assert.deepEqual(JSON.parse(cliPreview.stdout), preview);
+    assert.equal(preview.binding_changes[0].after.reasoningEffort, reasoningEffort);
+    const applied = await cli(state, ['apply', '--file', file, '--bindings-file', bindingsFile, '--expected-revision', preview.revision]);
+    assert.equal(applied.code, 0, applied.stderr);
+    const readback = await (await fetch(origin + '/api/v1/definition', { headers })).json();
+    assert.deepEqual(readback, JSON.parse(applied.stdout));
+    assert.equal(readback.effective.review.localBinding.reasoningEffort, reasoningEffort);
+    const cliReadback = await cli(state, []); assert.equal(cliReadback.code, 0, cliReadback.stderr);
+    assert.deepEqual(JSON.parse(cliReadback.stdout).role_definition, readback);
+    const bytes = readFileSync(join(state, 'role-definition.json'));
+    const invalid = await post('apply', { definition: proposal, expected_revision: readback.revision,
+      local_bindings: { reviewer: { ...binding, reasoningEffort: { off: 'none' } } } });
+    assert.equal(invalid.status, 400); assert.deepEqual(readFileSync(join(state, 'role-definition.json')), bytes);
+    const restored = await cli(state, ['rollback', '--expected-revision', readback.revision]);
+    assert.equal(restored.code, 0, restored.stderr);
+    assert.deepEqual(JSON.parse(restored.stdout).local_bindings, base.local_bindings);
+    assert.deepEqual(inspectDefinition(state).definition, base.definition);
+  }
+  assert.equal(controller.queue.all().length, 0);
+});

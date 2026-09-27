@@ -70,7 +70,11 @@ export function createController(state, adapter = executors(state), integrations
   const delivery = new DeliveryService(queue, state, { config: () => configAt(state), sourceAdmission, provider: deliveryAdapter });
   const projectLinks = readProjectLinks(config.repo);
   const host = machineInfo();
-  const catalog = () => ({ ...factoryDefinition(configAt(state)), role_definition: inspectDefinition(state) });
+  const catalog = (privateBindings = false) => {
+    const role_definition = inspectDefinition(state);
+    if (!privateBindings && Object.keys(role_definition.local_bindings).length) delete role_definition.local_bindings;
+    return { ...factoryDefinition(configAt(state)), role_definition };
+  };
   const server = http.createServer(async (request, response) => {
     const send = (status, value, type = 'application/json; charset=utf-8') => { response.writeHead(status, { 'Content-Type': type }); response.end(type.startsWith('application/json') ? JSON.stringify(value) : value); };
     response.setHeader('Cache-Control', 'no-store'); response.setHeader('X-Content-Type-Options', 'nosniff'); response.setHeader('Referrer-Policy', 'no-referrer');
@@ -99,7 +103,7 @@ export function createController(state, adapter = executors(state), integrations
           repositories: ['app'], repo: config.repo, project_links: projectLinks, source_ref_default: config.sourceRef || 'HEAD', harness: harnessOf(config), agent: harnessOf(config) });
       }
       if (request.method === 'GET' && url.pathname === '/api/v1/definitions') {
-        return send(200, catalog());
+        return send(200, catalog(authenticated));
       }
       if (request.method === 'GET' && url.pathname === '/api/v1/definition') {
         if (!authenticated) throw new QueueError('Session required', 403);
@@ -152,9 +156,9 @@ export function createController(state, adapter = executors(state), integrations
           return send(200, queue.setMaintenance(input.enabled));
         }
         if (['/api/v1/definition/validate', '/api/v1/definition/diff'].includes(url.pathname)) {
-          if (url.pathname.endsWith('/diff') && input.rollback === true && Object.keys(input).length === 1) return send(200, previewRollback(state));
-          if (Object.keys(input).some(key => key !== 'definition')) throw new QueueError('Expected definition only', 400);
-          return send(200, previewDefinition(state, input.definition));
+          if (url.pathname.endsWith('/diff') && input?.rollback === true && Object.keys(input).length === 1) return send(200, previewRollback(state));
+          if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['definition', 'local_bindings'].includes(key))) throw new QueueError('Expected definition and optional local_bindings', 400);
+          return send(200, previewDefinition(state, input.definition, input.local_bindings));
         }
         if (['/api/v1/definition/apply', '/api/v1/definition/rollback'].includes(url.pathname))
           return send(200, changeDefinition(state, queue, input, url.pathname.endsWith('/rollback')));

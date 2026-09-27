@@ -389,3 +389,44 @@ To add operator scope at admission, use `issue start --url URL --workflow softwa
 --brief-file operator.md --state PATH` with an optional UTF-8 brief of at most
 16000 characters. This keeps the remote identity and current-content check;
 local requests still use `issue start --file` or `--draft` without `--brief-file`.
+
+
+## Optional keyless local or hybrid inference
+
+Use the [local binding recipe](definition.md#opt-in-local-bindings-0150-69) to adopt
+an explicit private endpoint/model map and portable Pi role references. Keep the
+working default and a stopped private-state backup; preview, apply while idle and
+use revision-guarded rollback. A local Implement role can be paired with an existing
+cloud Review role. No downloads, service restarts, port changes or jobs occur during
+configuration. Authenticated endpoints, sampling overrides and custom thinking
+maps are unsupported. Local bindings may request OpenAI-style `reasoningEffort`:
+`default` (or omitted), `none`, `low`, `medium` or `high`. Default omits the request;
+it does not disable server thinking. Qualify the endpoint's actual semantics before
+using a request as a thinking-budget control. Unsupported requests fail without
+fallback when the endpoint rejects them; transport success alone cannot prove a
+server honored the request. Existing omitted choices remain unchanged.
+
+Qualify the actual installed image and endpoint from an isolated job before using
+it for application work. Record server/harness versions, exact model ID and digest,
+quantization, GPU/backend and actual offload, available and peak memory, endpoint
+reachability, tool-call/result compatibility and report/check/review outcomes.
+Keep host inference access separate from controller/forge credentials. Unknown
+values stay unknown; registry discovery only proves client capability.
+
+Reconcile the client's configured context with the server's actual allocation and
+per-request/model overrides. Do not infer a 65k allocation from a remembered agent
+setting or a server default. A bounded 64k/128k allocation experiment, where
+supported, must record KV-cache and Flash Attention settings, memory and allocation
+success separately from long-context task quality. This worker supplies no such
+measurements or driver/kernel advice. Do not recommend larger windows from the
+schema's upper limit.
+
+The operator still owns #69's matched two-fixture comparison: pinned bases,
+comparable prompts/contexts/trials, a measured existing local baseline and one
+selected alternative, decisive independent checks and separate Review contexts.
+Retain failures, repairs and human time. Record wall time, observable prefill/decode,
+input/cached/output tokens, memory/offload and all reviewer usage. Factory currently
+leaves Pi usage unknown; controlled protocol fixtures are not token or quality
+benchmarks. Include cloud Review in hybrid totals. No provider token billing for
+local inference does not mean zero electricity, hardware or operator cost. Only
+then qualify a suitable real Factory issue; no customer jobs are part of this slice.

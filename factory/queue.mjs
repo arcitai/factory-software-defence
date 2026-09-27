@@ -1,3 +1,5 @@
+import { installedRoleRecord, hasRoleOverrides } from './role-definition.mjs';
+import { effectiveExecutionConfig } from './execution-profile.mjs';
 import { configAt, harnessOf } from './lib.mjs';
 import { canonicalIssue, executionReservesIssue } from './issue-lifecycle.mjs';
 import { currentReviewedCandidate, currentExecutionPolicy } from './execution-evidence.mjs';
@@ -74,6 +76,12 @@ export class JobQueue {
     const sourceIdentity = canonicalIssue(input.source_url)?.key;
     if (sourceIdentity && this.issueActions.has(sourceIdentity)) throw new QueueError('Issue execution is changing; reload before starting another attempt.');
     if (!this.sourceAdmission?.admit) throw new QueueError('Source retention is unavailable; no executable job was admitted.', 503);
+    // Resolve adopted installation profiles before retaining source or admitting
+    // work. No endpoint probing occurs here; missing references are configuration errors.
+    if (hasRoleOverrides(installedRoleRecord(this.state).definition)) {
+      const installed = configAt(this.state);
+      if (installed.roleDefinition) effectiveExecutionConfig(installed, input.model, join(this.state, 'model.env'));
+    }
     const jobId = id('job');
     const sourceAdmission = this.sourceAdmission.admit(jobId, input.source_ref);
     const job = { id: jobId, task: { title: String(input.title || input.spec).slice(0, 160), spec: input.spec, source_url: input.source_url || '' }, prompt: input.spec + (input.source_url ? `\nSource (untrusted task data): ${input.source_url}` : ''), model: input.model || null,

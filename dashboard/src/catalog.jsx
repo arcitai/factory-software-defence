@@ -20,7 +20,7 @@ export function InfrastructurePage({ infrastructure, workers = [], loaded, error
 const displayName = name => String(name || "Unknown").replaceAll("_", " ").replaceAll("-", " ").replace(/^./, c => c.toUpperCase());
 
 export function DefinitionPage({ section = "definition", csrfToken }) {
-  const definitions = useDefinitions(), [selection, setSelection] = useState("software");
+  const definitions = useDefinitions(csrfToken), [selection, setSelection] = useState("software");
   const data = definitions.value, config = data.configuration;
   const names = Object.keys(data.workflows || {}), selected = names.includes(selection) ? selection : names[0];
   const steps = data.workflows?.[selected] || [];
@@ -61,13 +61,13 @@ export function AutomationsPage({ loaded, error, control }) {
 function Page({ title, description, children }) { return <div className="secondary-page space-y-6"><PageHeading title={title} description={description} />{children}</div>; }
 function Loading() { return <Card><QuietState title="Loading" description="Reading the current installation." role="status" /></Card>; }
 function Failure({ value }) { return <div role="alert" className="rounded-md border border-danger/35 bg-danger/10 px-3 py-2 text-sm text-danger">{value}</div>; }
-function useDefinitions() {
+function useDefinitions(csrfToken) {
   const [result, setResult] = useState({ loading: true, error: "", value: { commands: [] } });
   const refresh = useCallback(async signal => {
-    const response = await fetch("/api/v1/definitions", { headers: { Accept: "application/json" }, ...(signal ? { signal } : {}) });
+    const response = await fetch("/api/v1/definitions", { headers: { Accept: "application/json", ...(csrfToken ? { "X-Factory-Session": csrfToken } : {}) }, ...(signal ? { signal } : {}) });
     if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || `Definitions request failed (${response.status})`); }
     const value = await response.json(); setResult({ loading: false, error: "", value });
-  }, []);
+  }, [csrfToken]);
   useEffect(() => {
     const controller = new AbortController();
     refresh(controller.signal).catch(error => { if (error.name !== "AbortError") setResult(current => ({ ...current, loading: false, error: error.message })); });
