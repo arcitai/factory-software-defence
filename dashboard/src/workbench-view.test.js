@@ -12,6 +12,7 @@ async function composer(t, api, projectLinks={repository:'https://github.com/exa
   const response=value=>({ok:true,json:async()=>value});
   for(const [key,value] of Object.entries({window:dom.window,document:dom.window.document,navigator:dom.window.navigator,localStorage:dom.window.localStorage,IS_REACT_ACT_ENVIRONMENT:true,fetch:async(url,options)=>{
     if(url==='/api/v1/status')return response(status);
+    if(url.startsWith('/api/v1/issues?'))return response({issues:[],loaded_count:0,page:1,state:'open',next_page:null});
     assert.equal(options.headers['X-Factory-Session'],'fixture');
     if(url==='/api/v1/issue-connection')return response({label:'GitHub',repository:'https://github.com/example/project',actor:'operator',available:true});
     if(url==='/api/v1/issue-submissions')return response(integration.submissions ? integration.submissions() : []);
@@ -25,7 +26,7 @@ async function composer(t, api, projectLinks={repository:'https://github.com/exa
   const button=label=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===label);
   const click=async label=>act(()=>{assert(button(label),label);button(label).click();});
   const input=async(selector,value)=>act(()=>{const field=document.querySelector(selector),proto=field.tagName==='TEXTAREA'?dom.window.HTMLTextAreaElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(field,value);field.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
-  await click('New issue');
+  await click(integration.local ? 'Local execution request' : 'New issue');
   return {created,button,click,input};
 }
 async function waitFor(condition, description) {
@@ -44,27 +45,6 @@ const template={id:'bug.yml',sha:'a'.repeat(40),name:'Bug report',description:'R
 const suggestion={workflow:'defence',basis:'label',reason:'Labelled for security investigation.'};
 const issue=number=>({number,title:`Scoped issue ${number}`,url:`https://github.com/example/project/issues/${number}`,labels:[{name:'track:security',color:'e0caca'}]});
 
-test('issue picker retries, pages, searches and previews Defence before explicit, overridable admission',async t=>{
-  let lists=0;
-  const c=await composer(t,async(url,options,response)=>{
-    if(url==='/api/v1/issues?page=1')return ++lists===1?{ok:false,json:async()=>({error:'GitHub access unavailable'})}:response({issues:[issue(42)],next_page:2});
-    if(url==='/api/v1/issues?page=2')return response({issues:[issue(43)],next_page:null});
-    if(url==='/api/v1/issues/preview')return response({title:'Scoped issue 43',url:JSON.parse(options.body).url,spec:'Investigate supplied incident evidence.',labels:[{name:'track:security',color:'e0caca'}],recommendation:suggestion});
-    throw Error(url);
-  });
-  assert(document.querySelector('[aria-label="Issue templates"]'));assert.equal(document.querySelector('textarea'),null);
-  assert.equal(document.querySelector('[aria-label="Work type"]'),null);
-  await c.click('From GitHub issues');assert.match(document.body.textContent,/GitHub access unavailable/);
-  await c.click('Retry');await c.click('Load more');assert.equal(document.querySelectorAll('.issue-choice').length,2);
-  await c.input('.issue-picker input[type="search"]','43');assert.equal(document.querySelectorAll('.issue-choice').length,1);
-  await act(()=>document.querySelector('.issue-choice').click());
-  assert.equal(c.created.length,0);assert.equal(c.button('Defence').getAttribute('aria-pressed'),'true');
-  assert.equal(document.querySelector('.work-options').open,false);
-  assert.match(document.body.textContent,/private draft/);
-  await c.click('Software');await c.click('Defence');await act(()=>document.querySelector('.work-options summary').click());await c.input('input[placeholder="Configured ref: main"]','release/1.2');await c.click('Start work');
-  assert.equal(c.created.length,1);assert.equal(c.created[0].workflow,'defence');assert.equal(c.created[0].source_url,issue(43).url);assert.equal(c.created[0].source_ref,'release/1.2');assert.equal(c.created[0].title,'Scoped issue 43');assert.equal(document.querySelector('dialog'),null);
-});
-
 test('brief works without GitHub, recommends only on Continue and allows a software override',async t=>{
   let recommendations=0;
   const c=await composer(t,async(url,options,response)=>{
@@ -74,20 +54,8 @@ test('brief works without GitHub, recommends only on Continue and allows a softw
   await act(()=>document.querySelector('[data-blank-issue]').click());await c.input('input[name="issue-title"]','Investigate supplied logs');
   await c.input('textarea','Investigate an incident using supplied logs.');await c.click('Continue');
   assert.equal(recommendations,1);assert.equal(c.created.length,0);assert.equal(document.activeElement,document.querySelector('[data-review-heading]'));
-  await c.click('Software');await c.input('textarea','Investigate another incident from supplied logs.');await c.click('Refresh suggestion');assert.equal(c.button('Software').getAttribute('aria-pressed'),'true');assert.equal(document.querySelector('input[name="issue-title"]').readOnly,true);await c.click('Create & start locally');assert.equal(c.created[0].workflow,'software');assert.equal(c.created[0].source_url,'');
+  await c.click('Software');await c.input('textarea','Investigate another incident from supplied logs.');await c.click('Refresh suggestion');assert.equal(c.button('Software').getAttribute('aria-pressed'),'true');assert.equal(document.querySelector('input[name="issue-title"]').readOnly,true);await c.click('Start local execution');assert.equal(c.created[0].workflow,'software');assert.equal(c.created[0].source_url,'');
 });
-
-test('a late issue preview cannot replace a brief after switching source',async t=>{
-  let resolvePreview;
-  const c=await composer(t,async(url,options,response)=>{
-    if(url.includes('?page='))return response({issues:[issue(42)],next_page:null});
-    return new Promise(resolve=>{resolvePreview=()=>resolve(response({spec:'Obsolete issue',title:'Old',url:issue(42).url,labels:[],recommendation:suggestion}));});
-  });
-  await c.click('From GitHub issues');await act(()=>document.querySelector('.issue-choice').click());
-  await c.click('Create issue');await act(()=>document.querySelector('[data-blank-issue]').click());await c.input('textarea','My new brief');await act(()=>resolvePreview());
-  assert.equal(document.querySelector('textarea').value,'My new brief');assert.equal(document.querySelector('#start-work-title').textContent,'New issue');assert.equal(c.created.length,0);
-});
-
 
 test('template chooser preserves required fields and compiles answers before review and start',async t=>{
   let drafts=0;
@@ -95,12 +63,12 @@ test('template chooser preserves required fields and compiles answers before rev
     assert.equal(url,'/api/v1/issue-templates/draft');const body=JSON.parse(options.body);drafts++;
     assert.equal(body.template,'bug.yml');assert.equal(body.sha,template.sha);assert.equal(body.answers.problem,'The board fails to open.');
     return response({title:body.title,spec:'# Fix board\n\n### What happened?\n\nThe board fails to open.',labels:[],recommendation:{workflow:'software',reason:'Project change',basis:'default'}});
-  });
+  },undefined,undefined,{local:true});
   await act(()=>[...document.querySelectorAll('.template-choice button')].find(button=>button.textContent.includes('Bug report')).click());
   assert.equal(document.querySelector('textarea').required,true);assert.equal(document.querySelector('input[name="issue-title"]').value,'[Bug] ');
   await c.click('Continue');assert.equal(drafts,0,'native required fields prevent an empty form');
   await c.input('input[name="issue-title"]','Fix board');await c.input('textarea','The board fails to open.');await c.click('Continue');
-  assert.equal(drafts,1);assert.equal(c.created.length,0);await act(()=>{const field=document.querySelector('select');field.value='local';field.dispatchEvent(new window.Event('change',{bubbles:true}));});await c.click('Create & start locally');assert.equal(c.created[0].title,'Fix board');assert.match(c.created[0].spec,/What happened/);
+  assert.equal(drafts,1);assert.equal(c.created.length,0);await c.click('Start local execution');assert.equal(c.created[0].title,'Fix board');assert.match(c.created[0].spec,/What happened/);
 });
 
 
@@ -124,7 +92,7 @@ test('repository creation shows identity and creates no execution until a separa
   await act(()=>document.querySelector('[data-blank-issue]').click());await c.input('input[name="issue-title"]','Improve intake');await c.input('textarea','Implement the issue bridge.');await c.click('Continue');
   assert.match(document.body.textContent,/as operator/);assert.equal(c.button('Start work'),undefined);
   await c.click('Create issue on GitHub');await waitFor(()=>writes===1 && /Issue #91 created/.test(document.body.textContent),'repository issue creation receipt');assert.equal(writes,1);assert.equal(c.created.length,0);assert.match(document.body.textContent,/Issue #91 created/);
-  await c.click('Start work');assert.equal(c.created.length,1);assert.equal(c.created[0].source_url,'https://github.com/example/project/issues/91');
+  assert.equal(c.button('Start work'),undefined);assert.equal(c.button('From GitHub issues'),undefined);await c.click('Done');assert.equal(c.created.length,0);assert.equal(document.querySelector('dialog'),null);
 });
 
 

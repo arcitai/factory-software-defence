@@ -14,13 +14,25 @@ test('workflow, model, badge and search compose; task navigation preserves the f
     {id:'job_gamma',state:'succeeded',workflow:{name:'defence',steps:['defence'],current_step:0},task:{title:'Gamma triage'},runs:[{id:'c',command:'defence',model:'model-a',state:'succeeded'}]},
   ].map(job=>({...job,repository:'app',created_at:'2026-09-25T10:00:00Z'}));
   const status={jobs,workers:[],commands:[],repositories:['app'],triggers:[],workflows:['software','defence'],repo:'/srv/actual-project',project_links:{repository:'https://github.com/example/actual-project',new_issue:'https://github.com/example/actual-project/issues/new'}};
-  for(const [key,value] of Object.entries({window:dom.window,document:dom.window.document,navigator:dom.window.navigator,localStorage:dom.window.localStorage,IS_REACT_ACT_ENVIRONMENT:true,fetch:async url=>({ok:true,json:async()=>url==='/api/v1/status'?status:[]})})) {
+  const providerIssues=Array.from({length:5},(_,index)=>({number:index+1,title:`Repository issue ${index+1}`,url:`https://github.com/example/actual-project/issues/${index+1}`,identity:{key:`github:https://github.com/example/actual-project:${index+1}`},state:'open',labels:[],readiness:{label:'Readiness unknown'},executions:[]}));
+  status.csrf_token='fixture';status.issue_provider={id:'github',label:'GitHub',supported:true,repository:'https://github.com/example/actual-project'};
+  const backlog={issues:providerIssues,history:[],page:1,state:'open',loaded_count:5,total:null,next_page:2};
+  for(const [key,value] of Object.entries({window:dom.window,document:dom.window.document,navigator:dom.window.navigator,localStorage:dom.window.localStorage,IS_REACT_ACT_ENVIRONMENT:true,fetch:async url=>({ok:true,json:async()=>url==='/api/v1/status'?status:url.startsWith('/api/v1/issues?')?backlog:[]})})) {
     prior.set(key,Object.getOwnPropertyDescriptor(globalThis,key));Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});
   }
   const server=await createServer({server:{middlewareMode:true,ws:false},appType:'custom'});
   let root;
   t.after(async()=>{await act(()=>root?.unmount());await server.close();dom.window.close();for(const [key,descriptor]of prior){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
   await act(async()=>{root=(await server.ssrLoadModule('/src/main.jsx')).appRoot;});
+  assert.match(document.body.textContent,/5 issues loaded on page 1.*total unknown/);
+  assert.equal(document.querySelectorAll('.inbox-row').length,5);
+  for(const link of document.querySelectorAll('a[href="#/inbox"]')) {
+    assert.equal(link.textContent,'Inbox','repository navigation must not use the three execution jobs as an issue total');
+    assert.equal(link.querySelector('.nav-count'),null);
+  }
+  await act(()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Execution history').click());
+  assert.match(document.body.textContent,/All executions/);
+  assert.doesNotMatch(document.body.textContent,/All issues/);
   const rows=()=>[...document.querySelectorAll('.task-list a')].map(a=>a.textContent);
   const setSelect=async(label,value)=>{
     const names={'Filter by workflow':'Filter by work type','Filter by model':'Filter by models','Filter by badge':'Filter by statuses'};
@@ -55,13 +67,13 @@ test('workflow, model, badge and search compose; task navigation preserves the f
   assert.equal(document.querySelector('.facet-popover-heading button').disabled,false,'Reset remains focusable after clearing');
   await act(()=>document.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));
   assert.equal(document.activeElement.getAttribute('aria-label'),'Filter by work type');
-  await click('.filter-card-main');assert.equal(rows().length,0);
+  await click('.filter-card-main');assert.equal(rows().length,0);assert.match(document.body.textContent,/No matching executions/);
   await click('.filter-card-main');assert.equal(rows().length,3,'clicking the selected status clears it');
 
   await click('button[aria-label="Filter by Timed out badge"]');assert.equal(rows().length,1);assert.match(rows()[0],/Beta/);
   await click('.active-filters button');
   await setSelect('Filter by badge','succeeded');assert.equal(rows().length,2);
-  await act(()=>{const search=document.querySelector('[aria-label="Search issues"]');Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value').set.call(search,'Gamma');search.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
+  await act(()=>{const search=document.querySelector('[aria-label="Search executions"]');Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value').set.call(search,'Gamma');search.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
   assert.equal(rows().length,1);assert.match(rows()[0],/Gamma/);
   await route('#/runs/job_gamma');await act(()=>window.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape'})));await route('#/runs');assert.equal(rows().length,1);
   await click('.active-filters button');

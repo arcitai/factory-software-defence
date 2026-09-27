@@ -1,3 +1,4 @@
+import { associateIssue, backlogHistory, readinessMapping } from './issue-lifecycle.mjs';
 import { harnessOf } from './lib.mjs';
 import http from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -87,7 +88,7 @@ export function createController(state, adapter = executors(state), integrations
           delivery_removal_blocked: Boolean(job.delivery && !['published', 'abandoned'].includes(job.delivery.state)),
           delivery_status: delivery.summary(job), runs: job.runs.map(attempt => attemptPresentation({ ...attempt,
           outcome: attempt.outcome || (attempt.state === 'succeeded' ? 'complete' : undefined) }, adapter.usage?.(job, attempt))) }));
-        return send(200, { version: 1, runtime_version: VERSION, maintenance: queue.maintenance, workflows: Object.keys(definitions.workflows), commands: [], triggers: [], jobs, csrf_token: csrf,
+        return send(200, { version: 1, runtime_version: VERSION, maintenance: queue.maintenance, workflows: Object.keys(definitions.workflows), commands: [], triggers: [], jobs, issue_history: backlogHistory(jobs, []), csrf_token: csrf,
           infrastructure: { host, controller: { connected: !queue.closing }, workers: [{ id: 'local-executor', name: 'Local worker', host: host.hostname, connected: !queue.closing }] },
           automations: [], automation_control: definitions.automations, issue_provider: providerInfo(provider),
           delivery_configuration: deliveryProviderInfo(configAt(state), deliveryAdapter),
@@ -99,13 +100,20 @@ export function createController(state, adapter = executors(state), integrations
       }
       if (request.method === 'GET' && url.pathname === '/api/v1/issues') {
         if (!authenticated) throw new QueueError('Session required', 403);
-        try { return send(200, await provider.list(Number(url.searchParams.get('page') || 1))); }
-        catch (error) { throw new QueueError(error.message, 400); }
+        try {
+          const page = Number(url.searchParams.get('page') || 1), state = url.searchParams.get('state') || 'open';
+          if (!Number.isSafeInteger(page) || page < 1 || page > 10000 || !['open','closed','all'].includes(state)) throw new QueueError('Choose a valid issue page and state.', 400);
+          const result = provider.supported ? await provider.list(page, state) : {repository:provider.repository, issues:[],next_page:null};
+          const jobs = queue.all(), issues = result.issues.map(issue => associateIssue(issue, jobs, readinessMapping(config.issueReadinessLabels)));
+          return send(200, { ...result, issues, provider:providerInfo(provider), page, state, loaded_count:issues.length, total:null,
+            history:backlogHistory(jobs, issues) });
+        }
+        catch (error) { throw new QueueError(error.message, error.status || 400); }
       }
       if (request.method === 'GET' && url.pathname === '/api/v1/issue-templates') {
         if (!authenticated) throw new QueueError('Session required', 403);
         try { return send(200, await provider.templates()); }
-        catch (error) { throw new QueueError(error.message, 400); }
+        catch (error) { throw new QueueError(error.message, error.status || 400); }
       }
       if (request.method === 'GET' && ['/api/v1/issue-connection','/api/v1/issue-submissions'].includes(url.pathname)) {
         if (!authenticated) throw new QueueError('Session required', 403);
@@ -137,18 +145,29 @@ export function createController(state, adapter = executors(state), integrations
           return send(200, queue.setMaintenance(input.enabled));
         }
         if (url.pathname === '/api/v1/issues/preview') {
-          try { return send(200, await provider.preview(input.url)); }
-          catch (error) { throw new QueueError(error.message, 400); }
+          try { return send(200, associateIssue(await provider.preview(input.url), queue.all(), readinessMapping(config.issueReadinessLabels))); }
+          catch (error) { throw new QueueError(error.message, error.status || 400); }
         }
         if (url.pathname === '/api/v1/issue-templates/draft') {
           try { return send(200, await provider.draft(input)); }
-          catch (error) { throw new QueueError(error.message, 400); }
+          catch (error) { throw new QueueError(error.message, error.status || 400); }
         }
         if (url.pathname === '/api/v1/intake/recommend') {
           try { return send(200, recommendWork(input)); }
-          catch (error) { throw new QueueError(error.message, 400); }
+          catch (error) { throw new QueueError(error.message, error.status || 400); }
         }
-        if (url.pathname === '/api/v1/jobs') {
+        if (url.pathname === '/api/v1/issues/start') {
+          let issue;
+          try { issue = associateIssue(await provider.preview(input.url), queue.all(), readinessMapping(config.issueReadinessLabels)); }
+          catch (error) { throw new QueueError(error.message, error.status || 400); }
+          if (issue.start_block_reason) throw new QueueError(issue.start_block_reason);
+          if (input.expected_spec !== issue.spec) throw new QueueError('Issue content changed. Refresh the issue context before starting; your operator brief is preserved.');
+          if (input.brief !== undefined && (typeof input.brief !== 'string' || input.brief.length > 16000)) throw new QueueError('Operator brief must be under 16000 characters.', 400);
+          input.title = issue.title; input.source_url = issue.url;
+          input.spec = issue.spec + (input.brief?.trim() ? `\n\nOperator brief:\n${input.brief.trim()}` : '');
+          input.repository = 'app';
+        }
+        if (['/api/v1/jobs', '/api/v1/issues/start'].includes(url.pathname)) {
           if (input.model && input.model !== config.model && !['codex','pi'].includes(harnessOf(config))) throw new QueueError('Model overrides require a codex or pi executor', 400);
           const created = queue.submit(input);
           return send(201, { id: created.id, source_admission: publicSourceAdmission(created.source_admission) });

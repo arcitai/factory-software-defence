@@ -44,6 +44,7 @@ export function DefinitionPage({ section = "definition" }) {
       </>}
       {section === "definition" && <>
         {config && <dl className="workflow-settings">{[["Harness",displayName(config.harness ?? config.agent)],["Model",config.model || "Harness default"],["Check command",config.check || "Not configured"],["Phase time limit",`${config.timeoutSeconds} seconds`],["Job resources",`${config.cpus} CPUs · ${config.memoryMiB} MiB`]].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
+        {config?.issueReadinessLabels && <section aria-label="Issue readiness labels"><h2 className="catalog-section-title">Issue readiness labels</h2><p className="catalog-note">Planning metadata only; these labels do not start agents.</p><dl className="workflow-settings">{Object.entries(config.issueReadinessLabels).map(([state,label])=><div key={state}><dt>{displayName(state)}</dt><dd>{label}</dd></div>)}</dl></section>}
         <p className="catalog-note">Edit the private installation's factory.json while stopped, then restart. Workflow order and packaged skills follow the installed release.</p>
         <details className="definition-terms"><summary>Factory concepts</summary><dl className="workflow-settings">{Object.entries(data.terminology || {}).map(([term,meaning]) => <div key={term}><dt>{displayName(term)}</dt><dd>{meaning}</dd></div>)}</dl></details>
       </>}

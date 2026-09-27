@@ -18,7 +18,7 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
     {id:'run_b',command:'review',state:'failed',outcome:'blocked',review_verdict:'changes',started_at:'2026-09-25T01:00:00Z',summary:'Fix the concern. Claimed PR: https://github.com/example/app/pull/42',executor:'codex',model:'requested-model',worker_name:'fixture',execution:{runtimeVersion:'test-version',image:'sha256:fixture',policyHash:'policy-fixture'}}];
   const job={id:'job_fixture',state:'failed',repository:'app',task:{title:'Revision fixture'},source_admission:{status:'retained',requested_ref:'main',resolved_sha:'a'.repeat(40),repository_identity:`sha256:${'b'.repeat(64)}`},workflow:{name:'software',steps:['build','verify','review','handoff'],current_step:2},runs,can_request_changes:true};
   let captured, denied=true, deliveryActionError='', deliveryPending=null, error='';
-  const render=async()=>act(()=>root.render(createElement(TaskDetail,{job,loaded:true,error,csrfToken:'fixture',deliveryActionError,onWorkflowAction:async(...args)=>{captured=args;if(deliveryPending)await deliveryPending;/* parent retains job and exposes API error on rejection */if(!denied)job.state='queued';}})));
+  const render=async()=>act(()=>root.render(createElement(TaskDetail,{job,loaded:true,actionError:error,csrfToken:'fixture',deliveryActionError,onWorkflowAction:async(...args)=>{captured=args;if(deliveryPending)await deliveryPending;/* parent retains job and exposes API error on rejection */if(!denied)job.state='queued';}})));
   const click=target=>act(async()=>{target.click();await Promise.resolve();});
   const holdDelivery=()=>{let release;const pending=new Promise(resolve=>{release=resolve;});deliveryPending=pending;return async()=>{deliveryPending=null;release();await act(async()=>{await pending;await new Promise(resolve=>setTimeout(resolve,0));});};};
   await render();
@@ -63,6 +63,7 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   assert.equal(captured[4],'','a hidden replacement ref is never sent for continuation');
   error='Reviewed candidate changed; reload and select the current checkpoint before continuing.';
   await render();
+  assert.equal([...document.querySelectorAll('[role="alert"]')].filter(node=>node.textContent===error).length,1,'revision failure has one visible action-local alert');
   const revisionError=document.querySelector('[id^="revision-error-"]');assert.equal(revisionError.getAttribute('role'),'alert');
   assert.equal(button('Send feedback and revise').getAttribute('aria-describedby'),revisionError.id);
   assert.equal(document.querySelector('textarea').value,'Address exact review concern','failed action preserves feedback');
@@ -185,7 +186,7 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   assert.match(document.body.textContent,/Delivery branch\s*factory\/job_fixture-candidate/);
   assert.match(document.body.textContent,/Source ref at admission\s*release/);
   await click(document.querySelector('[role="tab"][id$="details"]'));
-  assert.equal(button('Delete issue').disabled,true,'the UI disables deletion while remote delivery is unresolved');
+  assert.equal(button('Remove local execution history').disabled,true,'the UI disables deletion while remote delivery is unresolved');
   assert.match(document.body.textContent,/Reconcile the saved delivery or inspect its remote collision before deleting this issue/);
   deliveryActionError='Current Factory policy changed; fresh checks, review and approval are required.';
   await render();

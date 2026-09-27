@@ -12,6 +12,7 @@ const jobs = [
 test("runs default to the searchable list and share state filters across board and list", async (context) => {
   const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/#/runs" });
   dom.window.scrollTo = () => {};
+  dom.window.confirm = message => { assert.match(message,/Remove local execution/);assert.match(message,/repository issue is unchanged/);return true; };
   const priorGlobals = new Map();
   for (const name of ["window", "document", "navigator", "localStorage", "Event", "MouseEvent"]) {
     priorGlobals.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
@@ -31,6 +32,7 @@ test("runs default to the searchable list and share state filters across board a
   const interruptedJob = { ...detailJob, id: "job_interrupted", state: "interrupted", workflow: { name: "build", steps: ["build"], current_step: 0 }, runs: [{ id: "interrupted", command: "build", state: "interrupted" }] };
   let cancelled = false;
   globalThis.fetch = async (url, options) => {
+    if(options?.method === "DELETE")return {ok:false,json:async()=>({error:"Removal denied: delivery needs reconciliation"})};
     if (url.endsWith("/cancel") && options?.method === "POST") {
       cancelled = true;
       interruptedJob.state = "cancelled";
@@ -63,6 +65,8 @@ test("runs default to the searchable list and share state filters across board a
   });
 
   mountedRoot = (await server.ssrLoadModule("/src/main.jsx")).appRoot;
+  await eventually(() => assert.ok(button("Execution history")));
+  button("Execution history").click();
   await eventually(() => assert.match(document.body.textContent, /Failed fixture/));
 
   assert.equal(button("List").getAttribute("aria-pressed"), "true");
@@ -70,7 +74,7 @@ test("runs default to the searchable list and share state filters across board a
   assert.equal(button("Board").getAttribute("aria-pressed"), "false");
   assert.match(document.body.textContent, /Last activity/);
 
-  const search = document.querySelector('input[aria-label="Search issues"]');
+  const search = document.querySelector('input[aria-label="Search executions"]');
   const setInputValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, "value").set;
   setInputValue.call(search, "compact");
   search.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
@@ -80,9 +84,9 @@ test("runs default to the searchable list and share state filters across board a
   await eventually(() => assert.equal(button("Failed").getAttribute("aria-pressed"), "true"));
   assert.ok(document.querySelector('a[href="#/runs/job_failed"]'), "search and failed-state filters intersect");
 
-  setInputValue.call(document.querySelector('input[aria-label="Search issues"]'), "Succeeded fixture");
-  document.querySelector('input[aria-label="Search issues"]').dispatchEvent(new dom.window.Event("input", { bubbles: true }));
-  await eventually(() => assert.match(document.body.textContent, /No matching issues/));
+  setInputValue.call(document.querySelector('input[aria-label="Search executions"]'), "Succeeded fixture");
+  document.querySelector('input[aria-label="Search executions"]').dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  await eventually(() => assert.match(document.body.textContent, /No matching executions/));
   button("Clear filters").click();
   await eventually(() => assert.match(document.body.textContent, /Failed fixture/));
   assert.match(document.body.textContent, /Succeeded fixture/);
@@ -112,9 +116,11 @@ test("runs default to the searchable list and share state filters across board a
   tab("Details").click();
   await eventually(() => assert.equal(tab("Details").getAttribute("aria-selected"), "true"));
   const details = document.querySelector('[role="tabpanel"]:not([hidden])');
-  for (const text of ["codex", "test-model", "test-worker", "Not reported", "Delete issue", "Exit code"]) {
+  for (const text of ["codex", "test-model", "test-worker", "Not reported", "Remove local execution history", "Exit code"]) {
     assert.ok(details.textContent.includes(text), `details include ${text}`);
   }
+  button("Remove local execution history").click();
+  await eventually(()=>assert.match(document.querySelector('[role="tabpanel"]:not([hidden])').textContent,/Removal denied: delivery needs reconciliation/));
   tab("History").click();
   await eventually(() => assert.equal(tab("History").getAttribute("aria-selected"), "true"));
   assert.match(document.querySelector('[role="tabpanel"]:not([hidden])').textContent, /plan.md/);
@@ -128,7 +134,7 @@ test("runs default to the searchable list and share state filters across board a
   await eventually(() => assert.ok([...document.querySelectorAll("button")].find(el => el.textContent === "Cancel work")));
   button("Cancel work").click();
   await eventually(() => assert.equal(cancelled, true));
-  await eventually(() => assert.equal(button("Delete issue").disabled, false));
+  await eventually(() => assert.equal(button("Remove local execution history").disabled, false));
   await eventually(() => assert.equal([...document.querySelectorAll("button")].find(el => el.textContent === "Cancel work"), undefined));
 
 });

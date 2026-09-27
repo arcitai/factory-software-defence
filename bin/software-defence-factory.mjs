@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { ROOT, PINS, DEFAULT_STATE, configAt, save, json, run, stream, digest, api, sleep, stopContainers, PUBLICATION_API_TIMEOUT_MS } from '../factory/lib.mjs';
 import { assertInstalledJobImage, installCustomJobImage, installStandardJobImage, inspectImageInstallation } from '../factory/image-install.mjs';
-import { listIssues, readIssue } from '../factory/issue-intake.mjs';
+import { readIssue } from '../factory/issue-intake.mjs';
 import { recommendWork } from '../factory/intake.mjs';
 import { factoryDefinition, foundationSkill } from '../factory/definition.mjs';
 import { harnessOf } from '../factory/lib.mjs';
@@ -55,6 +55,16 @@ function init(repo, harness='codex', check='', port=7331, sourceRef='HEAD', deli
   console.log(`Configured ${state}\nApp files were not changed. Only committed code is cloned into jobs.`);
 }
 
+async function listInbox(defaultSource) {
+  const source=flags.source || defaultSource;
+  if(!['factory','inbox','remote','github'].includes(source))throw new Error('Choose --source factory, inbox or remote');
+  if(source==='factory') {
+    if(flags.page !== undefined || flags['issue-state'] !== undefined)throw new Error('Repository paging/state filters require --source inbox or remote.');
+    return (await api(state,'/api/v1/status')).jobs;
+  }
+  return api(state,`/api/v1/issues?page=${encodeURIComponent(flags.page || 1)}&state=${encodeURIComponent(flags['issue-state'] || 'open')}`);
+}
+
 async function install() {
   const config=configAt(state);
   if (!['darwin','linux'].includes(process.platform)||!['arm64','x64'].includes(process.arch)) throw new Error('Use macOS/Linux arm64/amd64, or WSL2');
@@ -101,10 +111,10 @@ async function stop() {
   }
   stopContainers(state);console.log('Controller and its labelled containers stopped.');
 }
-async function submit(workflow,spec,sourceRef=flags['source-ref']) {
+async function submit(workflow,spec,sourceRef=flags['source-ref'],sourceURL) {
   if(Buffer.byteLength(spec)>240000)throw new Error('Task exceeds 240 KB');
   const title=workflow==='defence'?'Private incident triage':spec.split('\n').find(s=>s.trim())?.replace(/^#+\s*/, '').slice(0,100)||'Software task';
-  return api(state,'/api/v1/jobs',{workflow,repository:'app',spec,title,...(sourceRef===undefined?{}:{source_ref:sourceRef})});
+  return api(state,'/api/v1/jobs',{workflow,repository:'app',spec,title,...(sourceURL?{source_url:sourceURL}:{}),...(sourceRef===undefined?{}:{source_ref:sourceRef})});
 }
 async function jobAction(action) {
   const id=positional[0];if(!/^job_[a-z0-9]+$/.test(id || ''))throw new Error('A job ID is required');
@@ -157,6 +167,7 @@ async function abandonDeliveryJob(jobId) {
 }
 
 try {
+  if(flags['brief-file'] !== undefined && (command !== 'issue' || positional[0] !== 'start' || !(flags.url || flags.github) || flags.file || flags.draft))throw new Error('Use --brief-file only with issue start --url (or --github); local --file/--draft already supplies the scope.');
   if(command==='init') {
     if(!flags.repo)throw new Error('init requires --repo /path/to/existing/git/repo');
     if(flags.harness && flags.agent && flags.harness !== flags.agent)throw new Error('--harness conflicts with legacy --agent');
@@ -191,9 +202,10 @@ try {
     const value=command==='agents'?definition.agents:command==='skills'?{agents:definition.skills,operators:definition.operator_skills}:definition;
     console.log(JSON.stringify(value,null,2));
   }
-  else if(['infrastructure','automations','inbox'].includes(command)) {
+  else if(command==='inbox')console.log(JSON.stringify(await listInbox('inbox'),null,2));
+  else if(['infrastructure','automations'].includes(command)) {
     const snapshot=await api(state,'/api/v1/status');
-    console.log(JSON.stringify(command==='inbox'?snapshot.jobs:command==='automations'?snapshot.automation_control:snapshot[command],null,2));
+    console.log(JSON.stringify(command==='automations'?snapshot.automation_control:snapshot[command],null,2));
   }
   else if(command==='status') { const snapshot=await api(state,'/api/v1/status');delete snapshot.csrf_token;console.log(JSON.stringify(snapshot,null,2)); }
   else if(command==='doctor') {
@@ -204,8 +216,7 @@ try {
   } else if(command==='issue') {
     const action=positional[0], sourceURL=flags.url || flags.github;
     if(action==='list') {
-      if(flags.source && !['factory','remote','github'].includes(flags.source))throw new Error('Choose --source factory or remote');
-      console.log(JSON.stringify(['github','remote'].includes(flags.source) ? await api(state,`/api/v1/issues?page=${encodeURIComponent(flags.page || 1)}`) : (await api(state,'/api/v1/status')).jobs,null,2));
+      console.log(JSON.stringify(await listInbox('factory'),null,2));
     } else if(action==='templates') console.log(JSON.stringify(await api(state,'/api/v1/issue-templates'),null,2));
     else if(action==='connection') console.log(JSON.stringify(await api(state,'/api/v1/issue-connection'),null,2));
     else if(action==='submissions') console.log(JSON.stringify(await api(state,'/api/v1/issue-submissions'),null,2));
@@ -233,17 +244,21 @@ try {
     } else if(action==='start') {
       if(!['software','defence'].includes(flags.workflow))throw new Error('Review the issue and choose --workflow software or defence');
       if([flags.file,sourceURL,flags.draft].filter(Boolean).length!==1)throw new Error('Choose --file brief.md, --draft draft.json or --url ISSUE_URL');
-      let input;
-      if(sourceURL) { const issue=await api(state,'/api/v1/issues/preview',{url:sourceURL});input={title:issue.title,spec:issue.spec,source_url:issue.url}; }
+      let input, brief;
+      if(flags['brief-file'] !== undefined) {
+        brief=readFileSync(resolve(flags['brief-file']),'utf8');
+        if(brief.length>16000)throw new Error('Operator brief must be at most 16000 characters.');
+      }
+      if(sourceURL) { const issue=await api(state,'/api/v1/issues/preview',{url:sourceURL});input={title:issue.title,url:issue.url,expected_spec:issue.spec,...(brief===undefined?{}:{brief})}; }
       else if(flags.draft) { const draft=json(resolve(flags.draft));input={title:draft.title,spec:draft.spec}; }
       else input={title:flags.title,spec:readFileSync(resolve(flags.file),'utf8')};
       input.title=flags.title || input.title;
-      if(typeof input.title!=='string'||!input.title.trim()||input.title.length>160)throw new Error('Provide a title of 1–160 characters (use --title for a blank issue)');
+      if(!sourceURL && (typeof input.title!=='string'||!input.title.trim()||input.title.length>160))throw new Error('Provide a title of 1–160 characters (use --title for a blank issue)');
       if(flags.workflow==='software'&&!configAt(state).check?.trim())throw new Error('Configure an app check before submitting software work');
-      console.log(JSON.stringify(await api(state,'/api/v1/jobs',{...input,workflow:flags.workflow,repository:'app',model:flags.model || '',...(flags['source-ref']===undefined?{}:{source_ref:flags['source-ref']})}),null,2));
+      console.log(JSON.stringify(await api(state,sourceURL ? '/api/v1/issues/start' : '/api/v1/jobs',{...input,workflow:flags.workflow,repository:'app',model:flags.model || '',...(flags['source-ref']===undefined?{}:{source_ref:flags['source-ref']})}),null,2));
     } else throw new Error('Use issue list|connection|templates|preview|recommend|draft|create|start|submissions|recover; see help');
   } else if(command==='issues') {
-    console.log(JSON.stringify(await listIssues(configAt(state).repo,Number(flags.page || 1)),null,2));
+    console.log(JSON.stringify(await listInbox('inbox'),null,2));
   } else if(command==='recommend') {
     if(Boolean(flags.issue) === Boolean(flags.file))throw new Error('Choose --file task.md or --issue URL');
     const recommendation=flags.issue ? (await readIssue(configAt(state).repo,flags.issue)).recommendation : recommendWork({spec:readFileSync(resolve(flags.file),'utf8')});
@@ -251,13 +266,13 @@ try {
   } else if(command==='run') {
     const workflow=flags.workflow || 'software';
     if(!['software','defence'].includes(workflow))throw new Error('Choose --workflow software or defence');
-    let spec;
+    let spec,sourceURL;
     if(flags.issue) {
-      spec=(await readIssue(configAt(state).repo,flags.issue)).spec;
+      const issue=await readIssue(configAt(state).repo,flags.issue);spec=issue.spec;sourceURL=issue.url;
     } else if(flags.file)spec=readFileSync(resolve(flags.file),'utf8');
     else throw new Error('Use --file task.md or --issue https://github.com/owner/repo/issues/123');
     if(workflow==='software'&&!configAt(state).check?.trim())throw new Error('Configure an app check before submitting software work');
-    console.log(JSON.stringify(await submit(workflow,spec)));
+    console.log(JSON.stringify(await submit(workflow,spec,flags['source-ref'],sourceURL)));
   } else if(command==='incident') {
     if(!flags.file)throw new Error('Use --file incident.json; see factory/examples/incident.json');
     console.log(JSON.stringify(await admitIncident(state,json(resolve(flags.file)),submit)));
@@ -303,7 +318,9 @@ try {
   web probe --state PATH                    Execute the pinned local Chromium readiness probe
   foundation                              Read the operator setup skill; no installation required
   definition | agents | skills            Inspect roles, instructions and installation settings
-  inbox | infrastructure | automations    Inspect live tasks, host/worker and automation state
+  inbox [--page N] [--issue-state open|closed|all] [--source inbox|factory]
+                                          Repository backlog (default); factory: execution-only array
+  infrastructure | automations            Inspect host/worker and automation state
   workflows                               Compatibility alias for definition
   --agent                                 Legacy alias for init --harness
   serve                                   Foreground supervisor
@@ -316,7 +333,8 @@ try {
   service resume                          Release a reconciled maintenance reservation
   tunnel install|start|stop|status|logs|uninstall --host SSH_ALIAS --port PORT
                                           Persistent loopback SSH tunnel (macOS/Linux)
-  issue list [--source remote] [--page N]  List local executions or open repository issues
+  issue list [--source inbox|remote|factory] [--page N] [--issue-state open|closed|all]
+                                          List linked repository issues or local executions (default)
   issue templates                         Read this repository's issue forms and contact links
   issue preview --url URL              Preview one repository issue without starting work
   issue recommend --file brief.md | --url URL
@@ -328,8 +346,9 @@ try {
   issue recover --key REQUEST_ID           Reconcile an uncertain creation without another write
   issue start --draft draft.json | --url URL | --file brief.md --title TITLE
                --workflow software|defence [--source-ref REF] [--model MODEL]
-                                          Create a local issue and start work; no GitHub write
-  issues [--page N]                       Browse open project issues, with next_page for more
+               [--brief-file operator.md]  Only with --url; at most 16000 characters
+                                          Explicitly start execution; no GitHub write
+  issues [--page N]                       Browse linked project issues; supports --issue-state
   recommend --file task.md | --issue URL  Suggest a work type without starting work
   run --file task.md | --issue URL         Submit software (default), or --workflow defence
        [--source-ref REF]                 Pin a configured-repository ref before admission

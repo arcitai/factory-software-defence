@@ -14,7 +14,7 @@ export function filterTaskFacets(jobs, workflow, model) {
 export function TaskFilters({ jobs, availableWorkflows = [], workflow, setWorkflow, model, setModel, filter, setFilter, options, disabled }) {
   const workflows = [...new Set([...availableWorkflows, ...jobs.map(job => job.workflow?.name || job.command)].filter(Boolean))].sort();
   const models = [...new Set(jobs.flatMap(taskModels))].sort();
-  return <div className="task-facets" aria-label="Issue filters">
+  return <div className="task-facets" aria-label="Execution filters">
     <Facet label="Work type" value={workflow} change={setWorkflow} disabled={disabled} Icon={Layers} options={workflows.map(id => ({id, label:friendlyName(id)}))} />
     <Facet label="Models" value={model} change={setModel} disabled={disabled} Icon={Cpu} options={models.map(id => ({id, label:id}))} />
     <Facet label="Statuses" value={filter} change={setFilter} disabled={disabled} Icon={Tag} options={options.filter(option => option.id !== "all")} />
