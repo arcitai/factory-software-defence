@@ -52,9 +52,9 @@ Establish host access, inference and resource limits using the existing
 replaced with user-owned locations and an unused port:
 
 ```sh
-software-defence-factory init --repo /absolute/path/to/factory-source --harness pi --check "npm ci --ignore-scripts && npm run build:dashboard && npm run check" --source-ref main --state /private/state/factory-development --port 7343
-software-defence-factory install --image FACTORY_DEV_IMAGE --state /private/state/factory-development
-software-defence-factory doctor --state /private/state/factory-development
+factory init --repo /absolute/path/to/factory-source --harness pi --check "npm ci --ignore-scripts && npm run build:dashboard && npm run check" --source-ref main --state /private/state/factory-development --port 7343
+factory install --image FACTORY_DEV_IMAGE --state /private/state/factory-development
+factory doctor --state /private/state/factory-development
 ```
 
 Replace `FACTORY_DEV_IMAGE` with an image reference already present in the
@@ -81,8 +81,8 @@ Inspect the queue before starting an existing state. `up` or a managed service
 will execute already queued work. For a newly configured, empty state:
 
 ```sh
-software-defence-factory up --state /private/state/factory-development
-software-defence-factory run --issue https://github.com/arcitai/software-and-defence-factory/issues/25 --state /private/state/factory-development
+factory up --state /private/state/factory-development
+factory run --issue https://github.com/arcitai/software-and-defence-factory/issues/25 --state /private/state/factory-development
 ```
 
 Choose an **open, accepted issue** from the [todo](../todo.md); #25 is the first
@@ -98,9 +98,9 @@ A validated software review returning `changes` or `blocked` can receive explici
 revision feedback through **Request changes**, or:
 
 ```sh
-software-defence-factory revise JOB_ID --file /private/revision.md --state /private/state/factory-development
+factory revise JOB_ID --file /private/revision.md --state /private/state/factory-development
 # To deliberately keep the current reviewed tree on the original source baseline:
-software-defence-factory revise JOB_ID --file /private/revision.md --from reviewed-candidate --state /private/state/factory-development
+factory revise JOB_ID --file /private/revision.md --from reviewed-candidate --state /private/state/factory-development
 ```
 
 This preserves the failed review, candidate and evidence and begins a new build,

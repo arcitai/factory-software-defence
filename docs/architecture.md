@@ -43,8 +43,6 @@ The harness owns optional automations and calls the same API/CLI.
 
 The npm CLI keeps runtime state outside node_modules. The updater installs immutable releases, validates package identity and activates only while registered controllers and executors are stopped. Container images stay pinned to their installed image IDs until an explicit reinstall. See [update behavior](npm.md).
 
-Earlier experimental runtime and evaluation dashboards are retained in Git history at the pre-0.3 baseline, not shipped as competing implementations.
-
 ## Sources of truth
 
 | Fact | Owner | Consumers |
@@ -64,5 +62,4 @@ Earlier experimental runtime and evaluation dashboards are retained in Git histo
 
 `workflows.mjs` is a compatibility re-export, not another definition. Stored
 identifiers and compatibility API fields are documented in [concepts](concepts.md).
-The removed prototype environment variables and inherited trigger renderer have
-no live implementation. Planned features belong in issues, not dormant engines.
+Planned features belong in issues, not dormant engines.

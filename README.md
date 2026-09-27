@@ -1,27 +1,35 @@
-# Software & Defence Factory
+# Factory
 
 A portable method and a local runtime for taking a scoped software task through implementation, checks, independent review and an explicit handoff.
 
-Developed by [Arcitai](https://github.com/arcitai). The CLI is **software-defence-factory**. It works with existing repositories, Codex, Pi or a configured executor. No personal context system is required.
+Published by [Arcitai](https://github.com/arcitai). Invoke **factory** with your existing repositories, Codex, Pi or a configured executor. The npm package remains **software-defence-factory**; the compatibility executable `software-defence-factory` uses the same implementation, state and updater.
 
 ## Start here
 
 Install the published [npm package](https://www.npmjs.com/package/software-defence-factory). The CLI includes the dashboard; no source checkout is needed.
 
 ```sh
-npm install --global software-defence-factory
-software-defence-factory help
+npm install --global software-defence-factory@latest
+factory help
 ```
 
-For occasional use: `npx software-defence-factory@latest help`.
+For occasional use: `npm exec --package=software-defence-factory@latest -- factory help`.
+
+Starting with 0.11.1, the package provides both executable names. To upgrade an
+older global installation, run
+`npm install --global software-defence-factory@latest` to expose the new `factory`
+executable. Private cached updates keep the old command working but do not add
+global symlinks. Check `command -v factory` first; if it belongs to another tool,
+keep the compatibility command or use the explicit `npm exec` invocation above.
+Do not overwrite it with `--force`. See [installation compatibility](docs/npm.md).
 
 Choose the part you need:
 
 | Outcome | Command / guide |
 | --- | --- |
 | Set up an operator, worker and application | [Setup plan and acceptance checklist](docs/setup.md) |
-| Use the method with your existing agent | `software-defence-factory kit --output ./factory-kit` — exports a new staging directory |
-| Try the runtime without inference | `software-defence-factory demo` — Docker required; synthetic sample only |
+| Use the method with your existing agent | `factory kit --output ./factory-kit` — exports a new staging directory |
+| Try the runtime without inference | `factory demo` — Docker required; synthetic sample only |
 | Connect an existing repository | [Runtime quickstart](docs/quickstart.md) |
 | Understand installation and updates | [npm and npx](docs/npm.md) |
 | Restore a dashboard after boot or reconnect remotely | [Services and SSH tunnels](docs/services.md) |
@@ -41,7 +49,7 @@ The project dashboard has an **Inbox**, measured **Analytics**, **Agents**, **Sk
 
 The optional **defence** workflow accepts scoped incident evidence and produces a private, read-only draft. It does not monitor production or claim verified recovery. See [defence integration](docs/defence-integration.md).
 
-Start setup with `software-defence-factory foundation` and the [Factory Foundation plan](docs/setup.md). No AIOS installation is required.
+Start setup with `factory foundation` and the [Factory Foundation plan](docs/setup.md).
 
 ## Repository map
 
@@ -54,8 +62,6 @@ Start setup with `software-defence-factory foundation` and the [Factory Foundati
 | `operator-skills/` | Factory Foundation setup guidance; never mounted into jobs |
 | `scripts/`, `tests/` | Packaging, qualification, release checks and behavioral tests |
 | `docs/` | Setup, architecture, recovery, proof and ownership |
-
-The current runtime replaces earlier prototypes. Their source and research remain in Git history; they are not part of the installed package.
 
 ## Contributing
 

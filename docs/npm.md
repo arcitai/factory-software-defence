@@ -4,23 +4,52 @@ Requires Node 22.13 or later. The method export needs no Docker. Running jobs
 also requires Git and a running Docker Engine or Docker Desktop on Linux/macOS.
 
 ```sh
-npm install --global software-defence-factory
-software-defence-factory help
+npm install --global software-defence-factory@latest
+factory help
 ```
 
 For a one-off invocation:
 
 ```sh
-npx software-defence-factory@latest help
+npm exec --package=software-defence-factory@latest -- factory help
 ```
 
 Both commands use the same package. A development checkout is unnecessary.
-Use `software-defence-factory kit --output /new/staging/directory` to export the portable
+Use `factory kit --output /new/staging/directory` to export the portable
 method. It refuses an existing destination and does not modify an app. Use
-`software-defence-factory init --repo /path/to/app --harness codex --check "npm ci && npm test"`
+`factory init --repo /path/to/app --harness codex --check "npm ci && npm test"`
 only when configuring the optional local job runner. `init` does not start jobs,
 copy skills into the app, or copy account credentials. Runtime jobs receive the
 bundled policy and skills directly. Model access is configured separately.
+
+## Executable and package compatibility
+
+Starting with 0.11.1, `factory` and `software-defence-factory` are bin aliases
+for `bin/software-defence-factory.mjs`. They share one runtime, state and updater.
+The npm package is still `software-defence-factory`, published by Arcitai from
+`arcitai/software-and-defence-factory`. Release qualification is tracked in
+[#61](https://github.com/arcitai/software-and-defence-factory/issues/61) and its linked delivery PRs.
+
+An older global bootstrap upgraded through the private release cache keeps
+working through `software-defence-factory`, including offline cached dispatch.
+It does **not** gain a global `factory` symlink. To expose both bins with
+0.11.1 or later, stop and reconcile installations, check `command -v factory`, then run
+`npm install --global software-defence-factory@latest`.
+If that name belongs to another tool, keep the compatibility executable or use
+`npm exec --package=software-defence-factory@latest -- factory ...`. Do not use
+`--force` to replace another program. npm refuses a conflicting unrelated bin.
+Both bin keys point to the same file; tarball tests cover explicit executable
+selection through npm exec and npx. The syntax above avoids relying
+on package-name inference. Never use `npx factory` or `npm install factory` for
+this product.
+
+The selected successor package is `factory-sd`, but account/OIDC prerequisites
+and namespace cutover remain pending under [#61](https://github.com/arcitai/software-and-defence-factory/issues/61).
+The issue records `factory` as owned by another project and `factory-sd` as a
+registry 404 on 2026-09-26; availability is not a reservation. Before cutover,
+verify replacement publishing trust, package/updater identity, Actions references,
+redirects and an explicit idle/recoverable upgrade route. Reconcile ambiguous
+external-write receipts without replaying them under a renamed repository.
 
 ## Persistent data
 
@@ -34,7 +63,9 @@ the npx cache, or your application repository.
 Source checkouts retain their existing `.factory/platform` and
 `.factory/demo-platform` defaults. Stop the old controller before moving an
 existing state directory. Update its `factory.json` repository path if necessary;
-start a fresh state directory for the native 0.3 runtime. Earlier engine journals are not automatically migrated; keep them separately as evidence.
+retain existing jobs, configuration and evidence. Branding requires no state move
+or migration. State/service/tunnel names, configured image IDs, update keys and
+historical policy/record hashes remain unchanged.
 
 ## Automatic updates
 
@@ -50,10 +81,10 @@ and restores their prior running set without interrupting a job. See
 [services](services.md) for installation, maintenance recovery and limitations.
 
 ```sh
-software-defence-factory update --check
-software-defence-factory update
-software-defence-factory update --auto off
-software-defence-factory update --auto on
+factory update --check
+factory update
+factory update --auto off
+factory update --auto on
 ```
 
 Updates use npm with lifecycle scripts disabled and retain immutable releases
@@ -73,8 +104,8 @@ installation or retained attempt needs them.
 
 ## Protected evidence compatibility
 
-0.10.0 recognizes version-1 execution profiles emitted by native **0.8.0,
-0.9.0, 0.9.1 and 0.10.0**. This is an exact allowlist in
+Factory 0.11.1 recognizes version-1 execution profiles emitted by native
+**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0 and 0.11.1**. This is an exact allowlist in
 `factory/execution-profile.mjs`, independent of the installed package version;
 it is not a semver range or an automatic promise for later releases. Unknown
 runtime strings, unknown profile formats and incomplete legacy acceptance
@@ -101,9 +132,9 @@ neither a reason to discard evidence nor proof of compatibility. Retain
 unsupported records unchanged and obtain fresh applicable evidence through the
 normal workflow; never repair them by editing private records or hashes.
 
-The 0.10.0 writer retains the same profile format and original-base, aggregate
-single-parent candidate/check/review/approval guarantees. Continuation adds
-separate provenance; it is not acceptance evidence. The audited 0.8.0, 0.9.0 and
+Versions 0.11.0 and 0.11.1 use the same protected evidence writer and profile
+format, with original-base, aggregate single-parent candidate/check/review/approval
+guarantees. Continuation adds separate provenance; it is not acceptance evidence. The audited 0.8.0, 0.9.0 and
 0.9.1 writers remain supported only when their old records meet all current
 checks. For continuation specifically, the current completed review, successful
 Build/Verify, protected per-attempt artifacts, current policy and clean candidate
@@ -112,14 +143,10 @@ a checkpoint usable. Browser-disabled 0.8.0 records cannot satisfy a newly
 enabled browser policy. Missing or unsupported records stay unchanged and
 unavailable; no schema migration, profile relabeling or policy repair occurs.
 
-#71 shipped 0.9.0 through PR #81 and #84 shipped 0.9.1 through PR #85; both
-passed installed qualification, as reported by the lead. For this 0.10.0 slice,
-native Verify/Review remain required. The lead owns installed continuation,
-disposable protected PR/CI and desktop/narrow light/dark browser qualification
-on Z13. Controlled source fixtures do not supply that proof. New publication
-still requires the current remote target to equal the original accepted base;
-reviewed-candidate continuation preserves that baseline, while target refresh
-remains #72.
+New publication still requires the current remote target to equal the original
+accepted base; reviewed-candidate continuation preserves that baseline, while
+target refresh remains #72. See [the verification map](https://github.com/arcitai/software-and-defence-factory/blob/main/docs/proof.md) for delivered
+capabilities and the distinction between source checks and installed proof.
 
 ## Release flow
 
@@ -133,20 +160,27 @@ For a release, update both manifests with `npm version patch --no-git-tag-versio
 review the change, and push through the project's normal review flow. A code
 push without a version bump is tested but does not overwrite a published package.
 
-The first release is published by the maintainer. Then configure npm trusted
-publishing for GitHub owner `arcitai`, repository `software-and-defence-factory`,
-workflow filename `ci.yml`, with direct publishing enabled. Subsequent releases
-use short-lived OIDC authentication; no npm write token belongs in the repo or
-Z13. The source repository remains private, so npm cannot issue public source
-provenance for it. The public npm package contains an explicit runtime/method
+The current trusted-publisher identity is npm package `software-defence-factory`,
+GitHub owner `arcitai`, repository `software-and-defence-factory`,
+workflow filename `ci.yml`. The workflow uses short-lived OIDC authentication.
+The source repository is **public**, but the current workflow explicitly sets
+`NPM_CONFIG_PROVENANCE=false`; OIDC authenticates publication and does not mean
+this release emits npm provenance. No npm write token belongs in the repository
+or agent jobs. The public npm package contains an explicit runtime/method
 allowlist, excluding operational state, account data and retired research. It includes the explicitly labelled synthetic runtime fixture used by demo and qualification.
 
-Set the GitHub repository variable `NPM_PUBLISH_ENABLED=true` only after that
-first publication and trusted-publisher binding are complete. Until then CI
-still builds and tests every change, while publishing is deliberately skipped.
+Publication requires repository variable `NPM_PUBLISH_ENABLED=true` and the
+matching npm account binding. Preserve the working identity until replacement
+trust is verified. Changes must pass the normal protected PR/CI flow; do not
+weaken protection or bypass merge checks.
 After a CLI update, restart a stopped dashboard with `up --state PATH` and refresh
 the browser to load the new bundled interface. Updates do not replace the code
 of a controller that is still running.
+
+The installed native publisher refuses `.github/workflows` changes. Keep that
+guard. Automated GitHub Releases, immutable tags, registry readback and recovery
+after npm succeeds but Release creation fails remain a separate maintainer
+delivery under [#61](https://github.com/arcitai/software-and-defence-factory/issues/61).
 
 References: [npm/npx](https://docs.npmjs.com/cli/v11/commands/npx/),
 [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/).

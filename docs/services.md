@@ -10,9 +10,9 @@ root controller. macOS can still run a local controller with `up`.
 Configure and install a runtime using the [quickstart](quickstart.md), then:
 
 ```sh
-software-defence-factory stop --state /absolute/private/state
-software-defence-factory service install --state /absolute/private/state
-software-defence-factory service status --state /absolute/private/state
+factory stop --state /absolute/private/state
+factory service install --state /absolute/private/state
+factory service status --state /absolute/private/state
 ```
 
 Installation enables and starts exactly this controller. It does not submit a
@@ -54,11 +54,11 @@ changes system-wide Docker, firewall or login configuration. Systemd retries
 startup every 15 seconds if Docker or the configured image is unavailable.
 
 ```sh
-software-defence-factory service stop --state /absolute/private/state
-software-defence-factory service start --state /absolute/private/state
-software-defence-factory service restart --state /absolute/private/state
-software-defence-factory service logs --state /absolute/private/state
-software-defence-factory service uninstall --state /absolute/private/state
+factory service stop --state /absolute/private/state
+factory service start --state /absolute/private/state
+factory service restart --state /absolute/private/state
+factory service logs --state /absolute/private/state
+factory service uninstall --state /absolute/private/state
 ```
 
 `up` and `stop` detect a managed installation and use its service manager, so a
@@ -77,12 +77,12 @@ The remote dashboard must bind to loopback and the machines must be reachable
 (for example through an existing private VPN). Use a configured SSH alias:
 
 ```sh
-software-defence-factory tunnel install --host worker --port 7345
-software-defence-factory tunnel status --host worker --port 7345
-software-defence-factory tunnel logs --host worker --port 7345
-software-defence-factory tunnel stop --host worker --port 7345
-software-defence-factory tunnel start --host worker --port 7345
-software-defence-factory tunnel uninstall --host worker --port 7345
+factory tunnel install --host worker --port 7345
+factory tunnel status --host worker --port 7345
+factory tunnel logs --host worker --port 7345
+factory tunnel stop --host worker --port 7345
+factory tunnel start --host worker --port 7345
+factory tunnel uninstall --host worker --port 7345
 ```
 
 Visit `http://127.0.0.1:7345`. The local and remote ports are intentionally equal
@@ -101,10 +101,10 @@ not a Factory network dependency. No root LaunchDaemon is installed.
 ## Updating an always-running controller
 
 ```sh
-software-defence-factory service update
-software-defence-factory service updates --auto on
-software-defence-factory service updates --auto status
-software-defence-factory service updates --auto off
+factory service update
+factory service updates --auto on
+factory service updates --auto status
+factory service updates --auto off
 ```
 
 `service update` manages all registered controllers for the current user. It

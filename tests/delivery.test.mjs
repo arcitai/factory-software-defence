@@ -486,7 +486,7 @@ test('saved delivery intent rechecks workflow evidence after its earlier qualifi
 });
 
 // These are controlled retained-record/provider fixtures, not production or model proof.
-for (const runtimeVersion of ['0.8.0', '0.9.0', '0.9.1']) {
+for (const runtimeVersion of ['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1']) {
   test(`retained ${runtimeVersion} evidence is recognized without rewriting its provenance`, async t => {
     const f = testFixture(t, { runtimeVersion }), gh = fakeGitHub(f), manager = service(f, gh.provider);
     const jobBefore = structuredClone(f.queue.get(jobID));
@@ -540,7 +540,7 @@ async function assertPublicationRefused(f, gh, manager) {
 
 test('compatible runtime alone never authorizes incomplete, stale or inconsistent protected evidence', async t => {
   const defects = [
-    ...['0.7.0', '0.8.1', '0.9.2', '1.0.0', '0.9.1-dev', 'v0.8.0', '', null].map(version =>
+    ...['0.7.0', '0.8.1', '0.9.2', '0.11.2', '1.0.0', '0.9.1-dev', 'v0.8.0', '', null].map(version =>
       [`unknown runtime ${JSON.stringify(version)}`, f => changeProfile(f, p => { p.runtimeVersion = version; })]),
     ['unknown schema', f => changeProfile(f, p => { p.version = 2; })],
     ['missing schema', f => changeProfile(f, p => { delete p.version; })],

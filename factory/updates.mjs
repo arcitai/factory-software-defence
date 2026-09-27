@@ -114,14 +114,14 @@ export async function bootstrap(args) {
       const latest = await latestVersion();
       if (explicit && args[1] === '--check') { console.log(JSON.stringify({ current: selectedVersion, latest, available: newer(latest, selectedVersion), automatic: preferences.enabled })); return 0; }
       if (newer(latest, selectedVersion)) {
-        console.error(`Updating ${PACKAGE} ${selectedVersion} → ${latest}…`);
+        console.error(`Updating Factory (${PACKAGE}) ${selectedVersion} → ${latest}…`);
         installRelease(latest);
         // Downloads are immutable. A newly started controller keeps its version;
         // do not switch the next CLI process to a new release while it is active.
         if (busyInstallations().length) throw new Error('Update downloaded; activation deferred while an installation is running.');
         preferences.version = latest; save(preferencePath, preferences); selectedVersion = latest;
       }
-      if (explicit) { console.log(`${PACKAGE} ${selectedVersion} is up to date. Runtime, credentials and jobs were preserved.`); return 0; }
+      if (explicit) { console.log(`Factory ${selectedVersion} is up to date. Runtime, credentials and jobs were preserved.`); return 0; }
     } catch (error) {
       if (explicit) throw error;
       // An offline registry must never prevent a local command from working.

@@ -32,7 +32,7 @@ autonomous publisher is not a prerequisite for this scoped development path.
 ## Remove remaining operator work
 
 1. Completed: [#28 — immutable source admission](https://github.com/arcitai/software-and-defence-factory/issues/28): retained source, explicit revisions and honest legacy provenance; 138 tests, independent review, 13 installed Docker paths and browser proof. Delivery: [PR #65](https://github.com/arcitai/software-and-defence-factory/pull/65).
-2. [#29 — optional trusted PR handoff](https://github.com/arcitai/software-and-defence-factory/issues/29), after #28. [#12](https://github.com/arcitai/software-and-defence-factory/issues/12) retains the overall source/delivery contract.
+2. Completed: [#29 — optional trusted PR handoff](https://github.com/arcitai/software-and-defence-factory/issues/29), delivered in 0.8.0 via [PR #80](https://github.com/arcitai/software-and-defence-factory/pull/80). [#12](https://github.com/arcitai/software-and-defence-factory/issues/12) retains the overall source/delivery contract.
 
 ## One Factory, two interfaces
 
@@ -56,9 +56,9 @@ operations behind decorative buttons or introduce another scheduler for the GUI.
 
 - [x] [#84 — protected execution evidence across runtime upgrades](https://github.com/arcitai/software-and-defence-factory/issues/84): shipped **0.9.1 via [PR #85](https://github.com/arcitai/software-and-defence-factory/pull/85)**; installed qualification passed. The 0.10.0 audit retains the exact compatible v1 writers only with current provenance/policy/browser/delivery guarantees; no record migration.
 - [x] [#71 — optional trusted execution-host web verification](https://github.com/arcitai/software-and-defence-factory/issues/71): shipped **0.9.0 via [PR #81](https://github.com/arcitai/software-and-defence-factory/pull/81)**; installed qualification passed. Earlier failed/timed-out Build histories remain failed evidence.
-- [ ] [#42 — reviewed-candidate continuation, first bounded slice](https://github.com/arcitai/software-and-defence-factory/issues/42): 0.10.0 implementation preserves the original source/delivery baseline, deliberately selects this job’s current reviewed tree, retains private immutable objects before checkout reconciliation, and repeats Build/full Verify/independent Review/approval. CLI/API/dashboard and controlled regressions share one contract. Native Verify/Review and lead-owned installed continuation, disposable protected PR/CI, and desktop/narrow light/dark browser qualification on Z13 remain required. Unfinished/uncommitted Build checkpoints, exit-cause classification, live pending feedback and harness deadline hints remain deferred within #42; this does not close the issue. Target refresh stays #72; opt-in desktop/VM observation and browser recordings stay later #82.
-- [ ] [#60 — repository Inbox lifecycle](https://github.com/arcitai/software-and-defence-factory/issues/60): 0.11.0 source implements provider Inbox, explicit readiness mapping, canonical linked execution history and atomic duplicate-active admission; New issue is creation only. CLI Inbox defaults to the shared repository backlog with an explicit execution-only mode; remote CLI Start work supports a bounded operator brief. Navigation never presents execution counts as issue totals. Controlled checks are recorded in docs/proof.md. Lead-owned exact installed package, native provider lifecycle and desktop/390px/320px light/dark qualification remain required before adoption; this is not acceptance.
-- [ ] [#61 — Factory naming and release migration](https://github.com/arcitai/software-and-defence-factory/issues/61): Factory, with Software & Defence as subtitle; preserve installed state, command and update compatibility.
+- [x] [#42 — reviewed-candidate continuation, first bounded slice](https://github.com/arcitai/software-and-defence-factory/issues/42): delivered in **0.10.0 via [PR #87](https://github.com/arcitai/software-and-defence-factory/pull/87)**. Preserves the original source/delivery baseline and repeats Build/full Verify/independent Review/approval from the selected reviewed candidate. Remaining #42 scope stays open: unfinished/uncommitted Build checkpoints, exit-cause classification, live pending feedback and harness deadline hints. Target refresh stays #72; desktop/VM observation and browser recordings stay #82.
+- [x] [#60 — repository Inbox lifecycle](https://github.com/arcitai/software-and-defence-factory/issues/60): delivered in **0.11.0 via [PR #89](https://github.com/arcitai/software-and-defence-factory/pull/89)**. Provider Inbox, readiness mapping, canonical linked execution history, creation-only New issue and atomic duplicate-active admission share CLI/API/dashboard state. Protected CI, installed provider/native and desktop/narrow browser qualification passed as reported by the lead; both hosts adopted with histories preserved. See [proof](docs/proof.md).
+- [ ] [#61 — Factory naming and release migration](https://github.com/arcitai/software-and-defence-factory/issues/61): first slice implemented in the **0.11.1 candidate**: Factory product/CLI, Software & Defence subtitle, old executable compatibility and current package/repository identities preserved. Native Verify, independent Review and lead-owned installed/browser proof remain pending. Successor `factory-sd`, repository rename, account/OIDC prerequisites and automated GitHub Release wiring remain open for a separate maintainer delivery; this does not close #61.
 - [ ] [#62 — operator and runtime skills](https://github.com/arcitai/software-and-defence-factory/issues/62): separate repository/setup guidance from instructions mounted into isolated jobs.
 - [ ] [#63 — deployment, architecture and process diagrams](https://github.com/arcitai/software-and-defence-factory/issues/63): three focused editable views aligned with the delivered boundaries.
 
@@ -69,7 +69,7 @@ The narrow revision-error visibility and legacy-detail overflow found during
 
 These scoped design changes can progress independently of automatic PR handoff.
 
-1. [#1 — Arcitai dashboard refinement](https://github.com/arcitai/software-and-defence-factory/issues/1): implement the accepted shared visual direction and review it in the real UI.
+1. [#1 — Factory dashboard refinement](https://github.com/arcitai/software-and-defence-factory/issues/1): implement the accepted shared visual direction and review it in the real UI.
 2. [#27 — optional project theme from DESIGN.md](https://github.com/arcitai/software-and-defence-factory/issues/27), after the shared visual direction and #25; no runtime interpretation of arbitrary Markdown.
 
 ## Qualification and later scope
@@ -80,8 +80,7 @@ These scoped design changes can progress independently of automatic PR handoff.
 - [#22 — external inspiration](https://github.com/arcitai/software-and-defence-factory/issues/22). Both linked posts and the relevant skill collection are assessed in the issue. Adopted project contracts, feature navigation, review/diagnosis and dependency guidance are delivered with #49; larger runtime work stays in its owning issues.
 - [#39 — optional Coolify/VPS hosting](https://github.com/arcitai/software-and-defence-factory/issues/39). Evaluate a hosting recipe for the optional runtime while keeping the method independently useful. No deployment is implied.
 
-AIOS-app and other application development are separate queues. This Factory
-work does not start or resume those jobs. See [CONTRIBUTING.md](CONTRIBUTING.md)
+See [CONTRIBUTING.md](CONTRIBUTING.md)
 and the [self-development recipe](docs/development.md) before submitting work.
 
 

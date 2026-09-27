@@ -1,7 +1,7 @@
 # Roles, skills and work
 
 Read [Factory concepts](concepts.md) for the shared vocabulary. Inspect the actual
-installation with `software-defence-factory definition --state PATH`, or its
+installation with `factory definition --state PATH`, or its
 Agents, Skills and Definition pages. Both read the same effective catalog.
 
 Software follows **Implement → Check → Review → Accept & hand off**. Implement
@@ -87,18 +87,18 @@ GitHub projects, assignees and arbitrary issue form extensions are not applied.
 CLI equivalents (the selected controller must be running):
 
 ```sh
-software-defence-factory issue connection --state PATH
-software-defence-factory inbox --state PATH --page 1 --issue-state open
+factory issue connection --state PATH
+factory inbox --state PATH --page 1 --issue-state open
 # Explicit legacy execution-only JSON array:
-software-defence-factory inbox --state PATH --source factory
-software-defence-factory issue templates --state PATH
-software-defence-factory issue draft --state PATH --template bug-report.yml --sha TEMPLATE_SHA --file answers.json > draft.json
-software-defence-factory issue create --state PATH --draft draft.json --key release-board-fix-01
-software-defence-factory issue submissions --state PATH
-software-defence-factory issue recover --state PATH --key release-board-fix-01
+factory inbox --state PATH --source factory
+factory issue templates --state PATH
+factory issue draft --state PATH --template bug-report.yml --sha TEMPLATE_SHA --file answers.json > draft.json
+factory issue create --state PATH --draft draft.json --key release-board-fix-01
+factory issue submissions --state PATH
+factory issue recover --state PATH --key release-board-fix-01
 # Explicit execution, independent of creation:
-software-defence-factory issue start --state PATH --url URL --workflow software --brief-file operator.md
-software-defence-factory issue start --state PATH --file brief.md --title "Investigate supplied evidence" --workflow defence --source-ref main
+factory issue start --state PATH --url URL --workflow software --brief-file operator.md
+factory issue start --state PATH --file brief.md --title "Investigate supplied evidence" --workflow defence --source-ref main
 ```
 
 `--brief-file` is optional, UTF-8, at most 16000 characters and valid only with

@@ -81,7 +81,7 @@ at the intended SHA until the current runtime has cloned it, and compare the
 candidate's recorded base before acceptance. Admission-time source snapshots are
 tracked separately in Factory #28; naming a SHA in task text does not pin it.
 
-Submit the selected issue with `software-defence-factory run --issue URL --state
+Submit the selected issue with `factory run --issue URL --state
 PATH`, or submit a reviewed task file using `run --file`. Issue submission uses
 the operator's `gh` authentication and checks the issue against the configured
 origin. The dashboard and `issue create` can create a GitHub issue through the selected

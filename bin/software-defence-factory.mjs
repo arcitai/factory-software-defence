@@ -304,7 +304,10 @@ try {
   } else if(command==='kit') {
     if(!flags.output)throw new Error('kit requires --output NEW_DIRECTORY');
     await stream(process.execPath,[join(ROOT,'scripts/export-kit.mjs'),resolve(flags.output)]);
-  } else if(['help','--help','-h'].includes(command))console.log(`Software & Defence Factory ${VERSION} (test release)
+  } else if(['help','--help','-h'].includes(command))console.log(`Factory ${VERSION} (test release)
+
+Usage: factory <command> [options]
+Compatibility executable: software-defence-factory (same runtime and state)
 
   kit --output NEW_DIRECTORY               Export the portable method without a runtime
   demo                                    Install and run a synthetic sample (no model key)
