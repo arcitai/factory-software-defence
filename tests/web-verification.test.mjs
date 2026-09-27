@@ -110,6 +110,11 @@ test('readiness runs the pinned image with network none and reconciles exact pro
   assert(args.args.includes('--cap-drop=ALL'));
   assert(args.args.includes('30s'));
   assert(args.args.includes(image));
+  assert.deepEqual(args.args.slice(args.args.indexOf('/usr/bin/env')), [
+    '/usr/bin/env', '-i', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+    'HOME=/tmp/browser-home', 'XDG_CACHE_HOME=/tmp/browser-home/cache',
+    'PLAYWRIGHT_BROWSERS_PATH=/ms-playwright', 'node', '/opt/factory-web/readiness.mjs',
+  ], 'readiness uses only trusted environment values, including the packaged browser path before module loading');
   assert(!args.args.some(value => value.includes('docker.sock')));
   let present = false, calls = [], launchedName, labels = {};
   const dockerRun = (command, argv) => {

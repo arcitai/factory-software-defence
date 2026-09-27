@@ -104,7 +104,11 @@ test('controller enforces host/origin/session checks and persists only bounded j
   assert.equal((await post({ 'X-Factory-Session': status.csrf_token })).status, 201);
   assert.equal((await post({ Authorization: 'Bearer synthetic-private-token' })).status, 201);
   assert.equal((await fetch(origin + '/api/v1/jobs/job_123/artifacts?file=../../worker.token', { headers: { 'X-Factory-Session': status.csrf_token } })).status, 404);
-  const page = await fetch(origin); assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/); assert.match(await page.text(), /Software &amp; Defence|Software & Defence/);
+  const page = await fetch(origin);
+  assert.equal(page.headers.get('content-security-policy'),
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    'generated image previews permit blob URLs without widening scripts, connections, frames or forms');
+  assert.match(await page.text(), /Software &amp; Defence|Software & Defence/);
   assert.throws(() => controller.queue.submit({ ...task, workflow: 'constructor' }), /workflow/);
 });
 test('concurrent retries cannot overwrite a running attempt or its history', async t => {

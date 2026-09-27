@@ -19,7 +19,8 @@ export function readinessDockerArgs(config, state,
       '--label', `sdf.deadline=${deadlineAt}`, '--entrypoint', '/usr/bin/timeout', web.image,
       '--signal=KILL', '30s', '/usr/bin/env', '-i',
       'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-      'HOME=/tmp/browser-home', 'XDG_CACHE_HOME=/tmp/browser-home/cache', 'node', '/opt/factory-web/readiness.mjs'],
+      'HOME=/tmp/browser-home', 'XDG_CACHE_HOME=/tmp/browser-home/cache',
+      'PLAYWRIGHT_BROWSERS_PATH=/ms-playwright', 'node', '/opt/factory-web/readiness.mjs'],
   };
 }
 

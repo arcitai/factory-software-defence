@@ -65,7 +65,8 @@ export function webBrowserDockerArgs({ name, previewName, state, job, attempt, d
       memoryMiB: config.memoryMiB, cpus: config.cpus ?? 2, pidsLimit: config.pidsLimit ?? 256 }),
     '-i', '--network', `container:${previewName}`, '--mount', `type=bind,source=${outputDir},target=/browser-output`,
     '--entrypoint', '/usr/bin/env', web.image, '-i', `PATH=${PATH}`, 'HOME=/tmp/browser-home',
-    'XDG_CACHE_HOME=/tmp/browser-home/cache', 'FACTORY_PHASE=web', 'node', '/opt/factory-web/runner.mjs',
+    'XDG_CACHE_HOME=/tmp/browser-home/cache', 'PLAYWRIGHT_BROWSERS_PATH=/ms-playwright',
+    'FACTORY_PHASE=web', 'node', '/opt/factory-web/runner.mjs',
   ];
 }
 

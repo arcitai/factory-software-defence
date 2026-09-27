@@ -107,6 +107,12 @@ process.stdout.write(JSON.stringify(result));`;
   assert(browser.includes('container:' + state.containers[Object.keys(state.containers).find(name => name.endsWith('-web-preview'))].name));
   assert(browser.some(value => value.includes('target=/browser-output')));
   assert.equal(browser.some(value => value.includes('target=/workspace') || value.includes('target=/scratch')), false);
+  assert.deepEqual(browser.slice(browser.indexOf('--entrypoint')), [
+    '--entrypoint', '/usr/bin/env', `sha256:${'b'.repeat(64)}`, '-i',
+    'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME=/tmp/browser-home',
+    'XDG_CACHE_HOME=/tmp/browser-home/cache', 'PLAYWRIGHT_BROWSERS_PATH=/ms-playwright',
+    'FACTORY_PHASE=web', 'node', '/opt/factory-web/runner.mjs',
+  ], 'execution uses only trusted environment values, including the packaged browser path before module loading');
   assert.notEqual(lstatSync(blockedFile).mode & 0o600, 0, 'controller-owned readonly check scratch becomes writable without adding container capabilities');
   assert.equal(lstatSync(join(cache, 'outside-link')).isSymbolicLink(), true, 'scratch permission repair does not follow candidate symlinks');
   assert.equal(readFileSync(outside, 'utf8'), 'outside remains unchanged');

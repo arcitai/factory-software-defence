@@ -183,7 +183,9 @@ export function executors(state, recovery = {}) {
     catch { return { outcome: 'blocked', ...usageFields(recovered || emptyUsage(attempt.execution, attempt.command), attempt.execution, attempt.command), summary: 'Executor result was malformed' }; }
     const reportedUsage = outcome.usage?.status === 'unknown' ? recovered || outcome.usage : outcome.usage || recovered;
     const usage = usageFields(reportedUsage, attempt.execution, attempt.command);
-    if (exit.code !== 0 || outcome.outcome !== 'complete') return { outcome: 'blocked', ...usage, summary: outcome.summary || `Executor exited ${exit.code}`, review_verdict: outcome.review_verdict };
+    if (exit.code !== 0 || outcome.outcome !== 'complete') return { outcome: 'blocked', ...usage,
+      summary: outcome.summary || `Executor exited ${exit.code}`, review_verdict: outcome.review_verdict,
+      ...(outcome.web_verification ? { web_verification: outcome.web_verification } : {}) };
     return { ...outcome, ...usage };
   }
   return { prepare, execute, stop, reconcile, reviewVerdict: (job, attempt) => retainedReviewVerdict(state, job, attempt), usage: presentedUsage };
