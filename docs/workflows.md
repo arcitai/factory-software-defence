@@ -15,12 +15,16 @@ Defence currently runs **Investigate** against supplied scoped evidence and
 produces a private draft. It is not production monitoring, exploitation or
 verified recovery. See [Defence integration](defence-integration.md).
 
-The six bundled job skills cover triage, specification, implementation, review,
+The six bundled job skills in `kit/skills/` cover triage, specification, implementation, review,
 security and evaluation. They are instructions, not six running processes.
 All are mounted read-only for agent steps; the role prompt supplies the work
 boundary. Triage/specification prepare scope before admission; evaluation is a
 separately scoped comparison. Factory Foundation is an operator setup skill,
-kept outside those execution mounts.
+at `.agents/skills/factory-foundation/SKILL.md`, used explicitly for adoption
+and kept outside those execution mounts. CLI/API/Skills show actual installed
+paths, content and SHA-256. Codex additionally mounts the same runtime catalog at
+`/etc/codex/skills`; Pi uses `--skill /factory-skills`. Discovery on a particular
+image needs native qualification, and skills provide neither tools nor access.
 
 ## Start work
 

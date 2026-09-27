@@ -8,7 +8,7 @@ Use the CLI's `init` and installation workflow. Jobs receive policy and the six 
 
 ## With your existing agent
 
-Export a new staging directory with `factory kit --output NEW_DIRECTORY`. Give that directory to the app's agent and ask it to adopt the relevant method on a branch:
+Export a new staging directory with `factory kit --output NEW_DIRECTORY`. The exporter maps the canonical packaged `kit/skills/` catalog into staged `.agents/skills/`; it does not export Factory Foundation or install global skills. Give that directory to the app's agent and ask it to adopt the relevant method on a branch:
 
 > Read the app's instructions, architecture, tests and CI first. Apply the supplied factory method within its existing authority. Fill the installation record from the repository and known choices, merge intentionally, preserve existing files and report what was connected, tested or still missing. Start manually. Accounts, publishing and deployment follow my existing mandate.
 

@@ -102,6 +102,66 @@ package file except the edited proof document is byte-identical to the qualified
 package before reusing UI/API proof and granting handoff. Qualification does not
 claim publication, live provider mutations or customer application jobs.
 
+## Skill ownership (#62)
+
+The 0.13.0 candidate separates one canonical `kit/skills/` runtime catalog from
+`.agents/skills/factory-foundation/` operator guidance and removes the obsolete
+operator store. All six runtime SKILL.md files are byte-identical to the admitted
+0.12.0 source. Foundation's relative documentation links follow its new location.
+Before moving files, the trace covered the definition reader and CLI/API/Skills
+consumers, Foundation lookup, executor mounts and harness presets, exporter
+mapping, npm allowlist and package/catalog/export/executor regressions.
+
+Jobs retain read-only `/factory-skills`; Codex agent phases also mount that same
+catalog at `/etc/codex/skills`. Pi retains `--skill /factory-skills`; custom
+harnesses retain the prompt contract. Operator instructions are outside these
+mounts. Repository copies may still be read as untrusted project context and
+cannot grant host authority. All six job skills remain available; this is not
+per-role restriction, browser installation or model qualification.
+
+Source regression coverage exercises actual tarball installation without a
+source checkout, installed Foundation and relative links, exact CLI/API paths,
+content and hashes, staged skill byte/hash parity, existing-destination refusal,
+and the executor's Docker arguments for Codex/Pi/custom/mock and deterministic
+checks. The Skills component renders the shared catalog with its actual
+provenance. Controlled Docker clients and DOM tests are source regressions,
+not installed Docker or rendered browser proof. The [writer compatibility
+audit](npm.md#protected-evidence-compatibility) admits only the explicit 0.13.0
+writer in addition to supported old writers, preserving immutable evidence and
+all current validation guards.
+
+`npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check`
+passed again in this continuation: 310 runtime/package tests and 62 dashboard tests, with no
+failures or skips. Runtime/package coverage includes the actual disposable npm
+installation; it does not establish native discovery or host Docker enforcement.
+
+The operator reports that reviewed checkpoint `7463a4c31012e80200ad2b12706ac300020c3d19`
+passed installed CLI/API/export and Foundation checks, a real synthetic Docker
+handoff in a separate installation, and credential-free native Codex/Pi discovery
+of six skills each with Foundation absent. These were controlled commands without
+inference; they do not prove model quality or live provider access.
+
+This continuation preserves the checkpoint's runtime/catalog/executor behavior
+and 0.13.0 version, shortens the Skills notes, and integrates #63 below. Native
+Verify and independent Review must cover the complete combined candidate after
+Build returns. Final installed runtime-byte comparison, desktop/narrow Skills
+browser inspection, visual acceptance, protected release and adoption remain
+operator gates. Custom harness discovery, inference/provider quality and browser
+availability remain separately qualified capabilities.
+
+## Ownership diagrams (#63)
+
+Three operator-authored, visually inspected views now cover setup/deployment,
+runtime layers/ownership and work lifecycle in [architecture](architecture.md),
+with a compact README preview and editable sources. The six Excalidraw/SVG files
+were imported unchanged from immutable source
+`4ee0f50bc8a4f481fa9b7aec5169d4370c6415a6`; all six supplied SHA-256 hashes matched.
+The overloaded active diagram copies were removed. Text alternatives distinguish
+delivered Inbox behavior from planned profiles/providers/MCP and quality work,
+inference-only job credentials from repository/CI/merge authority, and packaged
+Foundation guidance from job execution. Independent Review must assess the actual
+diagram semantics across #62/#63; final visual/installed acceptance is operator-owned.
+
 ## Remaining limits
 
 - Namespace/account migration and automated GitHub Releases remain separate work

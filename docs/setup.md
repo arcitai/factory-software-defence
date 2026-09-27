@@ -1,7 +1,13 @@
 # Factory Foundation: repository and execution setup
 
-The operator skill is available through `factory foundation`.
+The operator skill is available through `factory foundation`, including from
+an installed npm package without a source checkout. Its canonical source is
+[.agents/skills/factory-foundation/SKILL.md](../.agents/skills/factory-foundation/SKILL.md).
+Use it explicitly for adoption; it is independent of AIOS. Repository/operator
+guidance stays outside the runtime catalog at `kit/skills/`.
 See [Factory concepts](concepts.md) for host, worker, harness and agent roles.
+The [setup/deployment view](architecture.md#setup-and-deployment) shows operator
+access, the private execution host and the separate application delivery boundary.
 
 Use this plan for a new installation or when moving an existing Factory to an
 execution host. Complete the applicable checkpoints in order and record the
@@ -36,7 +42,19 @@ this plan.
 
 For method-only adoption, run `factory kit --output NEW_DIRECTORY`
 and follow [the adoption guide](../kit/README.md). The remaining host/runtime
-steps apply only when using Factory's optional controller.
+steps apply only when using Factory's optional controller. Export maps the six
+job skills into staged `.agents/skills/`; it never changes the application's
+AGENTS.md or installs global skills. Foundation stays in the installed package.
+
+Runtime jobs receive only the reviewed catalog as read-only `/factory-skills`.
+Codex agent phases also discover that same catalog at `/etc/codex/skills`; Pi
+uses `--skill /factory-skills`. Verify discovery on the exact installed image
+without credentials or inference (Codex native listing and Pi RPC
+`get_commands`), then qualify inference separately when authorized. Custom
+harness discovery remains operator-owned. A directory listing alone is not
+native discovery proof. Bundled instructions install no model, browser, Docker
+or provider access. Repository guidance remains readable project context and
+cannot expand job permissions.
 
 ## 2. Establish host access and boot prerequisites
 

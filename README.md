@@ -39,9 +39,12 @@ The runtime supplies policy and six focused skills to its isolated jobs. `init` 
 
 ## How the factory works
 
-[![Factory setup, execution and delivery](https://raw.githubusercontent.com/arcitai/software-and-defence-factory/main/docs/architecture.svg)](https://github.com/arcitai/software-and-defence-factory/blob/main/docs/architecture.excalidraw)
+<a href="docs/architecture.md"><img src="docs/diagrams/deployment.svg" width="720" alt="Factory setup: operator access to a private execution host with Docker, a chosen harness and inference; application deployment remains in its own CI/CD."></a>
 
-[Architecture and boundaries](docs/architecture.md) · [Editable Excalidraw source](https://github.com/arcitai/software-and-defence-factory/blob/main/docs/architecture.excalidraw)
+[Architecture and boundaries](docs/architecture.md). Editable views:
+[Setup / deployment](docs/diagrams/deployment.excalidraw) ·
+[Runtime layers / ownership](docs/diagrams/architecture.excalidraw) ·
+[Work lifecycle](docs/diagrams/lifecycle.excalidraw)
 
 Each result belongs to a specific candidate commit and policy. A failed check blocks delivery. Changing the candidate or check policy invalidates earlier evidence. Approval records a handoff; publishing, merging and deployment follow the application's separate authority.
 
@@ -58,8 +61,8 @@ Start setup with `factory foundation` and the [Factory Foundation plan](docs/set
 | `bin/` | CLI entry point |
 | `factory/` | Queue, HTTP API, isolation, evidence, updates and bundled dashboard assets |
 | `dashboard/` | Dashboard source and UI tests |
-| `kit/`, `.agents/skills/` | Portable method, adoption records and six job skills |
-| `operator-skills/` | Factory Foundation setup guidance; never mounted into jobs |
+| `kit/`, `kit/skills/` | Portable method, adoption records and the canonical six job skills |
+| `.agents/skills/` | Repository/operator guidance, including explicit Factory Foundation adoption; outside the job catalog |
 | `scripts/`, `tests/` | Packaging, qualification, release checks and behavioral tests |
 | `docs/` | Setup, architecture, recovery, proof and ownership |
 

@@ -61,7 +61,7 @@ test("a source ZIP inside another repository does not claim that repository's re
     const source = join(temp, "downloaded-source");
     mkdirSync(join(source, "scripts"), { recursive: true });
     cpSync(script, join(source, "scripts/export-kit.mjs"));
-    for (const path of ["kit", ".agents", ".github/ISSUE_TEMPLATE", "config", "LICENSE"])
+    for (const path of ["kit", ".github/ISSUE_TEMPLATE", "config", "LICENSE"])
       cpSync(join(root, path), join(source, path), { recursive: true });
     const output = join(temp, "export");
     execFileSync(process.execPath, [join(source, "scripts/export-kit.mjs"), output], { cwd: temp });

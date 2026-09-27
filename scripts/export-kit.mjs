@@ -21,7 +21,7 @@ if (args.length === 1 && args[0] === "--help") {
       sources.set(`.factory-kit/${name}`, `kit/${name}`);
     for (const role of ["triage", "spec", "implement", "review", "security", "evaluate"]) {
       const path = `.agents/skills/factory-${role}/SKILL.md`;
-      sources.set(path, path);
+      sources.set(path, `kit/skills/factory-${role}/SKILL.md`);
     }
     sources.set(".factory-kit/LICENSE", "LICENSE");
     sources.set(".factory-kit/labels.json", "config/labels.json");

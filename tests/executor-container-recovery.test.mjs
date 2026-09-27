@@ -174,6 +174,7 @@ if (command === 'run') {
     writeFileSync(state.webOutputPath + '/result.json', JSON.stringify(state.webReport));
     item.running = false; save(); process.exit(0);
   }
+  state.jobArgs = args;
   const mountArgs = [];
   for (let i = 0; i < args.length - 1; i++) if (args[i] === '--mount') mountArgs.push(args[i + 1]);
   const scratchMount = mountArgs.find(value => /(?:^|,)target=\\/scratch(?:,|$)/.test(value));
@@ -831,3 +832,26 @@ test('oversized credential-bearing reports retain the exact recovery source and 
   assert.deepEqual(readFileSync(join(f.folder, 'candidate.json')), candidateBefore, 'recovery does not rewrite candidate identity');
   assert.deepEqual(readFileSync(join(f.folder, 'checks.json')), checksBefore, 'recovery does not rewrite check identity');
 });
+
+// These inspect the actual executor launch via a controlled Docker client.
+// Native harness discovery and Docker enforcement require installed qualification.
+for (const [harness, phase] of [['codex', 'review'], ['pi', 'review'], ['custom', 'review'], ['mock', 'review'], ['codex', 'verify']]) {
+  test(`${harness} ${phase} mounts only method skills with bounded native discovery`, t => {
+    const f = fixture(t, 'success', phase, harness);
+    const execution = runExecutor(f);
+    assert.equal(execution.status, 0, execution.stderr || execution.stdout);
+    const args = stateOf(f).jobArgs;
+    const mounts = args.flatMap((arg, i) => arg === '--mount' ? [args[i + 1]] : []);
+    const catalog = `type=bind,source=${join(root, 'kit/skills')}`;
+    assert(mounts.includes(`${catalog},target=/factory-skills,readonly`));
+    assert.equal(mounts.includes(`${catalog},target=/etc/codex/skills,readonly`), harness === 'codex' && phase !== 'verify');
+    assert(!mounts.some(mount => /source=[^,]*(?:operator-skills|\.agents)/.test(mount)));
+    assert(mounts.includes(`type=bind,source=${join(root, 'kit')},target=/factory-policy,readonly`));
+    assert(mounts.some(mount => mount.endsWith(',target=/workspace/.git,readonly')));
+    assert(mounts.some(mount => mount.endsWith(',target=/workspace,readonly')));
+    for (const flag of ['--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges']) assert(args.includes(flag));
+    assert.equal(args[args.indexOf('--network') + 1], 'none');
+    assert(!args.some(arg => arg.includes('docker.sock')));
+    assert.equal(args.includes('--env-file'), ['codex', 'pi'].includes(harness) && phase !== 'verify');
+  });
+}

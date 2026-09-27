@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -26,8 +27,12 @@ test('npm artifact installs without a checkout, keeps state outside the package,
   const environment = { ...process.env, XDG_STATE_HOME: join(dir, 'state'), XDG_DATA_HOME: join(dir, 'data'), SDF_AUTO_UPDATE: '0', SDF_BOOTSTRAPPED: '0', npm_config_cache: join(dir, 'npm-cache') };
   const packed = JSON.parse(command('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', dir]))[0];
   const names = packed.files.map(file => file.path);
-  for (const required of ['bin/software-defence-factory.mjs', 'factory/updates.mjs', 'factory/issue-templates.mjs', 'factory/intake.mjs', 'factory/definition.mjs', 'factory/terminology.json', 'operator-skills/factory-foundation/SKILL.md', 'docs/concepts.md', 'factory/paths.mjs', 'factory/image/Dockerfile', 'kit/policy.md', 'docs/setup.md', 'docs/services.md', '.agents/skills/factory-implement/SKILL.md', 'scripts/export-kit.mjs', 'scripts/retained-source-fixture.mjs', 'LICENSE']) assert.ok(names.includes(required), required);
+  for (const required of ['bin/software-defence-factory.mjs', 'factory/updates.mjs', 'factory/issue-templates.mjs', 'factory/intake.mjs', 'factory/definition.mjs', 'factory/terminology.json', '.agents/skills/factory-foundation/SKILL.md', 'docs/concepts.md', 'factory/paths.mjs', 'factory/image/Dockerfile', 'kit/policy.md', 'docs/setup.md', 'docs/services.md', 'kit/skills/factory-implement/SKILL.md', 'scripts/export-kit.mjs', 'scripts/retained-source-fixture.mjs', 'LICENSE']) assert.ok(names.includes(required), required);
   assert.ok(names.every(path => !/^(?:\.factory|\.git\/|tests\/|experiments\/|evals\/|node_modules\/)|(?:^|\/)\.env(?:\.|$)/.test(path)));
+  const runtimeIDs = ['factory-evaluate', 'factory-implement', 'factory-review', 'factory-security', 'factory-spec', 'factory-triage'];
+  assert.deepEqual(names.filter(path => path.endsWith('/SKILL.md')).sort(),
+    ['.agents/skills/factory-foundation/SKILL.md', ...runtimeIDs.map(id => `kit/skills/${id}/SKILL.md`)].sort());
+  assert(!names.some(path => path.startsWith('operator-skills/')));
   const occupiedBin = join(prefix, 'bin/factory');
   mkdirSync(join(prefix, 'bin'), { recursive: true });
   writeFileSync(occupiedBin, '# unrelated Factory executable\n', { mode: 0o755 });
@@ -74,6 +79,22 @@ test('npm artifact installs without a checkout, keeps state outside the package,
   assert.equal(configured.repo,realpathSync(repo));assert.equal(configured.harness,'mock');assert.equal(configured.sourceRef,'main');assert.equal(configured.agent,undefined);
   assert.equal(JSON.parse(run(['definition'])).configuration.harness,'mock');
   const originalDefinition = run(['definition']);
+  const definition = JSON.parse(originalDefinition);
+  assert.deepEqual(JSON.parse(run(['skills'])), { agents: definition.skills, operators: definition.operator_skills });
+  assert.deepEqual(definition.skills.map(skill => skill.id).sort(), runtimeIDs);
+  assert.equal(definition.operator_skills.length, 1);
+  for (const skill of [...definition.skills, ...definition.operator_skills]) {
+    assert.equal(skill.path, `${skill.id === 'factory-foundation' ? '.agents' : 'kit'}/skills/${skill.id}/SKILL.md`);
+    const content = readFileSync(join(packageRoot, skill.path), 'utf8');
+    assert.equal(skill.content, content);
+    assert.equal(skill.sha256, createHash('sha256').update(content).digest('hex'));
+    assert.equal(content, readFileSync(join(root, skill.path), 'utf8'));
+    for (const [, target] of content.matchAll(/\]\(([^\s)]+)\)/g)) {
+      if (/^[a-z]+:|^#/i.test(target)) continue;
+      assert(existsSync(resolve(dirname(join(packageRoot, skill.path)), target.split('#')[0])), `${skill.path}: ${target}`);
+    }
+  }
+  assert.equal(run(['foundation']).trim(), definition.operator_skills[0].content.trim());
   assert.equal(legacy(['definition']), originalDefinition);
   // Serve the installed bundle through the real controller without running jobs.
   const { createController } = await import(pathToFileURL(join(packageRoot, 'factory/server.mjs')).href);
@@ -81,6 +102,7 @@ test('npm artifact installs without a checkout, keeps state outside the package,
   try {
     await new Promise(resolve => controller.server.listen(0, '127.0.0.1', resolve));
     const origin = `http://127.0.0.1:${controller.server.address().port}`;
+    assert.deepEqual(await (await fetch(origin + '/api/v1/definitions')).json(), definition);
     const response = await fetch(origin);
     assert.equal(response.status, 200);
     const html = await response.text();
@@ -97,14 +119,29 @@ test('npm artifact installs without a checkout, keeps state outside the package,
   } finally { await controller.close(); }
   const secondState=join(dir,'second-state');
   run(['init','--repo',repo,'--harness','pi','--state',secondState]);
-  assert.equal(JSON.parse(readFileSync(join(secondState,'factory.json'))).harness,'pi');
+  const piConfig = JSON.parse(readFileSync(join(secondState,'factory.json')));
+  assert.equal(piConfig.harness,'pi');
+  assert.deepEqual(piConfig.command, ['pi','--mode','json','--print','--no-session','--no-extensions','--skill','/factory-skills']);
   assert.equal(spawnSync(process.execPath,[cli,'init','--repo',repo,'--state',join(dir,'conflict'),'--harness','pi','--agent','codex'],{env:environment}).status,1);
   assert.equal(command('git', ['-C', repo, 'status', '--porcelain']), '');
   assert.equal(existsSync(join(packageRoot, '.factory')), false);
   assert.equal(spawnSync(process.execPath, [cli, 'init', '--repo', repo], { env: environment }).status, 1);
   run(['kit', '--output', join(dir, 'method')]);
   assert.equal(readdirSync(join(dir, 'method/.agents/skills')).length, 6);
-  assert.ok(existsSync(join(dir, 'method/.factory-kit/manifest.json')));
+  const manifest = JSON.parse(readFileSync(join(dir, 'method/.factory-kit/manifest.json')));
+  for (const skill of definition.skills) {
+    const path = `.agents/skills/${skill.id}/SKILL.md`;
+    assert.equal(readFileSync(join(dir, 'method', path), 'utf8'), skill.content);
+    assert.equal(manifest.files.find(file => file.path === path).sha256, skill.sha256);
+  }
+  assert(!existsSync(join(dir, 'method/.agents/skills/factory-foundation')));
+  const beforeExport = readFileSync(join(dir, 'method/.factory-kit/manifest.json'));
+  assert.equal(spawnSync(bins[0], ['kit', '--output', join(dir, 'method')], { env: environment }).status, 1);
+  assert.deepEqual(readFileSync(join(dir, 'method/.factory-kit/manifest.json')), beforeExport);
+  writeFileSync(join(repo, 'AGENTS.md'), 'Application instructions stay intact\n');
+  assert.equal(spawnSync(bins[0], ['kit', '--output', repo], { env: environment }).status, 1);
+  assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), 'Application instructions stay intact\n');
+  assert(!existsSync(join(repo, '.agents')));
   legacy(['update', '--auto', 'off']);
   assert.equal(JSON.parse(readFileSync(join(environment.XDG_STATE_HOME, 'software-defence-factory/updates.json'))).enabled, false);
   // Even an already stopped executor fence must block a manual upgrade.

@@ -10,7 +10,7 @@ instructions, existing source and session decisions. Preserve useful work and
 licenses. Assessment-only requests stay read-only. A method-only adoption needs
 no runtime, Docker host or model account.
 
-The [setup plan](../../docs/setup.md) owns supported commands and checkpoints.
+The [setup plan](../../../docs/setup.md) owns supported commands and checkpoints.
 Read the relevant sections rather than inventing a host-specific setup recipe.
 Choose this skill explicitly when adopting Factory. Project preparation tools
 need no knowledge of Factory and do not invoke this transition automatically.
@@ -24,7 +24,7 @@ Use the actual host's OS, service manager, hardware and private network; do not
 assume a machine model, a VPN provider, a cloud, Git forge, issue tracker, CI
 provider or particular harness. Inspect the configured remote and actual provider
 capabilities. GitHub is one adapter; an unsupported host keeps local execution
-without guessed API calls. Use [integration ownership](../../docs/integrations.md).
+without guessed API calls. Use [integration ownership](../../../docs/integrations.md).
 
 Use the existing task/issue record for missing obligations and evidence. Avoid a
 second project registry or a template conversion of an existing application.
@@ -38,9 +38,9 @@ Continue authorized repairs; ask only for decisions or authority actually missin
   repository instructions. Adapt the staged method to the
   project; do not overwrite its files. Reconcile the chosen provider’s issue forms/labels (where supported), CI triggers,
   required checks, protection rules and the intended PR/release path using
-  [repository readiness](../../kit/repository.md). Before trusted GitHub PR
+  [repository readiness](../../../kit/repository.md). Before trusted GitHub PR
   delivery, confirm active candidate-triggered workflows fit the bounded
-  qualification in [recovery](../../docs/recovery.md#trusted-pr-delivery);
+  qualification in [recovery](../../../docs/recovery.md#trusted-pr-delivery);
   unsupported workflows keep delivery patch-only. Organization hooks and
   external CI remain operator-owned. File presence is not proof.
 - **Infrastructure:** choose a private state directory, loopback port, host and
