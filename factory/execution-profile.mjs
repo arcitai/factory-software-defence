@@ -11,13 +11,14 @@ import { expectedWebStories, webPolicyHash } from './web-verification.mjs';
 // 0.11.2 (exact patch bytes and pre-acceptance reconstruction; same v1 schema).
 // 0.12.0 restores the Inbox read model/presentation; protected writers and guards are unchanged.
 // 0.13.0 relocates identical job skills and adds a read-only Codex discovery alias.
+// 0.13.1 corrects read-only delivered-commit checks; protected v1 writers are unchanged.
 // Candidate/check/review/acceptance schemas, isolation and credential/permission guards are unchanged.
 // Older writers still require exact patch/tree reconstruction before publication.
 // Deliberately independent of VERSION: a release bump is not
 // evidence compatibility. Re-audit this list for every trust-relevant writer,
 // isolation or validation change; remove versions whose guarantees no longer
 // satisfy current policy. See docs/npm.md. This predicate alone grants no trust.
-const SUPPORTED_EXECUTION_RUNTIMES_V1 = new Set(['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1', '0.11.2', '0.12.0', '0.13.0']);
+const SUPPORTED_EXECUTION_RUNTIMES_V1 = new Set(['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1', '0.11.2', '0.12.0', '0.13.0', '0.13.1']);
 
 export function isSupportedExecutionProfile(profile) {
   return profile?.version === 1 && SUPPORTED_EXECUTION_RUNTIMES_V1.has(profile.runtimeVersion);

@@ -104,8 +104,8 @@ installation or retained attempt needs them.
 
 ## Protected evidence compatibility
 
-Factory 0.13.0 recognizes version-1 execution profiles emitted by native
-**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2, 0.12.0 and 0.13.0**. This is an exact allowlist in
+Factory 0.13.1 recognizes version-1 execution profiles emitted by native
+**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2, 0.12.0, 0.13.0 and 0.13.1**. This is an exact allowlist in
 `factory/execution-profile.mjs`, independent of the installed package version;
 it is not a semver range or an automatic promise for later releases. Unknown
 runtime strings, unknown profile formats and incomplete legacy acceptance
@@ -161,6 +161,14 @@ capability/validation paths. The v1 schema, candidate reconstruction, current
 policy checks, isolation and model credential rules are unchanged. Foundation
 is outside the job catalog. Supported old immutable evidence remains subject
 to every existing guard; unknown later versions receive no automatic trust.
+
+Version 0.13.1 changes only delivered-commit check readback and its presentation.
+The same writer/validator audit above found no changes to protected v1 execution,
+candidate, check, review or acceptance writers, policy binding, isolation or
+credentials. The explicit 0.13.1 entry is covered by retained-profile capability
+and publication validation tests; old records remain immutable and unknown
+versions remain blocked. Provider check observations are separate from protected
+Verify evidence and cannot authorize acceptance or publication.
 
 Old installed releases retain their own files and mount paths until an idle,
 reviewed update. No installed catalog, execution profile or historical hash is

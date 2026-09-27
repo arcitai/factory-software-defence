@@ -35,6 +35,7 @@ shell endpoint or a second scheduler.
 | Synthetic qualification | `demo`, `qualify` | No qualification endpoint | Synthetic disclosure only | Explicit separate state; never target an application accidentally |
 | Immutable source admission | `init --source-ref`, `run --source-ref`, `issue start --source-ref`; status and build evidence carry the resolved SHA | `POST /api/v1/jobs` resolves/retains before acknowledgement; shared source metadata in status | Issue Start work, local request and revision forms accept a ref; task detail shows requested ref, resolved SHA and prior source commits | Build/retry use retained objects; revisions start fresh by default; explicit continuation keeps the reviewed tree and recorded source; a new ref replaces the base; legacy source remains unknown |
 | Trusted PR handoff | `publish JOB_ID` publishes/reconciles; `abandon-delivery JOB_ID --branch-sha SHA` records a checked local resolution for a pre-write branch collision | Authenticated `POST /api/v1/jobs/:id/publish` and `/abandon-delivery`; shared receipt, conflict identity and removal policy | Publish/reconcile and explicit “Abandon local delivery; keep remote branch” actions share controller state; errors/results and inspected branch identity are visible | New writes require matching protected Codex/Pi build/review provenance, deterministic verify/handoff provenance, non-synthetic bound artifacts and a qualified GitHub Actions tree. Shared delivery status exposes `workflow_qualification` and the same reason blocks CLI/API/dashboard capability and publication/retry. Candidate workflow changes, unsupported triggers/syntax, or active generated-push, selected-ref-dispatch and PR jobs with write/secrets/environment/OIDC/deploy access, self-hosted runners or ambiguous privileged guards refuse trusted writes. Supported ASCII guard comparisons follow GitHub's case-insensitive string semantics; unknown PR refs, non-ASCII mismatches, and glob/escaped branch filters cannot prove a privileged job inactive. The shared summary's `action_mode` distinguishes new/resumable publication from read-only reconciliation and drives idle and pending task button wording. Branch-only collisions and unknown/abandoned states offer neither; known PR receipts and pending PR-creation checkpoints retain read-only reconciliation. Abandonment checks the current run, saved intent, exact branch head and absence of an associated PR; it writes no provider data, preserves the remote branch/evidence, disables republishing and permits local removal. Uncertain effects and incompatible evidence stay blocked. Destination remains private operator config; patch-only remains default |
+| Delivered-commit check readback | `publish JOB_ID` reconciles, `status` returns saved checks | Existing publish/status routes return the same `delivery_status.checks` | Delivered-commit checks, per-row conclusions/scope, uncertainty and refresh | 0.13.1 verifies exact commit/provider identity; installed/live/browser qualification pending; no required-check or mergeability claim |
 | Optional trusted web verification | `web probe` performs a real local Chromium interaction; `doctor` reports readiness | Verify stores a shared story summary and protected JSON artifact in the run | Task history shows passed/failed/unavailable/inconclusive plus tool, candidate, policy and story hashes | Disabled by default. Required operator stories and Playwright/Chromium image ID are frozen in attempt policy. Linux Chromium proof cannot qualify native/mobile OS behavior; see [the browser contract](web-verification.md) |
 
 The current generic task form can name the Defence workflow; that is not a
@@ -128,3 +129,50 @@ remain visible when it is closed. Rows and cards share compact metadata; source
 readiness remains distinct from the runtime badge, and full assignments and
 linked attempts remain in detail. These presentation controls do not change
 headless records or admission semantics.
+
+## Delivered-commit checks (0.13.1, bounded #37 slice)
+
+The controller keeps its before/after PR repository, branch, target and immutable
+head guards. The GitHub adapter reads that delivered head, not a moving ref or
+merge commit. CLI/API/dashboard share the saved normalized `checks` object:
+
+- `target`: requested `repository` URL, immutable `sha`, validated
+  `pull_request_number`; null for an invalid request. This names the read target,
+  not proof that every returned row belongs to it.
+- Each check run retains `head_sha`, raw `conclusion`, `status`, `passed` and
+  `non_blocking`; `scope` is `commit`, `pull_request` or `unknown`. An exact
+  `head_sha` with `pull_requests: []` is commit-scoped. Missing/malformed or
+  conflicting associations do not qualify. Commit statuses use the combined
+  response's exact SHA and repository identity and carry the same scope/flags.
+  Supplied PR `head`/`base`, repository and owner containers must be objects,
+  never null, scalars or arrays. Supplied repository names, owner login and
+  API/HTML URLs must agree, including on combined statuses; supplied combined
+  commit/status URLs must identify the exact target. Optional association details
+  may be absent. A supplied head SHA must match; a supplied base SHA must be
+  well formed but may differ from the delivered head. Combined statuses still
+  require a repository `full_name` and exact commit SHA.
+- Optional row API self `url` fields must name the requested repository and
+  `check-runs/{id}` or `statuses/{id}` resource, agreeing with a supplied numeric
+  row ID. The documented legacy `statuses/{sha}` form must name the exact delivered
+  SHA; its suffix is a commit identity, not a row ID. Missing self URLs remain
+  supported. Malformed or contradictory self URLs make that row's status/scope
+  unknown and both flags false. CI details/HTML/target links are presentation
+  links, not repository identity; external CI destinations remain usable.
+- `pagination_complete` requires both arrays and exact nonnegative totals
+  within the existing 100-row bound. No extra pages or polling are introduced.
+  Empty, partial, unreadable or unknown data never establishes aggregate success;
+  `reason` explains unknown results. Verified failures remain visible with partial
+  data. Otherwise incomplete/unverified data takes precedence over cancellation,
+  pending and positive results.
+- `success` requires at least one executed success and all observed rows to be
+  non-blocking. Skipped/neutral-only results are `non_blocking`, not passing
+  execution. `pending`, `failure`, `cancelled` and `unknown` remain distinct;
+  raw conclusions retain timeout/action-required and unrecognized outcomes.
+
+Old receipts are not rewritten. Without matching target/scope metadata the
+human view marks recorded results unverified and offers the existing refresh;
+headless consumers must likewise treat absent provenance as unknown. These are
+observations of delivered-commit checks, not proof of required-check completion,
+branch protection, mergeability, deployment or model quality. Protected Verify,
+independent Review and explicit acceptance remain unchanged. #37 remains open
+for the other parity gaps above; no role/profile or workflow redesign is included.
