@@ -7,6 +7,8 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { digest } from '../factory/lib.mjs';
 import { createController } from '../factory/server.mjs';
+import { expectedWebStories, webPolicyHash } from '../factory/web-verification.mjs';
+import { qualificationWebConfig } from '../factory/web/qualification-fixture.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const job = `job_${'c'.repeat(24)}`;
@@ -38,7 +40,7 @@ function createFallback(rootDir) {
   return { fallbackBin, fallbackDockerLog };
 }
 
-function fixture(t, mode, phase = 'review', harness = 'codex', hostFallback = null) {
+function fixture(t, mode, phase = 'review', harness = 'codex', hostFallback = null, webVerification = null) {
   const rootDir = mkdtempSync(join(tmpdir(), 'sdf-executor-container-recovery-'));
   t.after(() => rmSync(rootDir, { recursive: true, force: true }));
   const dockerRoot = mkdtempSync(join(root, '.sdf-controlled-docker-'));
@@ -70,6 +72,7 @@ function fixture(t, mode, phase = 'review', harness = 'codex', hostFallback = nu
   const config = {
     harness, command: harness === 'mock' ? ['fixture-mock'] : ['fixture-agent'], image: 'fixture/image:latest',
     memoryMiB: 512, cpus: 1, network: 'none', timeoutSeconds: 30, check: 'true',
+    ...(webVerification ? { webVerification } : {}),
   };
   const policyHash = digest(JSON.stringify(config));
   const execution = { phase, executor: harness, runtimeVersion: 'fixture', policyHash,
@@ -77,18 +80,21 @@ function fixture(t, mode, phase = 'review', harness = 'codex', hostFallback = nu
     modelSelection: harness === 'mock' ? 'not_applicable' : 'explicit' };
   writeFileSync(join(attemptFolder, 'execution-config.json'), JSON.stringify(config));
   writeFileSync(join(artifacts, 'execution.json'), JSON.stringify(execution));
-  writeFileSync(join(folder, 'candidate.json'), JSON.stringify({ base: head, head, tree }));
+  writeFileSync(join(folder, 'candidate.json'), JSON.stringify({ base: head, head, tree,
+    ...(webVerification ? { build_policy_hash: policyHash } : {}) }));
   writeFileSync(join(folder, 'checks.json'), JSON.stringify({ passed: true, head, policyHash }));
   const outsideReport = join(rootDir, 'outside-report.txt');
   writeFileSync(outsideReport, `outside sentinel ${inertAuth}\n`, { mode: 0o600 });
   writeFileSync(join(state, 'model.env'), `OPENAI_API_KEY=${inertApiKey}\nFACTORY_CODEX_AUTH_JSON={"auth_mode":"fixture","tokens":{"access_token":"${inertAuth}"}}\n`, { mode: 0o600 });
   writeFileSync(dockerState, JSON.stringify({
     mode, present: false, running: false, id: 'fixture-container-id', outsideReport,
-    labels: {}, initialRemoveFailed: ['present', 'unknown', 'outer-cleanup', 'verify-present', 'verify-unknown', 'verify-outer-cleanup', 'redaction-uncertain'].includes(mode),
-    outerRemoveFailed: ['present', 'success-still-present', 'verify-present', 'redaction-uncertain'].includes(mode),
+    labels: {}, initialRemoveFailed: ['present', 'unknown', 'outer-cleanup', 'verify-present', 'verify-unknown', 'verify-outer-cleanup', 'redaction-uncertain', 'web-uncertain'].includes(mode),
+    outerRemoveFailed: ['present', 'success-still-present', 'verify-present', 'redaction-uncertain', 'web-uncertain'].includes(mode),
     listingUnknown: ['unknown', 'verify-unknown'].includes(mode),
     recoveryAllowed: false, launchSawSelectedEnvironment: false, launchAttempted: false,
     firstRmScratchExists: null, firstRmMarkerExists: null, firstRmRunning: null,
+    webImage: webVerification?.image || null, webImagePresent: mode !== 'web-unavailable', webInput: null, webReport: null,
+    webRunArgs: null, webOutputToken: null, webPolicyPath: join(attemptFolder, 'web-policy.json'), webRmObservations: [],
   }));
 
   const docker = join(bin, 'docker');
@@ -97,6 +103,8 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, 
 const statePath = process.env.SDF_DOCKER_STATE;
 const state = JSON.parse(readFileSync(statePath, 'utf8'));
 const [command, ...args] = process.argv.slice(2);
+let stdin = '';
+for await (const chunk of process.stdin) stdin += chunk;
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const save = () => writeFileSync(statePath, JSON.stringify(state));
 const fail = (message) => { process.stderr.write(message + '\\n'); process.exit(1); };
@@ -115,6 +123,17 @@ if (command === 'run') {
   const nameIndex = args.indexOf('--name');
   state.name = nameIndex >= 0 ? args[nameIndex + 1] : null;
   state.labels = Object.fromEntries(args.filter(value => value.startsWith('sdf.')).map(value => value.split('=')));
+  if (args.includes('FACTORY_PHASE=web')) {
+    const web = JSON.parse(stdin);
+    state.webInput = web;
+    state.webOutputToken = web.outputToken;
+    state.webRunArgs = args;
+    state.webReport = { version: 1, status: 'passed', job: web.job, attempt: web.attempt, head: web.head,
+      tree: web.tree, policyHash: web.policyHash, webPolicyHash: web.webPolicyHash,
+      tool: { adapter: web.adapter, version: web.version, browser: 'chromium', image: web.image,
+        platform: 'linux-container', coverage: 'web', browserVersion: '153.0.8010.12' },
+      stories: web.stories.map(story => ({ id: story.id, contentHash: story.contentHash, status: 'passed', durationMs: 12 })) };
+  }
   const mountArgs = [];
   for (let i = 0; i < args.length - 1; i++) if (args[i] === '--mount') mountArgs.push(args[i + 1]);
   const scratchMount = mountArgs.find(value => /(?:^|,)target=\\/scratch(?:,|$)/.test(value));
@@ -123,8 +142,10 @@ if (command === 'run') {
     const cache = state.scratchPath + '/fixture-cache';
     mkdirSync(cache, { recursive: true });
     state.scratchMarkerPath = cache + '/partial-check-output.txt';
-    writeFileSync(state.scratchMarkerPath, 'controlled partial check output\\n');
-    chmodSync(cache, 0o500);
+    if (!existsSync(state.scratchMarkerPath)) {
+      writeFileSync(state.scratchMarkerPath, 'controlled partial check output\\n');
+      chmodSync(cache, 0o500);
+    }
   }
   const outputMount = mountArgs.find(value => /(?:^|,)target=\\/output(?:,|$)/.test(value));
   const outputDir = outputMount?.match(/(?:^|,)source=([^,]+),target=\\/output(?:,|$)/)?.[1];
@@ -167,6 +188,15 @@ if (command === 'run') {
   save();
   process.exit(0);
 }
+if (command === 'info') { output('linux'); process.exit(0); }
+if (command === 'image' && args[0] === 'inspect') {
+  if (!state.webImagePresent || !state.webImage || args.at(-1) !== state.webImage) fail('No such image');
+  output(state.webImage); process.exit(0);
+}
+if (command === 'cp') {
+  if (!state.present || !state.webReport || !args[0].includes('factory-web-result-' + state.webOutputToken + '.json')) fail('No browser result');
+  writeFileSync(args[1], JSON.stringify(state.webReport)); process.exit(0);
+}
 if (command === 'ps') {
   if (state.listingUnknown) fail('simulated Docker listing failure');
   const filter = args[args.indexOf('--filter') + 1] || '';
@@ -178,6 +208,10 @@ if (command === 'ps') {
   process.exit(0);
 }
 if (command === 'inspect') {
+  if (args[0] === state.name) {
+    output(JSON.stringify([{ Name: '/' + state.name, Config: { Labels: state.labels }, State: { Running: state.running } }]));
+    process.exit(0);
+  }
   if (!state.present || args[0] !== state.id) fail('No such object');
   output(JSON.stringify([{ Id: state.id, Config: { Labels: state.labels }, State: { Running: state.running } }]));
   process.exit(0);
@@ -188,6 +222,10 @@ if (command === 'stop') {
 }
 if (command === 'rm') {
   const force = args.includes('-f');
+  if (state.name?.endsWith('-web')) {
+    state.webRmObservations.push({ force, policyExists: existsSync(state.webPolicyPath), scratchExists: Boolean(state.scratchPath && existsSync(state.scratchPath)) });
+    save();
+  }
   if (state.firstRmScratchExists === null) {
     state.firstRmScratchExists = Boolean(state.scratchPath && existsSync(state.scratchPath));
     state.firstRmMarkerExists = Boolean(state.scratchMarkerPath && existsSync(state.scratchMarkerPath));
@@ -198,7 +236,9 @@ if (command === 'rm') {
   if (!force) state.outerRemovalSawSelectedEnvironment = Boolean(state.selectedEnvironmentPath && existsSync(state.selectedEnvironmentPath));
   if (!force) state.outerRemovalSawScratch = Boolean(state.scratchPath && existsSync(state.scratchPath));
   if (force && state.mode === 'success-still-present') { output(state.id); process.exit(0); }
-  if ((force && state.initialRemoveFailed) || (!force && state.outerRemoveFailed && !state.recoveryAllowed))
+  const failOnlyWebCleanup = state.mode === 'web-uncertain' && state.name?.endsWith('-web');
+  if ((force && state.initialRemoveFailed && (state.mode !== 'web-uncertain' || failOnlyWebCleanup))
+    || (!force && state.outerRemoveFailed && !state.recoveryAllowed && (state.mode !== 'web-uncertain' || failOnlyWebCleanup)))
     fail('simulated Docker remove failure');
   state.present = false; state.running = false; save(); output(state.id); process.exit(0);
 }
@@ -223,6 +263,7 @@ fail('unsupported controlled Docker operation');
   return {
     rootDir, state, folder, attemptFolder, artifacts, output, dockerState, docker, dockerProgram, outsideReport, fallbackBin, fallbackDockerLog,
     selectedEnvironment: join(attemptFolder, '.model-review.env'),
+    webPolicyPath: join(attemptFolder, 'web-policy.json'),
     verifyScratch: join(attemptFolder, 'check-workspace'),
     phase,
     lock: join(folder, 'active.json'),
@@ -430,6 +471,69 @@ test('verify spawn failure retains scratch until ordinary recovery confirms abse
     assert.equal(existsSync(f.lock), false);
     assert.equal(readFileSync(f.fallbackDockerLog, 'utf8'), '', 'ordinary recovery used the restored controlled Docker client');
   }, 'verify');
+});
+
+test('trusted web Verify records story proof only after the stopped container and gates unavailable browser capability', async t => {
+  const browserImage = `sha256:${'a'.repeat(64)}`;
+  const web = qualificationWebConfig(browserImage);
+  const f = fixture(t, 'web-pass', 'verify', 'mock', null, web);
+  const execution = runExecutor(f);
+  assert.equal(execution.status, 0, execution.stderr || execution.stdout);
+  const docker = stateOf(f), checks = JSON.parse(readFileSync(join(f.folder, 'checks.json'), 'utf8'));
+  assert.equal(checks.passed, true);
+  assert.equal(checks.web_verification.status, 'passed');
+  assert.deepEqual(checks.web_verification.stories.map(story => story.contentHash), expectedWebStories(web).map(story => story.contentHash));
+  assert.equal(checks.web_verification.webPolicyHash, webPolicyHash(web));
+  assert.equal(docker.webRmObservations[0].policyExists, true, 'the private attempt input survives through exact container removal');
+  assert.equal(docker.webRmObservations[0].scratchExists, true, 'disposable preview scratch survives through exact container removal');
+  assert.equal(docker.webRunArgs.includes('--privileged'), false);
+  assert.equal(docker.webRunArgs[docker.webRunArgs.indexOf('--network') + 1], 'none');
+  assert.equal(docker.webRunArgs.some(value => value.includes('docker.sock')), false);
+  assert.equal(docker.webRunArgs.includes('--env-file'), false, 'the browser never receives selected inference credentials');
+  assert.equal(docker.webRunArgs.some(value => value.includes('target=/output')), false);
+  assert.equal(docker.webRunArgs.some(value => value.includes('target=/run/factory/web-policy.json')), false,
+    'trusted story input arrives on runner stdin instead of a candidate-visible mount');
+  assert.equal(existsSync(f.verifyScratch), false, 'confirmed browser shutdown releases its writable scratch');
+  assert.equal(existsSync(f.webPolicyPath), false, 'confirmed browser shutdown releases its private runner input');
+  assert.equal(existsSync(f.lock), false, 'confirmed browser shutdown releases the recovery fence');
+  const artifact = JSON.parse(readFileSync(join(f.output, 'web-verification.json'), 'utf8'));
+  assert.equal(artifact.attempt, attempt);
+  assert.equal(artifact.head, checks.head);
+  assert.equal(artifact.policyHash, checks.policyHash);
+
+  const unavailable = fixture(t, 'web-unavailable', 'verify', 'mock', null, web);
+  const unavailableRun = runExecutor(unavailable);
+  assert.notEqual(unavailableRun.status, 0, 'missing browser image blocks required verification');
+  const unavailableChecks = JSON.parse(readFileSync(join(unavailable.folder, 'checks.json'), 'utf8'));
+  assert.equal(unavailableChecks.passed, false);
+  assert.equal(unavailableChecks.web_verification.status, 'unavailable');
+  assert(unavailableChecks.web_verification.stories.every(story => story.status === 'unavailable'));
+  assert.equal(stateOf(unavailable).webRunArgs, null, 'missing capability is never replaced with another tool');
+  assert.equal(existsSync(join(unavailable.folder, 'accepted.json')), false);
+});
+
+test('uncertain browser-container cleanup retains story input, scratch and the Verify fence for recovery', t => {
+  const browserImage = `sha256:${'b'.repeat(64)}`;
+  const web = qualificationWebConfig(browserImage);
+  const f = fixture(t, 'web-uncertain', 'verify', 'mock', null, web);
+  const execution = runExecutor(f);
+  assert.notEqual(execution.status, 0, 'the Verify process cannot release state while Docker cleanup is uncertain');
+  const docker = stateOf(f);
+  assert.equal(docker.present, true, 'the controlled browser container remains for recovery');
+  assert(docker.webRmObservations.some(item => item.force && item.policyExists && item.scratchExists),
+    `initial exact-name cleanup sees the retained input and scratch: ${JSON.stringify({ observations: docker.webRmObservations, result: execution.stderr })}`);
+  assert(docker.webRmObservations.some(item => !item.force && item.policyExists && item.scratchExists),
+    'outer cleanup also retains both mounts while removal is uncertain');
+  assert.equal(existsSync(f.webPolicyPath), true, JSON.stringify({ path: f.webPolicyPath, observations: docker.webRmObservations, stderr: execution.stderr }));
+  assert.equal(existsSync(f.verifyScratch), true);
+  assert.equal(existsSync(f.lock), true);
+
+  enableRecovery(f);
+  const recovered = runOrdinaryRecovery(f);
+  assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
+  assert.equal(existsSync(f.webPolicyPath), false, 'normal reconciliation removes the protected input only after Docker confirms absence');
+  assert.equal(existsSync(f.verifyScratch), false, 'normal reconciliation removes scratch only after Docker confirms absence');
+  assert.equal(existsSync(f.lock), false, 'normal reconciliation releases the matching attempt fence');
 });
 
 test('selected inference credentials are redacted from retained logs and reports after recovery confirms shutdown', t => {

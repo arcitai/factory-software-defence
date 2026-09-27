@@ -29,6 +29,17 @@ alongside the cleanup error.
 Inspect that retained attempt before manual removal; never substitute the source
 candidate path for the scratch path.
 
+When trusted web verification is enabled, Verify keeps the copied check output
+as disposable scratch for a second, network-none browser container. The private
+`web-policy.json`, scratch and active fence remain until the exact attempt's
+container is confirmed absent. Normal stop/retry recovery reconciles Factory
+labels before removing those files. A missing browser, unsupported Linux
+capability, interrupted story or unknown cleanup is unavailable/inconclusive
+and blocks acceptance; never retry around a retained writer or reuse earlier
+story evidence for a changed candidate or policy. The browser artifact is
+private evidence and its story summary is presented through the shared
+interfaces. See [the web contract](web-verification.md).
+
 ## Review feedback or phase retry
 
 Use **Request changes** on a failed software review only when its validated

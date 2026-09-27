@@ -10,6 +10,7 @@
 - [CLI/dashboard capabilities](interfaces.md): current shared operations, gaps and parity work.
 
 - [Setup plan](setup.md): host access, application/CI, inference, autostart, reboot proof and handoff.
+- [Optional browser verification](web-verification.md): pinned Playwright/Chromium image, trusted story contract, readiness and limits.
 - [Quickstart](quickstart.md): connect a repository, configure inference, run and inspect a task.
 - [Install and update](npm.md): npm/npx, state paths, automatic updates and CI/CD.
 - [Services and SSH tunnels](services.md): boot/login startup, remote dashboards, idle updates and recovery.
@@ -33,6 +34,7 @@ use the linked guides for details rather than copying their specifications.
 | Prepare a repository | Staged method, preserved project contracts, explicit setup | [Foundation](setup.md), [kit export](../scripts/export-kit.mjs), [package tests](../tests/npm.test.mjs) |
 | Admit a local issue | Repository form, blank brief or selected GitHub issue; no background backlog polling | [Intake](workflows.md), [server](../factory/server.mjs), [issue tests](../tests/issue-intake.test.mjs) |
 | Execute Software or Defence | One queue; isolated roles/checks; Defence produces a private draft | [Architecture](architecture.md), [executor](../factory/executor.mjs), [controller tests](../tests/controller.test.mjs) |
+| Verify a web candidate in a browser | Optional operator policy; version-pinned Playwright/Chromium in a network-none Docker container; story evidence bound to candidate and policy | [Browser setup and contract](web-verification.md), [runner](../factory/web/runner.mjs), [regressions](../tests/web-verification.test.mjs) |
 | Review, revise and accept | Evidence belongs to candidate and policy; acceptance does not publish | [Recovery](recovery.md), [queue](../factory/queue.mjs), [review tests](../tests/review-evidence.test.mjs) |
 | Publish an accepted candidate | Optional configured GitHub target; protected evidence and bounded workflow qualification before new writes; one draft PR with durable readback and actual PR checks | [Quickstart](quickstart.md), [recovery](recovery.md), [delivery regressions](../tests/delivery.test.mjs) |
 | Inspect project work | Shared list/board filters, task details, real usage and unknown costs | [Design](../DESIGN.md), [dashboard](../dashboard/src/main.jsx), [dashboard tests](../dashboard/package.json) |

@@ -152,6 +152,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+
 ## @radix-ui/react-compose-refs 1.1.5
 
 MIT License
@@ -574,3 +575,12 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Optional browser verification image
+
+The operator-built Playwright runner image installs `playwright` and
+`playwright-core` 1.63.0 from the exact lockfile in `factory/web/` under the
+Apache License 2.0. The original license files are retained in the built image
+under `/opt/factory-web/node_modules/playwright/LICENSE` and
+`/opt/factory-web/node_modules/playwright-core/LICENSE`. Factory does not bundle
+the built browser image in its npm package.

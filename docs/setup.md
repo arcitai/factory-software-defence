@@ -169,6 +169,13 @@ Checkpoint: record the exact source revision, image ID, check command, resource
 limits, inference connectivity and CI result. Keep product controllers stopped
 until their tasks are explicitly ready to run.
 
+Optional web verification is configured separately from the selected harness
+and model. The execution-host owner prepares and pins the Playwright/Chromium
+image, writes trusted stories in private `factory.json`, then runs `web probe`
+and `doctor` on that installation. Use [the browser setup and story contract](web-verification.md)
+for the recipe, dependency preparation and limits. Browser qualification uses
+an isolated Linux container and cannot qualify native/mobile operating systems.
+
 ### Optional trusted PR delivery
 
 Patch-only handoff is the default. When the operator intends to enable GitHub

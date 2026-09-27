@@ -89,6 +89,8 @@ export class JobQueue {
         catch (error) { outcome = { outcome: 'blocked', summary: error.message }; }
         job = this.get(job.id); attempt = job.runs.find(run => run.id === attempt.id);
         Object.assign(attempt, usageFields(outcome?.usage, attempt.execution, attempt.command));
+        if (outcome?.web_verification && typeof outcome.web_verification === 'object')
+          attempt.web_verification = structuredClone(outcome.web_verification);
         this.save(job);
         if (job.state === 'running') {
           const succeeded = outcome?.outcome === 'complete';

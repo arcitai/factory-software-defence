@@ -115,11 +115,14 @@ JSDOM test does not establish the rendered layout.
 
 ## Handoff, delivery and operation
 
-The current CLI returns an accepted patch; #29 tracks optional PR publication.
-Apply the patch on a unique branch at its recorded base, compare the resulting
-diff/tree, run applicable integration checks and open a PR. Changed content or
-base needs fresh relevant review. The repository's actual required checks still
-govern integration. Keep raw prompts and host-specific paths private.
+The CLI returns an accepted patch. Optional trusted PR publication is delivered
+under [#29](https://github.com/arcitai/software-and-defence-factory/issues/29)
+when the installation is explicitly configured; it remains a separate operator
+action. Apply a patch on a unique branch at its recorded base, compare the
+resulting diff/tree, run applicable integration checks and open a PR when using
+patch-only handoff. Changed content or base needs fresh relevant review. The
+repository's actual required checks still govern integration. Keep raw prompts
+and host-specific paths private.
 
 Use [managed services and tunnels](services.md) for boot/login startup and
 operator access to the project's loopback dashboard. Installed npm updates

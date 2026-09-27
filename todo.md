@@ -54,6 +54,7 @@ operations behind decorative buttons or introduce another scheduler for the GUI.
 
 ## Next bounded slices
 
+- [x] [#71 — optional trusted execution-host web verification](https://github.com/arcitai/software-and-defence-factory/issues/71): Playwright/Chromium Verify contract, shared evidence and deterministic regressions implemented; lead's installed Docker/browser qualification remains pending.
 - [ ] [#60 — repository Inbox lifecycle](https://github.com/arcitai/software-and-defence-factory/issues/60): show the repository backlog, create through its templates, and admit execution explicitly. Remove the overlapping import chooser.
 - [ ] [#61 — Factory naming and release migration](https://github.com/arcitai/software-and-defence-factory/issues/61): Factory, with Software & Defence as subtitle; preserve installed state, command and update compatibility.
 - [ ] [#62 — operator and runtime skills](https://github.com/arcitai/software-and-defence-factory/issues/62): separate repository/setup guidance from instructions mounted into isolated jobs.

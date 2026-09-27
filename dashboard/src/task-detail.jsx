@@ -227,6 +227,7 @@ export function TaskDetail({
                           {run.error && run.error !== run.summary && (
                             <p className="text-danger">{run.error}</p>
                           )}
+                          <BrowserVerification evidence={run.web_verification} />
                           {job.task && (
                             <Artifacts
                               artifacts={artifacts}
@@ -373,6 +374,31 @@ function ExecutionDetails({ run }) {
           value={formatRunTokenUsage(run) === "Unavailable" ? "Not reported" : formatRunTokenUsage(run)}
         />
       </dl>
+    </section>
+  );
+}
+
+function BrowserVerification({ evidence }) {
+  if (!evidence) return null;
+  const state = ({ passed: "succeeded", failed: "failed", unavailable: "blocked", inconclusive: "interrupted" })[evidence.status] || "blocked";
+  return (
+    <section aria-label="Browser verification" className="space-y-2 rounded-lg border border-border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-sm font-medium">Browser verification</h4>
+        <State value={state} />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {evidence.adapter || "Unknown tool"}{evidence.version ? ` ${evidence.version}` : ""} · {evidence.browser || "browser unknown"}{evidence.browser_version ? ` ${evidence.browser_version}` : ""} · {evidence.platform || "platform unknown"} · {evidence.coverage || "coverage unknown"}
+      </p>
+      <p className="break-all font-mono text-xs text-muted-foreground" title={evidence.policyHash || ""}>
+        Candidate {String(evidence.candidate || "unknown").slice(0, 12)} · attempt {evidence.attempt || "unknown"} · policy {String(evidence.policyHash || "unknown").slice(0, 12)}
+      </p>
+      {evidence.stories?.length > 0 && <ul className="space-y-1 text-xs">
+        {evidence.stories.map(story => <li key={story.id} className="flex flex-wrap items-center justify-between gap-2">
+          <span title={story.contentHash || ""}>{story.id} <span className="font-mono text-muted-foreground">{String(story.contentHash || "").slice(0, 12)}</span></span>
+          <State value={story.status === "passed" ? "succeeded" : story.status === "failed" ? "failed" : story.status === "unavailable" ? "blocked" : "interrupted"} />
+        </li>)}
+      </ul>}
     </section>
   );
 }

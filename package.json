@@ -41,11 +41,13 @@
     "docs/ownership.md",
     "THIRD_PARTY_NOTICES.md",
     "scripts/probe-review.mjs",
+    "scripts/probe-web.mjs",
     "scripts/probe-diagnostics.mjs",
     "docs/usage.md",
     "operator-skills/",
     "docs/concepts.md",
     "docs/interfaces.md",
+    "docs/web-verification.md",
     "docs/integrations.md"
   ],
   "scripts": {

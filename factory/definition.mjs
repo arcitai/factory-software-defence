@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT, digest, harnessOf } from './lib.mjs';
+import { expectedWebStories, webPolicyHash } from './web-verification.mjs';
 
 // Execution order is shared with the queue; presentation cannot invent phases.
 export const WORKFLOWS = Object.freeze({
@@ -9,7 +10,7 @@ export const WORKFLOWS = Object.freeze({
 });
 const phaseInfo = {
   build: { title: 'Implement', owner: 'agent', skills: ['factory-implement'], description: 'Implement the accepted scope in an isolated checkout. Produce a candidate and evidence.' },
-  verify: { title: 'Check', owner: 'factory', skills: [], description: 'Run the project check command against the candidate. A failure stops delivery.' },
+  verify: { title: 'Check', owner: 'factory', skills: [], description: 'Run project checks and any optional trusted browser stories against the candidate. Missing or non-passing required proof stops delivery.' },
   review: { title: 'Review', owner: 'agent', skills: ['factory-review', 'factory-security'], description: 'Review the candidate and evidence in a separate agent invocation. Security review applies when required by the accepted scope.' },
   handoff: { title: 'Accept & hand off', owner: 'operator', skills: [], description: 'Wait for operator approval, then confirm the candidate and policy still match the checks and review. Record acceptance; do not push, merge or deploy.' },
   defence: { title: 'Investigate', owner: 'agent', skills: ['factory-security'], description: 'Investigate supplied incident evidence within the accepted scope. Produce a private draft with findings and unknowns. No production access or recovery action is granted.' },
@@ -40,7 +41,13 @@ export function factoryDefinition(config) {
     skills,
     configuration: { harness, agent: harness, // agent is a v1 compatibility alias
       model: config.model || null, check: config.check, timeoutSeconds: config.timeoutSeconds,
-      memoryMiB: config.memoryMiB, cpus: config.cpus || 2 },
+      memoryMiB: config.memoryMiB, cpus: config.cpus || 2,
+      web_verification: config.webVerification?.enabled ? {
+        enabled: true, adapter: config.webVerification.adapter, version: config.webVerification.version,
+        browser: 'chromium', image: config.webVerification.image, policy_hash: webPolicyHash(config.webVerification),
+        required_stories: expectedWebStories(config.webVerification), platform: 'linux-container', coverage: 'web',
+      } : { enabled: false },
+    },
     method: {
       preparation: ['factory-triage', 'factory-spec'], evaluation: ['factory-evaluate'],
       instructions: 'All six skills are available read-only to agent phases. A skill is an instruction set, not a separate agent or an automatic workflow step.',
