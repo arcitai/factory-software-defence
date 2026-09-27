@@ -104,8 +104,8 @@ installation or retained attempt needs them.
 
 ## Protected evidence compatibility
 
-Factory 0.13.1 recognizes version-1 execution profiles emitted by native
-**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2, 0.12.0, 0.13.0 and 0.13.1**. This is an exact allowlist in
+Factory 0.14.0 recognizes version-1 execution profiles emitted by native
+**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2, 0.12.0, 0.13.0, 0.13.1 and 0.14.0**. This is an exact allowlist in
 `factory/execution-profile.mjs`, independent of the installed package version;
 it is not a semver range or an automatic promise for later releases. Unknown
 runtime strings, unknown profile formats and incomplete legacy acceptance
@@ -169,6 +169,17 @@ credentials. The explicit 0.13.1 entry is covered by retained-profile capability
 and publication validation tests; old records remain immutable and unknown
 versions remain blocked. Provider check observations are separate from protected
 Verify evidence and cannot authorize acceptance or publication.
+
+Version 0.14.0 preserves the v1 writer only for unchanged inherited installations:
+policy bytes, candidate/check/review/acceptance bindings, mounts and credential
+rules stay compatible. Adopted role overrides use **v2 from 0.14.0 only**, recording
+role/provider/effort and an exact selection digest. The executor verifies the
+frozen common configuration before phase selection; continuation and both delivery
+validation paths require matching protected v2 evidence and private frozen config.
+V1 cannot attest an override. Mixed roles share one policy across deterministic
+and agent phases. Rollback can restore a prior policy without rewriting a record.
+See the [definition contract](definition.md); installed Docker/provider qualification
+remains separate from schema compatibility.
 
 Old installed releases retain their own files and mount paths until an idle,
 reviewed update. No installed catalog, execution profile or historical hash is

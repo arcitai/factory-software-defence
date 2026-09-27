@@ -183,6 +183,18 @@ An installation already using Codex account auth may set the validated
 Codex agent phases receive it. Pi and checks do not. See the [quickstart
 inference guidance](quickstart.md#connect-an-application) for constraints.
 
+For separate Implement/Review/Investigate harnesses or models, export and review
+[the portable role definition](definition.md), then explicitly apply its preview
+through the idle controller. No overrides preserves the current private command
+and legacy evidence. Do not put credential values, host paths, resources or
+arbitrary command arguments in that file. Shared settings remain in private
+`factory.json`; inference stays in `model.env`. Adoption starts no work or schedule.
+Keep harness final-message capture in ephemeral `/tmp`, separate from durable
+Factory reports. Review reuses protected exact-candidate checks; its read-only
+workspace and noexec temporary space cannot repeat every dependency install or
+executable fixture. Qualify each selected role with the actual image, provider
+and platform; declared configuration and a discovered binary are not model proof.
+
 Checkpoint: record the exact source revision, image ID, check command, resource
 limits, inference connectivity and CI result. Keep product controllers stopped
 until their tasks are explicitly ready to run.

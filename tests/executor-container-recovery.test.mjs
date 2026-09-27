@@ -2,7 +2,7 @@ import test from 'node:test';
 import { publishFixtureState } from './helpers/atomic-fixture-state.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -120,6 +120,7 @@ if (command === 'run') {
   const envPath = envIndex >= 0 ? args[envIndex + 1] : null;
   state.selectedEnvironmentPath = envPath;
   const selectedEnvironment = envPath && existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
+  state.selectedEnvironmentNames = selectedEnvironment.split('\\n').filter(Boolean).map(line => line.split('=')[0]);
   state.launchSawSelectedEnvironment = Boolean(envPath?.endsWith('.model-review.env')
     && selectedEnvironment.includes('FACTORY_CODEX_AUTH_JSON')
     && selectedEnvironment.includes('inert-executor-auth-sentinel')
@@ -193,6 +194,7 @@ if (command === 'run') {
   if (outputDir) {
     writeFileSync(outputDir + '/review.json', JSON.stringify({ verdict: 'pass', summary: 'Controlled executor fixture', findings: [] }));
     writeFileSync(outputDir + '/agent-report.md', 'Controlled executor fixture.\\n');
+    if (args.includes('FACTORY_PHASE=defence')) writeFileSync(outputDir + '/incident-report.json', JSON.stringify({ status: 'insufficient_evidence', summary: 'Controlled draft', hypotheses: [], recommended_actions: [], unknowns: ['No live evidence'], production_action_taken: false }));
   }
   if (outputDir && state.mode.startsWith('redaction-')) {
     writeFileSync(outputDir + '/review.json', JSON.stringify({ verdict: 'pass', summary: 'Useful review content with inert-executor-auth-sentinel', findings: [{ note: 'Key inert-executor-api-key-sentinel' }] }));
@@ -348,7 +350,7 @@ function withHostFallback(t, mode, action, phase = 'review') {
 
 function runExecutor(f) {
   return spawnSync(process.execPath, [join(root, 'factory/executor.mjs'), f.state, f.phase], {
-    input: 'bounded executor cleanup fixture', encoding: 'utf8', env: f.executorEnv, timeout: 30_000,
+    input: f.input || 'bounded executor cleanup fixture', encoding: 'utf8', env: f.executorEnv, timeout: 30_000,
   });
 }
 
@@ -853,5 +855,83 @@ for (const [harness, phase] of [['codex', 'review'], ['pi', 'review'], ['custom'
     assert.equal(args[args.indexOf('--network') + 1], 'none');
     assert(!args.some(arg => arg.includes('docker.sock')));
     assert.equal(args.includes('--env-file'), ['codex', 'pi'].includes(harness) && phase !== 'verify');
+  });
+}
+
+// Controlled launch-boundary proof only: no Docker daemon or inference is used.
+for (const [phase, role, expectedHarness, expectedModel, expectedCredential, inheritedCommand, roleSelection, expectedCommand] of [
+  ['build', 'implement', 'codex', 'implement-fixture', 'OPENAI_API_KEY'],
+  ['review', 'review', 'pi', 'anthropic/review-fixture', 'ANTHROPIC_API_KEY'],
+  ['verify', null, 'deterministic', null, null],
+  ['defence', 'investigate', 'pi', 'openai/investigate-fixture', 'OPENAI_API_KEY'],
+  ['review', 'review', 'codex', 'review-fixture', 'OPENAI_API_KEY', ['codex', 'exec', '-m', 'old-model', '-']],
+  ['review', 'review', 'codex', null, 'OPENAI_API_KEY', ['codex', 'exec', '-m', 'old-model', '-']],
+  ...[['--', 'PROMPT'], ['--', '-'], ['-']].map(tail => [
+    'review', 'review', 'codex', 'old-model', 'OPENAI_API_KEY',
+    ['codex', 'exec', '-mold-model', '--config=model_reasoning_effort="low"', ...tail],
+    { reasoningEffort: 'high' }, ['codex', 'exec', '-mold-model', '-c', 'model_reasoning_effort="high"', ...tail],
+  ]),
+  ['review', 'review', 'codex', 'selected-model', 'OPENAI_API_KEY',
+    ['codex', 'exec', '-mold-model', '-cmodel_reasoning_effort="low"', '--', '-'],
+    { model: 'selected-model', reasoningEffort: 'high' },
+    ['codex', 'exec', '--model', 'selected-model', '-c', 'model_reasoning_effort="high"', '--', '-']],
+]) {
+  test(`role definition selects ${expectedHarness}/${expectedModel} at the actual ${phase} launch boundary${roleSelection ? ` with effort and ${JSON.stringify(inheritedCommand.slice(-2))}` : ''}`, async t => {
+    const { effectiveExecutionConfig, executionProfile } = await import('../factory/execution-profile.mjs');
+    const { SourceAdmissionStore } = await import('../factory/source-admission.mjs');
+    const f = fixture(t, 'success', phase);
+    const privateConfig = JSON.parse(readFileSync(join(f.attemptFolder, 'execution-config.json')));
+    privateConfig.roleDefinition = { version: 1, roles: {
+      implement: { harness: 'codex', model: 'implement-fixture', reasoningEffort: 'high' },
+      review: { harness: 'pi', model: 'anthropic/review-fixture' },
+      investigate: { harness: 'pi', model: 'openai/investigate-fixture' },
+    } };
+    if (inheritedCommand) {
+      privateConfig.command = inheritedCommand;
+      privateConfig.model = 'old-model';
+      privateConfig.roleDefinition.roles[role] = roleSelection || { model: expectedModel };
+    }
+    writeFileSync(join(f.state, 'model.env'), 'OPENAI_API_KEY=inert-openai-role\nANTHROPIC_API_KEY=inert-anthropic-role\nFACTORY_CODEX_AUTH_JSON={"tokens":{"access_token":"inert-account-role"}}\n', { mode: 0o600 });
+    const common = effectiveExecutionConfig(privateConfig, null, join(f.state, 'model.env'));
+    const execution = executionProfile(common, phase);
+    writeFileSync(join(f.attemptFolder, 'execution-config.json'), JSON.stringify(common));
+    writeFileSync(join(f.artifacts, 'execution.json'), JSON.stringify(execution));
+    const checks = JSON.parse(readFileSync(join(f.folder, 'checks.json')));
+    checks.policyHash = execution.policyHash;
+    writeFileSync(join(f.folder, 'checks.json'), JSON.stringify(checks));
+    if (['build', 'defence'].includes(phase)) {
+      const workspace = join(f.folder, 'checkout'), source = join(f.rootDir, 'source');
+      renameSync(workspace, source);
+      const admission = new SourceAdmissionStore(f.state, source, 'HEAD').admit(job);
+      f.executorEnv.SDF_SOURCE_ADMISSION = JSON.stringify(admission);
+      if (phase === 'defence') {
+        const scope = { project: 'p', service: 's', environment: 'e', owner: 'o' };
+        const { roleDefinition, ...base } = privateConfig;
+        writeFileSync(join(f.state, 'factory.json'), JSON.stringify({ ...base, version: 1, repo: source, port: 7351, scope }));
+        mkdirSync(join(f.state, 'incidents'));
+        const key = 'a'.repeat(64);
+        writeFileSync(join(f.state, 'incidents', key + '.json'), JSON.stringify({ job, case_id: 'case_fixture', input: { contract_version: 1, ...scope, sanitized: true, source: 'fixture', event_id: 'fixture', summary: 'Controlled incident', evidence: [] } }));
+        f.input = 'ARCITAI_INCIDENT_REF:' + key;
+      }
+    }
+    const result = runExecutor(f);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const launched = stateOf(f), argv = launched.jobArgs;
+    const command = argv.slice(argv.lastIndexOf('factory') + 1);
+    assert.equal(execution.role, role); assert.equal(execution.requestedModel, expectedModel);
+    if (inheritedCommand) {
+      assert.deepEqual(command, expectedCommand || ['codex', 'exec', ...(expectedModel === null ? [] : ['--model', expectedModel]), '-']);
+      assert.equal(execution.modelSelection, expectedModel === null ? 'provider_default' : 'explicit');
+      assert.equal(execution.reasoningEffort, roleSelection?.reasoningEffort || null);
+    } else if (expectedModel) {
+      assert.equal(command[0], expectedHarness);
+      assert.equal(command[command.indexOf('--model') + 1], expectedModel);
+    } else assert.equal(command[0], 'sh');
+    if (phase === 'build') assert(command.includes('model_reasoning_effort="high"'));
+    const names = launched.selectedEnvironmentNames;
+    assert.deepEqual(names, expectedHarness === 'codex' ? ['OPENAI_API_KEY', 'FACTORY_CODEX_AUTH_JSON'] : expectedCredential ? [expectedCredential] : []);
+    assert.equal(argv.includes('--env-file'), Boolean(expectedCredential));
+    assert.equal(existsSync(join(f.attemptFolder, `.model-${phase}.env`)), false);
+    assert.equal(execution.policyHash, executionProfile(common, 'handoff').policyHash);
   });
 }

@@ -222,7 +222,7 @@ function App() {
           : view === "analytics" ? <Analytics jobs={status.jobs} workflows={status.workflows || []} loaded={statusLoaded} error={statusError} />
             : view === "infrastructure" ? <InfrastructurePage infrastructure={status.infrastructure} workers={status.workers} identity={identity} loaded={statusLoaded} error={statusError} />
               : view === "automations" ? <AutomationsPage control={status.automation_control} loaded={statusLoaded} error={statusError} />
-                  : ["agents", "skills", "definition"].includes(view) ? <DefinitionPage key={view} section={view} />
+                  : ["agents", "skills", "definition"].includes(view) ? <DefinitionPage key={view} section={view} csrfToken={status.csrf_token} />
                   : null}
         <div hidden={view !== "runs" && view !== "issue"}>
           <Inbox jobs={status.jobs} loaded={statusLoaded} active={view === "runs" || view === "issue"} issueKey={route.issueKey} identity={identity} links={status.project_links} onNavigation={setWorkNavigation}

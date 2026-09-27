@@ -5,7 +5,7 @@ installation with `factory definition --state PATH`, or its
 Agents, Skills and Definition pages. Both read the same effective catalog.
 
 Software follows **Implement → Check → Review → Accept & hand off**. Implement
-and Review are separate agent invocations using the installation's harness/model.
+and Review are separate agent invocations using their resolved role profiles.
 Check runs the project's command. Accept requires operator approval and confirms
 that the candidate and policy still match their evidence. It does not push,
 merge, deploy or publish. Revisions start a new build/check/review and preserve
@@ -139,11 +139,12 @@ handling, resource limits and stop behavior. No schedule is created by onboardin
 
 ## Change the definition
 
-Select the harness, model, check and resource limits in the private `factory.json`
-while the installation is stopped, then restart. Workflow order and packaged
-skills change through reviewed Factory releases. This release does not support
-per-role profiles or arbitrary editable workflow graphs. Versioned editable
-definitions are tracked in [#53](https://github.com/arcitai/software-and-defence-factory/issues/53).
+Version 0.14.0 supports portable harness/model selections for Implement, Review
+and Investigate. Use the shared [role definition workflow](definition.md) to
+export, validate, preview, apply while idle and roll back. Missing overrides
+inherit the exact private installation profile. Shared checks/resources remain
+in private `factory.json`; workflow order and packaged skills follow reviewed
+Factory releases. Broader definition editing stays under #53.
 
 
 Inbox groups URL case, HTTP/HTTPS, trailing-slash, query and fragment aliases by GitHub

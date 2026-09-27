@@ -9,14 +9,14 @@ The CLI `definition` command and dashboard Definition page read that same catalo
 | Controller | One project's queue, policy, HTTP API and dashboard | One Node/SQLite service |
 | Worker | Executes jobs on a host | One local execution process; bounded Docker containers |
 | Harness | Runs an agent | Codex, Pi, a custom command, or synthetic mock |
-| Agent | Responsibility and instructions | Implement, Review, Investigate; one shared harness/model profile |
+| Agent | Responsibility and instructions | Implement, Review, Investigate; inherited or explicit harness/model per role |
 | Skill | Reusable instructions | Six job skills; separate operator Factory Foundation |
 | Workflow | Ordered steps and gates | Software: Implement → Check → Review → Accept; Defence: Investigate |
 | Issue | Bounded work request | Remote issue lives in its provider; a local brief needs no remote issue |
 | Execution | Admitted work and its attempts | Stored in the private SQLite queue with source link and evidence |
 | Provider | Repository issue integration | GitHub adapter first; unknown remotes retain local execution |
 | Automation | External schedule and agent context | Owned by the selected harness; calls Factory CLI/API, no Factory cron |
-| Definition | Effective roles, workflows, skills and settings | Installed method plus private factory.json; read-only catalog |
+| Definition | Effective roles, workflows, skills and settings | Installed method, private settings and explicitly adopted portable role definition |
 
 Inbox combines an explicitly loaded provider page with retained execution
 history in one list/board, grouped by canonical issue identity. Off-page sources
@@ -29,7 +29,8 @@ Accept is an operator gate. Triage/specification precede admission; evaluation
 is separately scoped work, not an automatic hidden agent phase.
 
 All job skills are available read-only. Role instructions identify relevant
-skills; per-role skill/access/harness profiles are not yet supported. Inference
+skills; per-role skill/access controls remain deferred. Harness/model selection
+uses the [role definition contract](definition.md). Inference
 authentication, GitHub identity and SSH access are separate boundaries. Browser
 GitHub sign-in does not configure `gh` on the controller host, and host `gh` auth
 does not sign a browser in. Writing a blank local issue needs neither a GitHub issue nor

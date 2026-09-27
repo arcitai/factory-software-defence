@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { RoleEditor } from "@/role-editor";
+import { useCallback, useEffect, useState } from "react";
 import { Server, Bot, ShieldCheck, Code2, BookOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -18,7 +19,7 @@ export function InfrastructurePage({ infrastructure, workers = [], loaded, error
 
 const displayName = name => String(name || "Unknown").replaceAll("_", " ").replaceAll("-", " ").replace(/^./, c => c.toUpperCase());
 
-export function DefinitionPage({ section = "definition" }) {
+export function DefinitionPage({ section = "definition", csrfToken }) {
   const definitions = useDefinitions(), [selection, setSelection] = useState("software");
   const data = definitions.value, config = data.configuration;
   const names = Object.keys(data.workflows || {}), selected = names.includes(selection) ? selection : names[0];
@@ -27,15 +28,16 @@ export function DefinitionPage({ section = "definition" }) {
     {definitions.loading ? <Loading /> : definitions.error ? <Failure value={definitions.error} /> : <div className="workflow-page">
       {section === "agents" && <>
         <div className="workflow-choices" role="group" aria-label="Work type">{names.map(name => <button type="button" key={name} aria-pressed={selected === name} onClick={() => setSelection(name)}>{name === "defence" ? <ShieldCheck size={16} /> : <Code2 size={16} />}<span>{displayName(name)}</span></button>)}</div>
-        {config && <div className="workflow-profile"><Bot size={15} /><span>Harness <strong>{displayName(config.harness ?? config.agent)}</strong></span><span>Model <strong>{config.model || "Harness default"}</strong></span></div>}
+        {config && <div className="workflow-profile"><Bot size={15} /><span>Installed default <strong>{displayName(config.harness ?? config.agent)}</strong></span><span>Model <strong>{config.model || "Harness default"}</strong></span></div>}
         <ol className="workflow-steps">{steps.map((step,index) => {
           const command = data.commands.find(command => command.name === step.name);
           return <li key={step.name}><span className="step-number">{index+1}</span><div className="step-body"><div className="step-heading"><h2>{command?.title || displayName(step.name)}</h2><Badge>{step.approval ? "Operator approval" : command?.owner === "agent" ? "Agent role" : "Deterministic check"}</Badge></div><p>{command?.description || command?.prompt}</p>
             {step.name === "verify" && config && <code className="workflow-check">{config.check || "No check configured"}</code>}
+            {data.agents?.find(agent => agent.phase === step.name) && <p className="role-effective">{data.agents.find(agent => agent.phase === step.name).harness} · {data.agents.find(agent => agent.phase === step.name).model || "Harness default"}</p>}
             {!!command?.skills?.length && <div className="step-skills"><BookOpen size={13} /><span>{command.skills.join(" · ")}</span></div>}
           </div></li>;
         })}</ol>
-        <p className="catalog-note">These steps form the {selected} workflow. Agent roles currently share one harness and model profile. Triage and specification happen before admission.</p>
+        <p className="catalog-note">These steps form the {selected} workflow. Each agent role uses its configured profile. Triage and specification happen before admission.</p>
       </>}
       {section === "skills" && <>
         <p className="catalog-note">Read-only instructions available to Factory agents. Expand a skill to inspect its contents and source.</p>
@@ -45,9 +47,10 @@ export function DefinitionPage({ section = "definition" }) {
       {section === "definition" && <>
         {config && <dl className="workflow-settings">{[["Harness",displayName(config.harness ?? config.agent)],["Model",config.model || "Harness default"],["Check command",config.check || "Not configured"],["Phase time limit",`${config.timeoutSeconds} seconds`],["Job resources",`${config.cpus} CPUs · ${config.memoryMiB} MiB`]].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
         {config?.issueReadinessLabels && <section aria-label="Issue readiness labels"><h2 className="catalog-section-title">Issue readiness labels</h2><p className="catalog-note">Planning metadata only; these labels do not start agents.</p><dl className="workflow-settings">{Object.entries(config.issueReadinessLabels).map(([state,label])=><div key={state}><dt>{displayName(state)}</dt><dd>{label}</dd></div>)}</dl></section>}
-        <p className="catalog-note">Edit the private installation's factory.json while stopped, then restart. Workflow order and packaged skills follow the installed release.</p>
+<p className="catalog-note">Shared checks, resources and infrastructure stay in private factory.json. Workflow order and packaged skills follow the installed release.</p>
         <details className="definition-terms"><summary>Factory concepts</summary><dl className="workflow-settings">{Object.entries(data.terminology || {}).map(([term,meaning]) => <div key={term}><dt>{displayName(term)}</dt><dd>{meaning}</dd></div>)}</dl></details>
       </>}
+      {["agents", "definition"].includes(section) && data.role_definition && <RoleEditor installed={data.role_definition} csrfToken={csrfToken} onApplied={definitions.refresh} />}
     </div>}
   </Page>;
 }
@@ -60,13 +63,15 @@ function Loading() { return <Card><QuietState title="Loading" description="Readi
 function Failure({ value }) { return <div role="alert" className="rounded-md border border-danger/35 bg-danger/10 px-3 py-2 text-sm text-danger">{value}</div>; }
 function useDefinitions() {
   const [result, setResult] = useState({ loading: true, error: "", value: { commands: [] } });
+  const refresh = useCallback(async signal => {
+    const response = await fetch("/api/v1/definitions", { headers: { Accept: "application/json" }, ...(signal ? { signal } : {}) });
+    if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || `Definitions request failed (${response.status})`); }
+    const value = await response.json(); setResult({ loading: false, error: "", value });
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/v1/definitions", { headers: { Accept: "application/json" }, signal: controller.signal }).then(async response => {
-      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || `Definitions request failed (${response.status})`); }
-      return response.json();
-    }).then(value => setResult({ loading: false, error: "", value })).catch(error => { if (error.name !== "AbortError") setResult(current => ({ ...current, loading: false, error: error.message })); });
+    refresh(controller.signal).catch(error => { if (error.name !== "AbortError") setResult(current => ({ ...current, loading: false, error: error.message })); });
     return () => controller.abort();
-  }, []);
-  return result;
+  }, [refresh]);
+  return { ...result, refresh };
 }

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { harnessPreset, parseRoleDefinition, ROLE_CAPABILITIES } from '../factory/role-definition.mjs';
+import { inspectDefinition, previewDefinition, previewRollback } from '../factory/definition-store.mjs';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, openSync, closeSync, rmSync, renameSync, realpathSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -41,8 +43,7 @@ function init(repo, harness='codex', check='', port=7331, sourceRef='HEAD', deli
   if ([repo,state,ROOT].some(p=>/[,\n\r]/.test(p))) throw new Error('Paths cannot contain commas or line breaks');
   if (runCandidateGit(repo,'rev-parse','--show-toplevel') !== repo) throw new Error('--repo must be the Git root');
   runCandidateGit(repo,'rev-parse','HEAD');
-  const presets={codex:['codex','exec','--json','--ephemeral','--sandbox','danger-full-access','-'],pi:['pi','--mode','json','--print','--no-session','--no-extensions','--skill','/factory-skills'],mock:['node','/opt/factory/mock.mjs']};
-  const argv=harness==='custom'?JSON.parse(flags['command-json'] || 'null'):presets[harness];
+  const argv=harness==='custom'?JSON.parse(flags['command-json'] || 'null'):harnessPreset(harness);
   if (!argv) throw new Error('Select codex, pi, mock or custom with --command-json');
   if (flags.model && ['codex','pi'].includes(harness)) argv.splice(harness==='codex'?argv.length-1:argv.length,0,'--model',flags.model);
   mkdirSync(state,{recursive:true,mode:0o700});state=realpathSync(state);chmodSync(state,0o700);
@@ -198,7 +199,28 @@ try {
   else if(command==='tunnel')await manageService('tunnel',positional[0],state,flags);
   else if(command==='foundation')console.log(foundationSkill().content);
   else if(['definition','workflows','agents','skills'].includes(command)) {
+    if (command === 'definition' && positional.length) {
+      const action = positional[0];
+      if (!['export', 'validate', 'diff', 'apply', 'rollback'].includes(action) || positional.length !== 1) throw new Error('Choose definition export|validate|diff|apply|rollback');
+      let value;
+      if (['validate', 'diff', 'apply'].includes(action)) {
+        if (!flags.file) throw new Error('--file is required');
+        value = JSON.parse(readFileSync(resolve(flags.file), 'utf8'));
+      }
+      let result;
+      if (action === 'export') result = inspectDefinition(state).definition;
+      else if (action === 'rollback' && !flags['expected-revision']) result = previewRollback(state);
+      else if (action === 'validate' && !existsSync(join(state, 'factory.json'))) result = { valid: true, definition: parseRoleDefinition(value), capabilities: ROLE_CAPABILITIES, resolution: 'Requires an installation for inherited settings' };
+      else if (['validate', 'diff'].includes(action)) result = previewDefinition(state, value);
+      else {
+        if (!flags['expected-revision']) throw new Error('--expected-revision from the current preview is required');
+        result = await api(state, `/api/v1/definition/${action}`, { expected_revision: flags['expected-revision'], ...(action === 'apply' ? { definition: value } : {}) });
+      }
+      console.log(JSON.stringify(result, null, 2));
+      process.exit(0);
+    }
     const definition=factoryDefinition(configAt(state));
+    definition.role_definition = inspectDefinition(state);
     const value=command==='agents'?definition.agents:command==='skills'?{agents:definition.skills,operators:definition.operator_skills}:definition;
     console.log(JSON.stringify(value,null,2));
   }
@@ -321,6 +343,9 @@ Compatibility executable: software-defence-factory (same runtime and state)
   web probe --state PATH                    Execute the pinned local Chromium readiness probe
   foundation                              Read the operator setup skill; no installation required
   definition | agents | skills            Inspect roles, instructions and installation settings
+  definition export|validate|diff          Portable roles; validate/diff require --file PATH
+  definition apply --file PATH --expected-revision HASH
+  definition rollback --expected-revision HASH   Idle controller only
   inbox [--page N] [--issue-state open|closed|all] [--source inbox|factory]
                                           Repository backlog (default); factory: execution-only array
   infrastructure | automations            Inspect host/worker and automation state

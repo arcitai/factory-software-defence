@@ -1,3 +1,4 @@
+import { assertFrozenExecution, phaseExecutionConfig } from './execution-profile.mjs';
 import { withReconstructedCandidate } from './candidate-patch.mjs';
 import { harnessOf } from './lib.mjs';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, lstatSync } from 'node:fs';
@@ -24,13 +25,15 @@ const job = process.env.SDF_JOB_ID, attempt = process.env.SDF_RUN_ID;
 if (!/^job_[a-z0-9]+$/.test(job || '') || !/^run_[a-z0-9]+$/.test(attempt || '')) throw new Error('Managed workflow required');
 if (!['build','verify','review','handoff','defence'].includes(phase)) throw new Error('Unknown phase');
 const folder = join(state, 'jobs', job), workspace = join(folder, 'checkout');
-const config = json(join(folder, attempt, 'execution-config.json'));
+const commonConfig = json(join(folder, attempt, 'execution-config.json'));
+const config = phaseExecutionConfig(commonConfig, phase);
 const execution = json(join(folder, 'artifacts', attempt, 'execution.json'));
 let sourceAdmission, continuation;
 try { sourceAdmission = JSON.parse(process.env.SDF_SOURCE_ADMISSION || 'null'); continuation = JSON.parse(process.env.SDF_CONTINUATION || 'null'); }
 catch { throw new Error('Protected source admission metadata is malformed'); }
-const policyHash = digest(JSON.stringify(config));
-if (execution.policyHash !== policyHash || execution.phase !== phase) throw new Error('Admitted execution profile does not match this attempt');
+const policyHash = digest(JSON.stringify(commonConfig));
+if (commonConfig.roleDefinition || execution.version === 2) assertFrozenExecution(commonConfig, execution, phase);
+else if (execution.policyHash !== policyHash || execution.phase !== phase) throw new Error('Admitted execution profile does not match this attempt');
 const output = process.env.SDF_OUTPUT_DIR, result = process.env.SDF_STEP_RESULT_PATH;
 if (!output || !result) throw new Error('Missing workflow result paths');
 mkdirSync(folder, { recursive: true, mode: 0o700 });
@@ -285,7 +288,7 @@ try {
   if (phase === 'build') {
     const continuationNote = continuation
       ? ` The checkout deliberately contains reviewed checkpoint ${continuation.head} (tree ${continuation.tree}, review ${continuation.review_run_id}) staged on original source ${continuation.original_base}. Retain those changes while addressing the requested revision; independent Review will cover the whole combined diff.` : '';
-    const reports = await container('build', brief('Implement the requested bounded change. Save /output/agent-report.md with actual changes and remaining uncertainty.' + continuationNote), config.command, { writable: true });
+    const reports = await container('build', brief('Implement the requested bounded change. Save /output/agent-report.md with actual changes and remaining uncertainty. Implement, run appropriate checks, report and return; Factory owns independent Review. Do not spawn nested reviewers. Harness final-message capture belongs in ephemeral /tmp, never in Factory reports.' + continuationNote), config.command, { writable: true });
     git('add','-A');
     if (git('diff','--cached','--stat')) git('-c','user.name=Arcitai Factory','-c','user.email=factory@localhost','commit','--no-verify','-m','Factory candidate');
     // Checks must cover the committed tree, not ignored build products supplied by the agent.
@@ -331,7 +334,7 @@ try {
       assertCurrentWebArtifacts(config.webVerification, checks.web_verification,
         join(folder, 'artifacts', checks.run_id));
     }
-    const instruction = `Independently review the candidate at ${meta.head}. Consider this app's actual risk, regression, access and data consequences. Checks: ${JSON.stringify(checks)}. Read the diff with git diff ${meta.base} ${meta.head}. Do not change code. Write /output/review.json: {"verdict":"pass|changes|blocked","summary":"reason","findings":[]}. Write /output/agent-report.md. A process exit alone is not evidence of quality.`;
+    const instruction = `Independently review the candidate at ${meta.head}. Consider this app's actual risk, regression, access and data consequences. Checks: ${JSON.stringify(checks)}. Read the diff with git diff ${meta.base} ${meta.head}. The candidate is read-only; dependencies are not installed there. Reuse these protected exact-candidate/current-policy checks. Do not repeat impossible dependency installs. Additional targeted reproduction requires available capabilities; /tmp scratch is noexec and cannot qualify executable fixtures. Report unavailable reproduction honestly, not as a code finding or passing test. Do not change code. Write /output/review.json: {"verdict":"pass|changes|blocked","summary":"reason","findings":[]}. Write /output/agent-report.md. A process exit alone is not evidence of quality.`;
     const reports = await container('review',brief(instruction),config.command);
     const review = JSON.parse(safeRead(join(reports,'review.json')));
     if (!['pass','changes','blocked'].includes(review.verdict) || typeof review.summary !== 'string' || !review.summary.trim() || !Array.isArray(review.findings)) throw new Error('Invalid independent review');
