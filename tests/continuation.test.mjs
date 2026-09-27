@@ -319,7 +319,7 @@ for (const runtimeVersion of ['0.8.0', '0.9.0', '0.9.1']) test(`compatible ${run
 
 test('CLI uses shared current head/tree and rejects ambiguous modes before mutation', async t => {
   const f = await fixture(t), feedback = join(f.root, 'feedback.md'); writeFileSync(feedback, 'Retain A and repair B');
-  
+
   const cli = (...args) => execAsync(process.execPath, ['bin/software-defence-factory.mjs', 'revise', f.id, '--state', f.state, '--file', feedback, ...args],
     { cwd: process.cwd(), env: { ...process.env, SDF_NO_UPDATE: '1' } });
   await assert.rejects(cli('--from', 'reviewed-candidate', '--source-ref', 'main'), /Choose --from or --source-ref/);

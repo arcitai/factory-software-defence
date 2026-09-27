@@ -1135,7 +1135,20 @@ associated inline errors and preserved feedback; it does not prove rendering or
 real keyboard/narrow-browser behavior.
 
 Validation on Node 22.23.3 / npm 10.9.9: `npm ci --ignore-scripts`,
-`npm run build:dashboard`, `npm run check` and `git diff --check` passed (exit 0).
+`npm run build:dashboard` and `npm run check` passed (exit 0). The earlier
+unstaged `git diff --check` also exited 0, but missed the then-untracked
+`tests/continuation.test.mjs`. Independent Review's aggregate committed-candidate
+check found trailing whitespace at line 322; that earlier check did not establish
+a clean aggregate diff.
+The bounded review repair removes only that whitespace and clarifies this proof.
+Preparation, dashboard build and full checks passed again (273 runtime/package
+and 54 dashboard tests). `git diff --check
+1e20d8d1b1329acd59936bf947887c07205bc6ab --` passed against the repaired worktree;
+no untracked source files remained, so this includes all aggregate additions.
+Repair logs: `/output/revision-preparation.log`, `/output/revision-build.log`,
+`/output/revision-check.log` and `/output/revision-diff-check.log`. Independent
+Review must still inspect the full original-base-to-final-candidate aggregate
+and confirm its diff check; this repair does not qualify generic continuation.
 The full check passed **273 runtime/package tests and 54 dashboard tests**,
 including local tarball installation. An early targeted controller run failed
 because dashboard assets had not yet been built; the prepared full check passed.
