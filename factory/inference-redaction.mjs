@@ -56,8 +56,11 @@ function redactJson(value, secrets) {
 function readOwnedFile(path) {
   let descriptor;
   try {
-    if (typeof constants.O_NOFOLLOW !== 'number') throw new Error();
-    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    if (typeof constants.O_NOFOLLOW !== 'number' || typeof constants.O_NONBLOCK !== 'number') throw new Error();
+    // O_NONBLOCK makes an untrusted FIFO at a fixed output name fail the
+    // descriptor type check promptly instead of blocking the controller.
+    // O_NOFOLLOW and fstat on this descriptor avoid a check/open race.
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   } catch (error) {
     if (error.code === 'ENOENT') return null;
     throw new Error('Worker output is not a readable regular file; refusing to follow it.');

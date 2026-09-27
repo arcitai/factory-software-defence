@@ -927,3 +927,20 @@ provider fixtures; no model or real provider was called. This filter does not
 detect encoded/derived values or rewrite candidate content/patches. No new
 installed qualification was performed; Native Factory Verify and independent
 full-baseline Review remain pending.
+
+### Output-retention recovery repair — 27 September 2026
+
+Follow-up recovery regressions reproduced two output-retention failures before
+the repair: a fixed-name FIFO exceeded the bounded child-process timeout, and an
+oversized report lost its selected env file and active fence despite failed
+filtering. The FIFO now returns promptly via nonblocking descriptor open and
+descriptor validation. The executor-boundary fixture confirms oversized output
+fails without artifact promotion, retains the exact selected source and fence
+through another failed recovery, and sanitizes/removes them after the owned
+report is repaired. Candidate and check identities remain unchanged. The
+focused recovery tests passed 25/25. Fresh `npm ci --ignore-scripts`,
+`npm run build:dashboard`, and `npm run check` passed; the full check reported
+186 root/runtime/package cases and 52 dashboard tests. No Docker daemon, model,
+provider, installed package or browser was exercised for this repair; prior
+candidate qualification does not cover it. Native Verify and independent
+full-baseline Review remain pending.

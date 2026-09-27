@@ -115,7 +115,9 @@ async function container(mode, input, command, writable = false) {
     try { redactRetainedPhaseOutputs(join(folder, attempt), mode, inferenceSecrets); }
     catch (error) { reportError = error; }
     try { if (scratch) removeScratch(scratch); } catch (error) { cleanupError = error; }
-    if (selectedModelEnvironment) rmSync(modelEnvironmentPath, { force: true });
+    // The selected file is also the exact source needed by ordinary recovery
+    // if a fixed worker report could not be safely filtered.
+    if (selectedModelEnvironment && !reportError) rmSync(modelEnvironmentPath, { force: true });
   }
   if (code !== 0) throw new Error(`${mode} exited ${code}; private log: ${logPath}${cleanupError ? `; scratch cleanup requires recovery: ${cleanupError.message}` : ''}${reportError ? `; worker report retention failed: ${reportError.message}` : ''}`);
   if (reportError) throw reportError;
@@ -217,12 +219,18 @@ try {
   // If cleanup cannot be confirmed, retain the lock and require explicit recovery.
   stopContainers(state,job);
   const modelEnvironmentPath = join(folder, attempt, `.model-${phase}.env`);
+  let outputRetentionComplete = true;
   if (['build', 'review', 'defence'].includes(phase) && existsSync(modelEnvironmentPath)) {
     try { redactRetainedPhaseOutputs(join(folder, attempt), phase, selectedInferenceSecrets(modelEnvironmentPath)); }
-    catch { console.error('Worker output redaction could not be completed; retained files remain private.'); }
+    catch {
+      outputRetentionComplete = false;
+      console.error('Worker output redaction is incomplete; the selected inference file and recovery fence were retained.');
+    }
   }
   if (phase === 'verify') removeScratch(join(folder, attempt, 'check-workspace'));
-  if (['build', 'review', 'defence'].includes(phase))
+  // Failed filtering is recoverable state: keep its exact secret source and
+  // active fence until a later stopped-process recovery completes it.
+  if (outputRetentionComplete && ['build', 'review', 'defence'].includes(phase))
     rmSync(join(folder, attempt, `.model-${phase}.env`), { force: true });
-  rmSync(lock);
+  if (outputRetentionComplete) rmSync(lock);
 }

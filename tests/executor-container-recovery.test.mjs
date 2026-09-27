@@ -103,6 +103,8 @@ if (command === 'run') {
   if (outputDir && state.mode.startsWith('redaction-')) {
     writeFileSync(outputDir + '/review.json', JSON.stringify({ verdict: 'pass', summary: 'Useful review content with inert-executor-auth-sentinel', findings: [{ note: 'Key inert-executor-api-key-sentinel' }] }));
     writeFileSync(outputDir + '/agent-report.md', 'Useful agent report. Auth: {"access_token":"inert-executor-auth-sentinel"}. Key: inert-executor-api-key-sentinel.\\n');
+    if (state.mode === 'redaction-oversized')
+      writeFileSync(outputDir + '/agent-report.md', 'Useful agent report. inert-executor-auth-sentinel\\n' + 'x'.repeat(1024 * 1024));
     if (state.mode === 'redaction-symlink') {
       unlinkSync(outputDir + '/agent-report.md');
       symlinkSync(state.outsideReport, outputDir + '/agent-report.md');
@@ -468,4 +470,41 @@ test('agent-created report symlinks are rejected without changing their outside 
   assert.doesNotMatch(readFileSync(join(f.attemptFolder, 'review.log'), 'utf8'), /inert-executor-(?:auth|api-key)-sentinel/);
   assert.equal(existsSync(join(f.output, 'review.json')), false);
   assert.doesNotMatch(execution.stdout + execution.stderr, /inert-executor-(?:auth|api-key)-sentinel/);
+});
+
+test('oversized credential-bearing reports retain the exact recovery source and fence until repaired', t => {
+  const f = fixture(t, 'redaction-oversized');
+  const candidateBefore = readFileSync(join(f.folder, 'candidate.json'));
+  const checksBefore = readFileSync(join(f.folder, 'checks.json'));
+  const executionStarted = Date.now();
+  const execution = runExecutor(f);
+  assert.ok(Date.now() - executionStarted < 5000, 'oversized output fails promptly');
+  assert.notEqual(execution.status, 0, 'report retention refuses the oversized worker output promptly');
+  const rawReport = join(f.attemptFolder, 'review', 'agent-report.md');
+  assert.ok(statSync(rawReport).size > 1024 * 1024);
+  assert.match(readFileSync(rawReport, 'utf8'), /inert-executor-auth-sentinel/, 'the private unfiltered report remains available for recovery');
+  assert.equal(existsSync(join(f.folder, 'review.json')), false, 'unfiltered review content is not promoted');
+  assert.equal(existsSync(join(f.output, 'review.json')), false, 'unfiltered review content is not exposed as an artifact');
+  assert.equal(existsSync(f.selectedEnvironment), true, 'selected credential values remain available to sanitize the owned report');
+  assert.equal(existsSync(f.lock), true, 'the recovery fence remains while retained output may still contain a credential');
+  assert.doesNotMatch(execution.stdout + execution.stderr, /inert-executor-(?:auth|api-key)-sentinel/);
+  assert.deepEqual(readFileSync(join(f.folder, 'candidate.json')), candidateBefore, 'cleanup does not rewrite candidate identity');
+  assert.deepEqual(readFileSync(join(f.folder, 'checks.json')), checksBefore, 'cleanup does not rewrite check identity');
+
+  const refusedRecovery = runOrdinaryRecovery(f);
+  assert.notEqual(refusedRecovery.status, 0, 'recovery fails closed while the report is still oversized');
+  assert.equal(existsSync(f.selectedEnvironment), true, 'a failed recovery does not discard its only redaction source');
+  assert.equal(existsSync(f.lock), true, 'a failed recovery keeps its retry fence');
+  assert.doesNotMatch(refusedRecovery.stdout + refusedRecovery.stderr, /inert-executor-(?:auth|api-key)-sentinel/);
+
+  writeFileSync(rawReport, 'Repaired owned report with inert-executor-auth-sentinel and useful content.\n');
+  const recovered = runOrdinaryRecovery(f);
+  assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
+  const sanitized = readFileSync(rawReport, 'utf8');
+  assert.doesNotMatch(sanitized, /inert-executor-(?:auth|api-key)-sentinel/);
+  assert.match(sanitized, /Repaired owned report/);
+  assert.equal(existsSync(f.selectedEnvironment), false, 'successful ordinary recovery removes the private selected file');
+  assert.equal(existsSync(f.lock), false, 'successful ordinary recovery releases the fence');
+  assert.deepEqual(readFileSync(join(f.folder, 'candidate.json')), candidateBefore, 'recovery does not rewrite candidate identity');
+  assert.deepEqual(readFileSync(join(f.folder, 'checks.json')), checksBefore, 'recovery does not rewrite check identity');
 });

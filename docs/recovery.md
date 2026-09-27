@@ -80,9 +80,16 @@ absent; if shutdown is uncertain, they remain in the private attempt directory
 and ordinary recovery sanitizes them after confirming the stop. Filtering
 includes selected API-key, token, secret, password and credential settings plus
 credential fields inside selected Codex auth JSON. Reports are opened without
-following symlinks, and an unsafe or oversized report cannot be promoted. This
-bounded filter does not detect encoded or transformed values and does not rewrite
-candidate files or patches; it is not a general data loss prevention control.
+following symlinks and with nonblocking access before descriptor type checks, so
+special files such as FIFOs are refused promptly. An unsafe or oversized report
+cannot be promoted. If filtering cannot complete, recovery retains the selected
+inference file and active fence; a repeated recovery remains blocked until the
+fixed owned report can be safely filtered. Once process and container shutdown
+are confirmed, repair or replace that report and retry ordinary recovery so it
+can sanitize the output before removing the selected file and fence. This
+bounded filter does not detect encoded or transformed values and does not
+rewrite candidate files or patches; it is not a general data loss prevention
+control.
 
 ## Recorded execution profiles
 
