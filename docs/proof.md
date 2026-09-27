@@ -961,3 +961,34 @@ Runtime, provider, package and policy code are unchanged from checkpoint
 bound to that checkpoint and does not qualify this UI delta. Desktop/narrow
 browser inspection remains pending; no visual pass is claimed. Native Factory
 Verify and independent full-baseline Review remain pending.
+
+## #71 final bounded checkpoint repair — 27 September 2026
+
+This Build starts at unaccepted checkpoint
+`7fc3395649f35bdefb6353ac5e4219169edfa56b` and retains version `0.9.0`.
+Independent Review must cover the entire aggregate diff from original main
+`380f74983d278f4a517d26a6a4bad4e3dbcb6809`, including checkpoints `4b9e8a3`
+and `7fc3395` and this final repair. Both previous 3600-second Build attempts
+remain failed histories; this manual continuation does not deliver #42 support.
+
+Required preparation (`npm ci --ignore-scripts`, `npm run build:dashboard`)
+passed. The initial `npm run check` passed 197 runtime/package tests but failed
+one of 53 dashboard tests: the browser-evidence assertion read the retained
+Details tab after rerendering the same job. The corrected component test selects
+Result explicitly, checks the selected visible panel for the failed attempt,
+screenshot and action trace, then starts a new attempt and verifies that the
+same evidence remains in History without being attributed to the current
+result. Both existing rendering paths pass without a production-code change.
+
+The dashboard package test and final `npm run check` passed on Node 22.23.3:
+197 runtime/package tests and 53 dashboard tests, including PNG artifact
+rendering. These are local automated checks with controlled fixtures and JSDOM,
+not live browser/Docker qualification. Logs and the Build report are private
+under `/output`; no generated fixtures or browser artifacts are source changes.
+
+The lead reports prior real Z13 Docker qualification of the selected
+two-container architecture; this Build did not repeat it. Installed final
+candidate `qualify-web`, desktop/narrow browser inspection and external proof
+remain lead-owned and pending. The exact image recipe and installed invocation
+are in [web verification](web-verification.md) and the private Build report.
+Native Verify and independent aggregate-diff Review remain pending.

@@ -199,10 +199,26 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
       candidate:'c'.repeat(40),attempt:'run_web',policyHash:'d'.repeat(64),stories:[{id:'result',contentHash:'e'.repeat(64),status:'failed',screenshot:{file:'web-story-result.png'},
         trace:[{index:0,op:'expect-text',role:'status',name:'Save status',expectedText:'Saved',status:'failed',durationMs:500,message:'Configured result was absent'}]}]}});
   await render();
-  assert.match(document.querySelector('[role="tabpanel"]:not([hidden])')?.textContent || document.body.textContent,/Browser verification/);
-  assert.match(document.body.textContent,/Screenshot retained: web-story-result\.png/);
-  assert.match(document.body.textContent,/Action trace \(1\)/);
-  assert.match(document.body.textContent,/Configured result was absent/);
+  const browserEvidenceInTab=async name=>{
+    const tab=document.querySelector(`[role="tab"][id$="${name}"]`);
+    await click(tab);
+    assert.equal(tab.getAttribute('aria-selected'),'true');
+    const panel=document.getElementById(tab.getAttribute('aria-controls'));
+    assert.equal(panel.hidden,false);
+    const evidence=panel.querySelector('[aria-label="Browser verification"]');
+    assert(evidence,`browser evidence is visible in ${name}`);
+    assert.match(evidence.textContent,/Failed/);
+    assert.match(evidence.textContent,/attempt run_web/);
+    assert.match(evidence.textContent,/Screenshot retained: web-story-result\.png/);
+    assert.match(evidence.textContent,/Action trace \(1\)/);
+    assert.match(evidence.textContent,/Configured result was absent/);
+  };
+  await browserEvidenceInTab('result');
+  runs.push({id:'run_after_web',command:'build',state:'queued',summary:'Fresh attempt'});
+  job.state='queued';await render();
+  assert.equal(document.querySelector('[aria-label="Current result"] [aria-label="Browser verification"]'),null,
+    'the previous attempt browser evidence is not attributed to the current result');
+  await browserEvidenceInTab('history');
   job.workflow.name='defence';job.state='succeeded';job.delivery_status={state:'patch_only',can_publish:false};await render();
   assert.equal(document.querySelector('[aria-label="Delivery status"]'),null,'PR handoff status is not presented for Defence investigations');
 });

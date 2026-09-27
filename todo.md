@@ -54,7 +54,7 @@ operations behind decorative buttons or introduce another scheduler for the GUI.
 
 ## Next bounded slices
 
-- [ ] [#71 — optional trusted execution-host web verification](https://github.com/arcitai/software-and-defence-factory/issues/71): bounded repair is ready for native Verify and independent Review of the full diff from `380f74983d278f4a517d26a6a4bad4e3dbcb6809`; the admitted Build record remains failed, and lead-owned installed Docker/browser qualification is pending. This checkpoint does not ship #42 support.
+- [ ] [#71 — optional trusted execution-host web verification](https://github.com/arcitai/software-and-defence-factory/issues/71): final bounded repair from unaccepted checkpoint `7fc3395` awaits native Verify and independent Review of the full diff from `380f74983d278f4a517d26a6a4bad4e3dbcb6809`, including both checkpoints; both prior timed-out Build histories remain failed, and lead-owned installed Docker/browser qualification is pending. This manual checkpoint does not ship #42 support.
 - [ ] [#60 — repository Inbox lifecycle](https://github.com/arcitai/software-and-defence-factory/issues/60): show the repository backlog, create through its templates, and admit execution explicitly. Remove the overlapping import chooser.
 - [ ] [#61 — Factory naming and release migration](https://github.com/arcitai/software-and-defence-factory/issues/61): Factory, with Software & Defence as subtitle; preserve installed state, command and update compatibility.
 - [ ] [#62 — operator and runtime skills](https://github.com/arcitai/software-and-defence-factory/issues/62): separate repository/setup guidance from instructions mounted into isolated jobs.
