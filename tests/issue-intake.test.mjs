@@ -28,7 +28,9 @@ test('issue listing stays in the configured repository, excludes PRs and retains
   const issue={html_url:'https://github.com/example/project/issues/8',number:8,title:'Investigate incident',labels:[{name:'track:security'}]};
   let calls=0;
   const result=await listIssues(repo,2,async args=>{calls++;assert.equal(args[3],'repos/example/project/issues?state=open&sort=created&direction=desc&per_page=50&page=2');return [issue,{pull_request:{url:'unused'}}];});
-  assert.deepEqual(result,{repository:'https://github.com/example/project',issues:[{number:8,title:issue.title,url:issue.html_url,labels:[{name:'track:security',color:null}]}],next_page:null});
+  assert.deepEqual(result,{repository:'https://github.com/example/project',issues:[{number:8,title:issue.title,url:issue.html_url,state:'unknown',labels:[{name:'track:security',color:null}]}],next_page:null});
+  await listIssues(repo,1,async args=>{assert.match(args[3],/state=closed/);return [];},'closed');
+  await assert.rejects(listIssues(repo,1,async()=>{throw Error('Host credentials unavailable');},'all'),/Host credentials unavailable/);
   const prs=await listIssues(repo,1,async()=>Array(50).fill({pull_request:{}}));assert.equal(prs.next_page,2);assert.deepEqual(prs.issues,[]);
   for(const page of [0,-1,1.5,NaN,10001])await assert.rejects(listIssues(repo,page,async()=>{calls++;return [];}),/integer/);
   assert.equal(calls,1);

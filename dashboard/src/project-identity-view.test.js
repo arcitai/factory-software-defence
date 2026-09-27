@@ -92,6 +92,8 @@ test("project identity stays visible, app keeps its submission key, and stale or
   mountedRoot = (await server.ssrLoadModule("/src/main.jsx")).appRoot;
   await eventually(() => assert.match(projectContext().textContent, /Loading configured project/));
   assert.match(projectContext().textContent, /Loading status/);
+  button("Execution history").click();
+  await eventually(() => assert.ok(document.querySelector('button[aria-label="Filter by statuses"]')));
 
   await eventually(() => assert.equal(statusCalls, 1));
   firstStatus.reject(new Error("initial status connection lost"));
@@ -121,8 +123,8 @@ test("project identity stays visible, app keeps its submission key, and stale or
   setTextareaValue.call(prompt, "Add the project label.");
   prompt.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
   button("Continue").click();
-  await eventually(() => assert.ok(button("Create & start")));
-  button("Create & start").click();
+  await eventually(() => assert.ok(button("Start local execution")));
+  button("Start local execution").click();
   await eventually(() => assert.ok(submitted));
   assert.equal(submitted.repository, "app", "the readable label does not replace the controller key");
   assert.equal(submitted.workflow, "software");
@@ -142,7 +144,7 @@ test("project identity stays visible, app keeps its submission key, and stale or
   await eventually(() => assert.match(projectName().textContent, /Project identity unavailable/));
   assert.match(projectContext().textContent, /Status current/);
   window.location.hash = "#/runs";
-  await eventually(() => assert.ok([...document.querySelectorAll("h2")].some((heading) => heading.textContent === "Issues")));
+  await eventually(() => assert.ok([...document.querySelectorAll("h2")].some((heading) => heading.textContent === "Executions")));
   button("New issue").click();
   await eventually(() => assert.match(document.querySelector('#start-work-description').textContent, /Project identity unavailable/));
   document.querySelector('button[aria-label="Close start work form"]').click();

@@ -1,3 +1,4 @@
+import { readinessMapping } from './issue-lifecycle.mjs';
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { resolve, dirname, join, isAbsolute } from 'node:path';
 import { spawnSync, spawn } from 'node:child_process';
@@ -76,6 +77,7 @@ export function configAt(state) {
     }
   }
   if (typeof config.check !== 'string' || !config.scope || !['project','service','environment','owner'].every(k=>typeof config.scope[k]==='string'&&config.scope[k].trim())) throw new Error('Missing check or installation scope');
+  readinessMapping(config.issueReadinessLabels);
   validateWebVerification(config.webVerification);
   return config;
 }

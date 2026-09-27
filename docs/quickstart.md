@@ -149,7 +149,7 @@ create a second PR or overwrite a changed branch. The CLI gives this bounded
 multi-request action ten minutes; branch resolution uses the same bound and
 other API calls keep their five-second deadline. If a client deadline expires,
 inspect status and repeat `publish` to reconcile or recheck the reported branch
-identity before `abandon-delivery`. Delete issue stays disabled while delivery
+identity before `abandon-delivery`. Remove local execution history stays disabled while delivery
 is unresolved, and the controller enforces the same guard on its API.
 Publication does not merge, integrate, release or deploy. See [delivery
 recovery](recovery.md#trusted-pr-delivery).
@@ -211,8 +211,7 @@ use the [Defence integration](defence-integration.md) recipe; the generic
 Defence form is not that typed intake path.
 
 The header names the configured project. View repo opens a validated GitHub
-origin. New issue opens Factory’s local chooser: repository templates, a blank
-form or existing GitHub issues. Create issue saves to the supported repository provider without execution. Start work queues local work. See [intake and CLI examples](workflows.md). The task detail provides previous/next within the filtered list, copy
+origin. Inbox lists repository issues directly with open/closed/all filters and paging. New issue opens repository templates or a blank creation form. Create issue saves to the supported repository provider without execution. Open an issue from Inbox and choose Start work to admit execution explicitly. The controller rejects duplicate active work; linked attempts remain accessible. See [intake and CLI examples](workflows.md). The task detail provides previous/next within the filtered list, copy
 link and close (Escape). Closing preserves the list's filters and position.
 
 If the interface looks unexpectedly small, check the browser zoom. The design

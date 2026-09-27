@@ -605,7 +605,7 @@ lockfile versions remain `0.8.0`.
 
 The controller now refuses to remove a stopped job while a saved delivery is
 not confirmed `published`. Status exposes the same removal decision and reason
-to the dashboard. The detail view disables Delete issue and explains how to
+to the dashboard. The detail view disables Delete issue (renamed Remove local execution history in 0.11.0) and explains how to
 reconcile or inspect the delivery. Saved `intent`, `publishing`, `uncertain`
 and retryable `blocked` checkpoints retain a guarded publish/reconcile action;
 legacy acceptance without candidate-bound phase evidence is labelled
@@ -1173,3 +1173,109 @@ classification, live pending feedback and harness deadline hints are deferred.
 Target refresh remains #72; opt-in desktop/VM observation and browser recordings
 are later #82. The shipped #71/#84 installed qualification above does not qualify
 this new continuation path.
+
+
+## 0.11.0 repository Inbox lifecycle — controlled implementation proof
+
+Issue #60 source work is based on `1755f472d7b375caac270ac16e46c7a1c7e7e9e6`.
+The delivered source is an uncommitted aggregate; the job report and file-hash
+manifest identify it. Git metadata, CI, provider credentials and operator settings
+were not changed. Package and both root lockfile version entries are 0.11.0.
+
+The shared provider/API page now carries canonical identity, readiness and linked
+execution attempts. Inbox displays provider issues directly; creation remains a
+durable, recoverable provider write without admission. Explicit start re-reads
+scope before existing source retention. SQLite transactions reject duplicate
+active admissions; per-issue action reservations cover asynchronous retry,
+revision and delivery reconciliation. Tests reproduce collision rejection before
+checkout reconciliation and prevent concurrent admission while reconciliation is
+pending. Failed, stopped and unresolved evidence stays subject to existing guards.
+
+Controlled tests cover provider failure and PR-only pagination, open/closed/all
+filters, canonical URL aliases, source changes, missing/off-page/local records,
+multiple attempts, duplicate concurrent admission, retry/revision races, local
+removal guards, no auto-start, creation receipt recovery, stale UI requests,
+operator-brief preservation, provider-title ownership and inline error visibility.
+Definition renders the validated configurable readiness mapping. Execution-profile
+compatibility explicitly includes 0.11.0 without changing protected writer formats,
+strict profile validation or retained hashes.
+
+Preparation/checks: `npm ci --ignore-scripts`, `npm run build:dashboard`, and
+`npm run check` on Node 22.23.3/npm 10.9.9. The aggregate suite passes 276
+runtime/package test cases and 56 dashboard tests. Provider fakes and JSDOM are
+repeatable behavioral evidence, not live integration or browser qualification.
+Review found and prompted fixes for stale provider titles, hidden removal errors,
+missing Definition mapping and reconciliation-before-duplicate-rejection. The
+separate review and final aggregate hashes are retained with the private report.
+
+No browser executable/tool is available in this job. Desktop, 390px and 320px,
+light/dark visual inspection, exact installed package/provider lifecycle and native
+Build/Verify/Review qualification remain lead-owned and required before adoption.
+No live provider writes, Docker qualification, deployment or acceptance is claimed.
+Issue #42 remaining scope, full interface redesign/parity, namespace/branding,
+skills/diagrams, local AI, scores/self-improvement and desktop observation remain
+deferred. This source proof does not close #60 or qualify native delivery.
+
+### Issue #60 CLI/dashboard revision on the reviewed 0.11.0 candidate
+
+The follow-up preserves checkpoint a3a105389f83fdaa80706f4149ced09c5b9697ca
+on original source 1755f472d7b375caac270ac16e46c7a1c7e7e9e6. Remote CLI
+`issue start --brief-file` now shares the dashboard's bounded operator brief and
+preview/start admission. CLI `inbox` defaults to the shared repository page;
+`--source factory` explicitly retains the old execution array. Repository
+navigation has no execution-count badge; history filters and empty states name
+executions. No provider, admission, delivery or continuation policy is replaced.
+
+New controlled CLI/controller regressions reproduce the earlier ignored brief
+and execution-only Inbox, then check exact admitted scope, 16000/16001-character
+boundaries, option misuse, unreadable files, stale provider content, paging,
+closed state, provider failure, unsupported providers and shared history. The UI
+regression renders five remote issues beside three executions and checks truthful
+navigation, loaded-page counts and execution filter wording. These are provider
+fakes and JSDOM evidence; they do not qualify real provider or browser delivery.
+
+Preparation and final aggregate check results, including any failed intermediate
+checks, are retained in the private agent report and logs. The independent review
+must cover the entire diff from the original source, including checkpoint files.
+Desktop/390px/320px light/dark inspection and exact installed native provider
+qualification remain lead-owned; no browser executable/tool is available here.
+
+Fresh aggregate review reproduced a legacy `run --issue` admission that discarded
+the source URL, admitting duplicate active work and appearing local in history.
+The compatibility submit helper now forwards the canonical URL without changing
+file or incident admission. A real CLI/controller/storage regression with only
+`gh` reads stubbed fails before and passes after: active work rejects a duplicate,
+then cancellation permits a subsequent attempt linked to the same Inbox identity.
+The initial review and failed regression remain in the private report artifacts.
+
+### Issue #60 visual correction after installed inspection
+
+This revision preserves the staged reviewed checkpoint
+`1a4576732c66001260409f780733bd6d9f35d917` on original source
+`1755f472d7b375caac270ac16e46c7a1c7e7e9e6`, including the CLI brief,
+repository Inbox and count corrections. Version remains 0.11.0.
+
+Inbox now shares the existing project-header gutter rules (56px desktop, 36px
+at the intermediate breakpoint, 20px narrow and 16px below 360px). Its nested
+execution-history page uses the available width without adding a second gutter.
+Selected, hovered and keyboard-focused Inbox controls pair the existing muted
+surface and foreground tokens, with an explicit focus outline. Empty label
+containers are omitted in both issue rows and selected context; populated labels
+and execution links remain visible, using the grid's existing spacing.
+
+Controlled regression evidence: the targeted component/style suite failed on the
+missing shared gutter and empty label container before the repair, then passed
+all 9 tests. The style assertions cover the shared responsive rules, nested
+history width and paired control tokens; JSDOM exercises label visibility,
+context navigation and linked active work. These tests do not measure rendered
+geometry or browser contrast. Logs, including initial unsuccessful test
+invocations, remain in the private output directory.
+
+No browser executable or browser tool is available in this job. The lead's
+reported initial installed inspection found these visual defects despite six
+passing interaction cases; that is not visual acceptance of this revision.
+Desktop/390px/320px light/dark inspection of the exact installed package and real
+provider/native lifecycle remain lead-owned. No live provider writes, native
+qualification, production changes or publication are claimed. Fresh full-check
+and whole-aggregate independent review results are recorded in the private
+agent report, with the uncommitted file manifest and original-baseline diff.

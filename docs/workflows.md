@@ -24,12 +24,27 @@ kept outside those execution mounts.
 
 ## Start work
 
-Open **New issue** in Inbox, choose a repository template (or **Blank issue**),
-complete the title and fields, then **Continue**. Or choose
-**From GitHub issues** and select an open issue from the configured repository.
-The list excludes pull requests, loads 50 GitHub records per page and offers
-**Load more**; search filters the loaded issues by title, number or label. GitHub
-reads use the controller's existing access, with retry on failure.
+Inbox lists repository issues directly. Choose Open, Closed or All states and use
+Previous/Next page or Refresh issues. Search covers the loaded page and visible
+history, not the whole repository. GitHub returns up to 50 records per page;
+pull requests are excluded, so even a page with zero issues can have a next page.
+Counts name the loaded page and total remains unknown. Authentication/provider
+failures are visible, with any retained page explicitly stale.
+
+Open an issue for its context, readiness, and linked execution attempts. Start
+work is deliberate; browsing never starts an agent. Active or unresolved work
+blocks another admission for the same canonical identity, including concurrent
+requests and retries. Completion/cancellation permits a subsequent explicit
+attempt. Failed work stays in history; blocked/interrupted work must first be
+reconciled or cancelled, and unresolved provider delivery continues to block.
+Closed issues and blocked/conflicting readiness labels cannot start new work.
+No readiness labels means unknown, not ready or running. Readiness is planning
+metadata; Needs triage never means an agent is Triaging.
+
+**New issue** only composes/publishes: choose a repository template (or **Blank
+issue**), complete the title and fields, then Continue and Create issue. Done
+returns to Inbox, where the new issue appears without a job. Refresh also finds
+issues created directly on the forge. Existing issue selection is in Inbox.
 
 Review the instructions and suggested work type before explicitly starting work. The shared,
 deterministic suggestion prioritizes `track:software` and `track:security` (also
@@ -57,8 +72,8 @@ shown as literal text, never executed or rendered as raw HTML.
 On a supported repository, **Create issue on GitHub** writes the title, description
 and template labels to that repository using the displayed host identity. It
 returns the real issue number/link and **does not start execution**. Select
-**Start work** separately, or choose the issue later from the repository list.
-Choose **Local execution only** to submit a brief without publishing it. A local
+**Done**, then open the issue in Inbox and choose **Start work**.
+Choose **Local execution request** in Inbox to submit a brief without publishing it. On unsupported hosts, New issue also offers this explicitly local route. A local
 brief is an execution request; an unfinished form is not a persistent backlog.
 Use the private security contact route for sensitive reports, never a public issue.
 
@@ -73,16 +88,23 @@ CLI equivalents (the selected controller must be running):
 
 ```sh
 software-defence-factory issue connection --state PATH
-software-defence-factory issue list --source remote --state PATH --page 1
+software-defence-factory inbox --state PATH --page 1 --issue-state open
+# Explicit legacy execution-only JSON array:
+software-defence-factory inbox --state PATH --source factory
 software-defence-factory issue templates --state PATH
 software-defence-factory issue draft --state PATH --template bug-report.yml --sha TEMPLATE_SHA --file answers.json > draft.json
 software-defence-factory issue create --state PATH --draft draft.json --key release-board-fix-01
 software-defence-factory issue submissions --state PATH
 software-defence-factory issue recover --state PATH --key release-board-fix-01
 # Explicit execution, independent of creation:
-software-defence-factory issue start --state PATH --url URL --workflow software
+software-defence-factory issue start --state PATH --url URL --workflow software --brief-file operator.md
 software-defence-factory issue start --state PATH --file brief.md --title "Investigate supplied evidence" --workflow defence --source-ref main
 ```
+
+`--brief-file` is optional, UTF-8, at most 16000 characters and valid only with
+a remote issue start. Use `--file` or `--draft` alone for local scope. Inbox
+defaults to a repository page with linked history; `--issue-state closed` or
+`all` and `--page` browse further without starting work.
 
 `answers.json` contains `{"title":"Fix the board","answers":{"problem":"..."}}`;
 keys match `fields[].id` in `issue templates`. Multi-select/checkbox answers are
@@ -116,3 +138,12 @@ while the installation is stopped, then restart. Workflow order and packaged
 skills change through reviewed Factory releases. This release does not support
 per-role profiles or arbitrary editable workflow graphs. Versioned editable
 definitions are tracked in [#53](https://github.com/arcitai/software-and-defence-factory/issues/53).
+
+
+Inbox groups URL case, HTTP/HTTPS, trailing-slash, query and fragment aliases by GitHub
+repository and issue number. Credential-bearing URLs, queries, foreign hosts and
+non-issue paths are not admitted by the provider preview. Local-only records and
+executions whose source is missing, closed or outside the loaded page remain in
+Local and other execution history. Removing local execution history preserves
+private evidence and never deletes a provider issue; unresolved delivery guards
+still apply. The separate Execution history tab keeps the execution list/board.

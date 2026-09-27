@@ -500,7 +500,7 @@ body { font-size: 14px; }
 }
 
 /* Header divider and page content share the same outer edges. */
-.project-header:not(.project-header-compact), .runs-page, .workshop > .secondary-page {
+.project-header:not(.project-header-compact), .runs-page, .inbox-page, .workshop > .secondary-page {
   width: calc(100% - 112px); max-width: 1500px; margin-inline: auto; padding-left: 0; padding-right: 0;
 }
 .facet-option { width: 100%; text-align: left; border: 0; background: transparent; color: inherit; font: inherit; }
@@ -523,14 +523,14 @@ body { font-size: 14px; }
 .infrastructure-card a { font-size: 14px; text-decoration: underline; text-underline-offset: 3px; }
 .repo-action:disabled { opacity: .5; cursor: not-allowed; }
 @media (max-width: 1150px) {
-  .project-header:not(.project-header-compact), .runs-page, .workshop > .secondary-page { width: calc(100% - 72px); }
+  .project-header:not(.project-header-compact), .runs-page, .inbox-page, .workshop > .secondary-page { width: calc(100% - 72px); }
 }
 @media (max-width: 767px) {
-  .project-header:not(.project-header-compact), .runs-page, .workshop > .secondary-page { width: calc(100% - 40px); }
+  .project-header:not(.project-header-compact), .runs-page, .inbox-page, .workshop > .secondary-page { width: calc(100% - 40px); }
   .infrastructure-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 359px) {
-  .project-header:not(.project-header-compact), .runs-page, .workshop > .secondary-page { width: calc(100% - 32px); }
+  .project-header:not(.project-header-compact), .runs-page, .inbox-page, .workshop > .secondary-page { width: calc(100% - 32px); }
 }
 
 .template-chooser, .issue-form-fields { display: grid; gap: 14px; }
@@ -557,3 +557,39 @@ body { font-size: 14px; }
 @media (max-width: 480px) { .issue-publish-actions { flex-direction: column; } }
 
 .revision-error { overflow-wrap: anywhere; }
+
+/* Repository issue readiness and execution attempts have separate records. */
+.inbox-page { min-width: 0; padding-bottom: 32px; }
+.inbox-page > .runs-page { width: 100%; margin-inline: 0; padding-inline: 0; }
+.inbox-tabs, .inbox-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.inbox-tabs button[aria-pressed="true"], .inbox-tabs button:hover, .inbox-tabs button:focus-visible { background: var(--muted); color: var(--foreground); }
+.inbox-tabs button[aria-pressed="true"] { font-weight: 600; }
+.inbox-tabs button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.inbox-page .issue-choice-meta { margin-top: 0; }
+.inbox-provider, .inbox-detail h2, .inbox-row, .inbox-attempts a { overflow-wrap: anywhere; }
+.inbox-provider { font-size: 13px; color: var(--muted-foreground); }
+.inbox-controls label { display: grid; gap: 6px; min-width: 0; font-size: 12px; }
+.inbox-row { min-width: 0; padding: 14px 0; border-bottom: 1px solid var(--border); display: grid; gap: 8px; }
+.inbox-issue-title { display: grid; gap: 5px; text-align: left; min-width: 0; width: 100%; cursor: pointer; }
+.inbox-issue-title strong { font-size: 14px; font-weight: 500; }
+.inbox-issue-title span { font-size: 12px; color: var(--muted-foreground); }
+.inbox-issue-title:hover strong { text-decoration: underline; }
+.inbox-attempts { display: grid; gap: 10px; padding: 10px 0; }
+.inbox-attempts a { display: grid; font-size: 13px; text-decoration: underline; }
+.inbox-attempts small { font-size: 11px; color: var(--muted-foreground); }
+.inbox-detail { display: grid; gap: 16px; min-width: 0; }
+.inbox-detail h2 { font-size: 22px; font-weight: 600; }
+.inbox-body { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 14px; }
+.inbox-start { display: grid; gap: 16px; max-width: 680px; min-width: 0; }
+.inbox-start label { display: grid; gap: 6px; }
+.inbox-page h3 { margin-top: 24px; font-size: 14px; font-weight: 600; }
+.inbox-page .form-error { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .inbox-controls > label { flex: 1 1 100%; }
+  .inbox-controls > button, .inbox-tabs > button { white-space: normal; height: auto; min-height: 36px; }
+  .inbox-controls .field-control { width: 100%; min-width: 0; }
+}
+
+.inbox-title-line { display: flex; align-items: start; gap: 8px; }
+.inbox-title-line svg { flex-shrink: 0; margin-top: 2px; }
+.inbox-title-line span { font-size: inherit; color: inherit; }

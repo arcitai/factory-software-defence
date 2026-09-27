@@ -1,3 +1,4 @@
+import { readinessMapping } from './issue-lifecycle.mjs';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT, digest, harnessOf } from './lib.mjs';
@@ -39,7 +40,7 @@ export function factoryDefinition(config) {
     commands: Object.entries(phaseInfo).map(([name, info]) => ({ name, ...info, prompt: info.description,
       executor: info.owner === 'agent' ? harnessOf(config) : 'factory', timeout: `${config.timeoutSeconds}s` })),
     skills,
-    configuration: { harness, agent: harness, // agent is a v1 compatibility alias
+    configuration: { issueReadinessLabels: readinessMapping(config.issueReadinessLabels), harness, agent: harness, // agent is a v1 compatibility alias
       model: config.model || null, check: config.check, timeoutSeconds: config.timeoutSeconds,
       memoryMiB: config.memoryMiB, cpus: config.cpus || 2,
       web_verification: config.webVerification?.enabled ? {

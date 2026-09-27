@@ -227,7 +227,7 @@ controller action; other CLI API requests retain their five-second deadline.
 If the client deadline expires, inspect status and repeat `publish JOB_ID` so
 the controller can reconcile its saved intent. Restart the installed controller
 and repeat `publish JOB_ID`; verify the same branch and PR head are read back
-and no second PR appears. Delete issue is disabled while the delivery is
+and no second PR appears. Remove local execution history is disabled while the delivery is
 unresolved, and the controller rejects the same removal through its API. Leave
 pending/unknown checks labelled as such. After inspection, close the proof PR
 without merging its fixture change. Do not publish a worker candidate from
@@ -326,3 +326,36 @@ installed file. Keep host identities, credentials, raw logs and customer details
 out of public issues and package contents. A ready worker is only the foundation:
 follow [the method](../kit/README.md#first-real-task) for the first explicitly
 accepted application task and revision-bound checks/review/handoff.
+
+
+## Repository Inbox and explicit execution
+
+The controller's configured repository selects its issue adapter. On GitHub,
+use the controller host's existing read access; browser login does not supply
+credentials. Open Inbox, verify the provider/repository, refresh and page through
+Open/Closed/All states. Provider failures remain visible; local execution and
+retained history remain available on unsupported hosts. Creating through New
+issue and browsing must leave the execution queue unchanged. Open the issue and
+choose Start work only after reviewing its scope and work type.
+
+Readiness is separate from execution state. To use different repository labels,
+set `issueReadinessLabels` in private `factory.json` while stopped and restart:
+`{"triage":"factory:triage","spec":"factory:spec","ready":"factory:ready","blocked":"factory:blocked"}`.
+All four values must be distinct label names. Definition displays the effective
+mapping. This only interprets read metadata; it installs no labels or automations.
+Keep private security reports on their configured private route.
+
+Before adopting 0.11.0, qualify the exact installed package and real provider
+lifecycle, including creation without execution, explicit start, duplicate
+rejection and linked subsequent attempts. Inspect affected flows at desktop,
+390px and 320px in both themes, including failures. Component/provider-fixture
+tests do not qualify those native interactions. Existing source retention,
+continuation, review and trusted delivery acceptance remain required.
+
+CLI `inbox --state PATH` opens the same repository page (open issues, page 1).
+Use `--page N` and `--issue-state closed|all` for additional issues/history;
+`inbox --source factory` explicitly selects the legacy execution-only array.
+To add operator scope at admission, use `issue start --url URL --workflow software
+--brief-file operator.md --state PATH` with an optional UTF-8 brief of at most
+16000 characters. This keeps the remote identity and current-content check;
+local requests still use `issue start --file` or `--draft` without `--brief-file`.

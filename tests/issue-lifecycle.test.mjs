@@ -1,0 +1,80 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
+import { execFileSync, execFile } from 'node:child_process';
+import { JobQueue } from '../factory/queue.mjs';
+import { createController } from '../factory/server.mjs';
+import { canonicalIssue, issueReadiness, readinessMapping } from '../factory/issue-lifecycle.mjs';
+
+const url='https://github.com/example/project/issues/42';
+test('canonical aliases and explicit configurable readiness preserve unknowns',()=>{
+  assert.equal(canonicalIssue(url+'?view=all#context').key,canonicalIssue(url).key);
+  assert.equal(canonicalIssue('http://GitHub.com/EXAMPLE/Project/issues/42/#context').key,canonicalIssue(url).key);
+  for(const value of [url.replace('github.com','user:secret@github.com'),url.replace('/42','/../42'),url.replace('/issues/','/pull/'),'https://forge.example/a/b/issues/42']) assert.equal(canonicalIssue(value),null);
+  assert.equal(issueReadiness([]).state,'unknown');assert.equal(issueReadiness([{name:'project:blue'}]).state,'unknown');
+  assert.equal(issueReadiness([{name:'factory:triage'}]).label,'Needs triage');
+  assert.equal(issueReadiness(['factory:ready','factory:blocked']).state,'conflicting');
+  assert.equal(issueReadiness(['go'],readinessMapping({triage:'scope',spec:'plan',ready:'go',blocked:'wait'})).state,'ready');
+  assert.throws(()=>readinessMapping({ready:'go'}),/four distinct/);
+});
+
+test('shared HTTP backlog: browse, page, stale source, concurrent start, cancellation and subsequent history',async t=>{
+  const state=mkdtempSync(join(tmpdir(),'sdf-backlog-'));t.after(()=>rmSync(state,{recursive:true,force:true}));
+  const repo=join(state,'repo');mkdirSync(repo);execFileSync('git',['init','-q',repo]);writeFileSync(join(repo,'app.txt'),'controlled fixture');execFileSync('git',['-C',repo,'add','.']);execFileSync('git',['-C',repo,'-c','user.name=Fixture','-c','user.email=f@localhost','commit','-qm','Fixture']);
+  writeFileSync(join(state,'factory.json'),JSON.stringify({version:1,repo,harness:'mock',command:['mock'],port:7331,check:'true',image:'fixture:1',network:'none',timeoutSeconds:10,memoryMiB:512,scope:{project:'fixture',service:'app',environment:'test',owner:'operator'}}));writeFileSync(join(state,'worker.token'),'fixture');
+  let failure=false,missing=false,issueState='open',spec='Accepted bounded change';
+  const issue=()=>({number:42,url,title:'Scoped change',spec,body:spec,state:issueState,labels:[{name:'factory:ready',color:'abcdef'}],recommendation:{workflow:'software',reason:'Project change'}});
+  const provider={id:'github',label:'GitHub',repository:'https://github.com/example/project',supported:true,capabilities:{issues:true},list:async(page,state)=>{if(failure)throw Error('Provider authentication unavailable');assert(['open','closed','all'].includes(state));return {issues:page===1?[issue()]:[],next_page:page===1?2:null};},preview:async()=>{if(missing)throw Object.assign(Error('Repository issue missing or inaccessible'),{status:404});return issue();}};
+  const controller=createController(state,{execute:async()=>({outcome:'complete'}),stop:async()=>{},reconcile:async()=>{}},{issueProvider:provider});
+  await new Promise(resolve=>controller.server.listen(0,'127.0.0.1',resolve));t.after(()=>controller.close());
+  const config=JSON.parse(readFileSync(join(state,'factory.json'),'utf8'));config.port=controller.server.address().port;writeFileSync(join(state,'factory.json'),JSON.stringify(config));
+  const cli=async(...args)=>JSON.parse((await promisify(execFile)(process.execPath,['bin/software-defence-factory.mjs','issue',...args,'--state',state],{env:{...process.env,SDF_AUTO_UPDATE:'0'}})).stdout);
+  const base=`http://127.0.0.1:${controller.server.address().port}`;
+  const request=async(path,input,method)=>{const r=await fetch(base+path,{method:method||(input?'POST':'GET'),headers:{Authorization:'Bearer fixture','Content-Type':'application/json'},...(input?{body:JSON.stringify(input)}:{})});return {status:r.status,value:await r.json()};};
+  let listed=await request('/api/v1/issues?page=1&state=open');assert.equal(listed.value.issues[0].readiness.state,'ready');assert.equal(listed.value.total,null);assert.equal(listed.value.next_page,2);
+  assert.equal((await request('/api/v1/issues/preview',{url})).value.executions.length,0);assert.equal(controller.queue.all().length,0);
+  failure=true;assert.equal((await request('/api/v1/issues')).status,400);failure=false;
+  assert.equal((await request('/api/v1/issues?state=invalid')).status,400);
+  const input={url,expected_spec:spec,workflow:'software'};
+  issueState='closed';assert.equal((await request('/api/v1/issues/start',input)).status,409);issueState='open';
+  missing=true;assert.match((await request('/api/v1/issues/preview',{url})).value.error,/missing or inaccessible/);missing=false;
+  spec='Changed scope';assert.equal((await request('/api/v1/issues/start',input)).status,409);spec=input.expected_spec;
+  const results=await Promise.all([request('/api/v1/issues/start',input),request('/api/v1/issues/start',input)]);
+  assert.deepEqual(results.map(r=>r.status).sort(),[201,409]);const first=results.find(r=>r.status===201).value.id;
+  for(let i=0;i<100 && controller.queue.get(first).state!=='awaiting_approval';i++)await new Promise(r=>setTimeout(r,5));
+  assert.equal((await request('/api/v1/jobs',{repository:'app',workflow:'software',spec:'Alias cannot bypass reservation',source_url:'http://GitHub.com/Example/Project/issues/42/?view=all#context'})).status,409);
+  listed=await request('/api/v1/issues');assert.equal(listed.value.issues[0].active_execution.id,first);assert.equal(listed.value.history.length,0);
+  assert.equal((await request('/api/v1/issues?page=2')).value.history[0].identity.key,canonicalIssue(url).key);
+  let job=controller.queue.get(first);await request(`/api/v1/jobs/${first}/cancel`,{run_id:job.runs.at(-1).id});
+  const second=await cli('start','--url',url,'--workflow','software');assert.match(second.id,/^job_/);
+  assert.equal((await request('/api/v1/issues')).value.issues[0].executions.length,2);
+  assert.equal((await request(`/api/v1/jobs/${first}/retry`,{run_id:controller.queue.get(first).runs.at(-1).id})).status,409);
+  issueState='closed';listed=await request('/api/v1/issues?state=closed');assert.equal(listed.value.issues[0].state,'closed');assert.equal(listed.value.issues[0].executions.length,2);
+  const cliPage=await cli('list','--source','inbox','--issue-state','closed');assert.deepEqual(cliPage.issues[0].identity,listed.value.issues[0].identity);assert.equal(cliPage.issues[0].executions.length,2);
+  await request('/api/v1/jobs',{workflow:'defence',repository:'app',title:'Local evidence',spec:'Local request'});
+  missing=true;assert.match((await request('/api/v1/issues/preview',{url})).value.error,/missing or inaccessible/);
+  const history=(await request('/api/v1/issues?page=2&state=all')).value.history;assert.equal(history.length,2);assert(history.some(row=>row.source_status==='local'));assert(history.some(row=>row.source_status==='not_loaded'));
+  assert.equal((await request(`/api/v1/jobs/${first}`,undefined,'DELETE')).status,200);
+  assert.equal((await request('/api/v1/issues')).value.issues.length,1,'local removal never deletes a provider issue');
+  provider.supported=false;const unsupported=await request('/api/v1/issues');assert.equal(unsupported.status,200);assert.equal(unsupported.value.provider.supported,false);assert.equal(unsupported.value.issues.length,0);assert.equal(unsupported.value.history.length,2);
+});
+
+
+test('rejected retry/revision preserves checkout and concurrent admission cannot race reconciliation',async t=>{
+  const state=mkdtempSync(join(tmpdir(),'sdf-reservation-'));t.after(()=>rmSync(state,{recursive:true,force:true}));
+  let reconciled=0,release,retained=0;
+  const queue=new JobQueue(state,{execute:async()=>({outcome:'complete'}),stop:async()=>{},reconcile:async()=>{reconciled++;await new Promise(resolve=>{release=resolve;});},sourceAdmission:{validate:()=>{},admit:()=>{retained++;return {status:'retained'};}}});t.after(()=>queue.close());
+  const a={id:'job_a',state:'failed',created_at:'2026-01-01',task:{title:'Prior failed work',source_url:url},prompt:'Scope',source_admission:{status:'retained'},workflow:{name:'software',steps:['build','verify','review','handoff'],current_step:2},runs:[{id:'run_a',command:'review',state:'failed',review_verdict:'changes'}]};
+  const b={...a,id:'job_b',state:'queued',runs:[]};queue.save(a);queue.save(b);
+  await assert.rejects(queue.action(a.id,'retry',{run_id:'run_a'}),/already has active/);
+  await assert.rejects(queue.action(a.id,'request_changes',{run_id:'run_a',feedback:'Fix bounded concern'}),/already has active/);
+  assert.equal(reconciled,0,'rejected actions cannot archive or mutate the prior checkout');assert.equal(queue.get(a.id).runs.length,1);
+  b.state='cancelled';queue.save(b);
+  const pending=queue.action(a.id,'retry',{run_id:'run_a'});assert.equal(reconciled,1);
+  assert.throws(()=>queue.submit({repository:'app',workflow:'software',spec:'Concurrent start',source_url:url+'?view=all'}),/execution is changing/);
+  assert.equal(retained,0,'concurrent rejection happens before new source retention');
+  release();await pending;assert.equal(queue.all().length,2);assert.equal(queue.get(a.id).runs[0].id,'run_a');
+});

@@ -37,8 +37,8 @@ export function githubIssueProvider(repo, { read = githubRead, write = githubWri
   return {
     id: 'github', label: 'GitHub', repository, supported: true,
     capabilities: { issues: true, templates: true, create: true },
-    list: page => listIssues(repo, page, read),
-    preview: url => readIssue(repo, url, value => read(['issue', 'view', value, '--json', 'title,body,url,labels'])),
+    list: (page, state) => listIssues(repo, page, read, state),
+    preview: url => readIssue(repo, url, value => read(['issue', 'view', value, '--json', 'title,body,url,labels,state'])),
     templates: () => readTemplates(repo, read),
     draft: input => draftFromTemplate(repo, input, read),
     async context() {

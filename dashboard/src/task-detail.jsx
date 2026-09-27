@@ -24,6 +24,8 @@ export function TaskDetail({
   job,
   loaded,
   error,
+  actionError,
+  removalError,
   deliveryActionError = "",
   deleting,
   onDelete,
@@ -173,7 +175,7 @@ export function TaskDetail({
                     job={job}
                     result={result}
                     deliveryActionError={deliveryActionError}
-                    revisionActionError={error}
+                    revisionActionError={actionError}
                     onAction={onWorkflowAction}
                   />
                 )}
@@ -296,10 +298,11 @@ export function TaskDetail({
                     disabled={!terminal || deleting || job.can_remove === false}
                     onClick={() => onDelete(job)}
                   >
-                    {deleting ? "Deleting…" : "Delete issue"}
+                    {deleting ? "Removing…" : "Remove local execution history"}
                   </Button>
+                  {removalError && <p role="alert" className="text-sm text-danger">{removalError}</p>}
                   {job.delivery_removal_blocked && <p className="text-xs text-muted-foreground" role="note">
-                    {job.removal_block_reason || "Trusted PR delivery is unresolved. Reconcile it or inspect the remote collision before deleting this issue."}
+                    {job.removal_block_reason || "Trusted PR delivery is unresolved. Reconcile it or inspect the remote collision before removing this local execution history."}
                   </p>}
                 </section>
               </div>
@@ -469,6 +472,7 @@ function TaskActions({ job, result, deliveryActionError = "", revisionActionErro
   const delivery = job.delivery_status;
   return (
     <div className="space-y-3">
+      {revisionActionError && !requesting && <p role="alert" className="text-sm text-danger">{revisionActionError}</p>}
       {(job.state === "awaiting_approval" || canRevise) && (
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">

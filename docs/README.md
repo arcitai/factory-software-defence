@@ -32,7 +32,7 @@ use the linked guides for details rather than copying their specifications.
 | Operator outcome | Behavior and boundary | Implementation / proof entrypoint |
 | --- | --- | --- |
 | Prepare a repository | Staged method, preserved project contracts, explicit setup | [Foundation](setup.md), [kit export](../scripts/export-kit.mjs), [package tests](../tests/npm.test.mjs) |
-| Admit a local issue | Repository form, blank brief or selected GitHub issue; no background backlog polling | [Intake](workflows.md), [server](../factory/server.mjs), [issue tests](../tests/issue-intake.test.mjs) |
+| Browse issues and explicitly admit execution | Provider-backed Inbox, creation-only templates/blank form, canonical linked history and atomic duplicate-active rejection; no background backlog polling | [Intake](workflows.md), [server](../factory/server.mjs), [issue tests](../tests/issue-intake.test.mjs) |
 | Execute Software or Defence | One queue; isolated roles/checks; Defence produces a private draft | [Architecture](architecture.md), [executor](../factory/executor.mjs), [controller tests](../tests/controller.test.mjs) |
 | Verify a web candidate in a browser | Optional operator policy; pinned Playwright/Chromium in separate loopback-isolated preview/browser containers; bounded traces and screenshots bound to candidate and policy | [Browser setup and contract](web-verification.md), [runner](../factory/web/runner.mjs), [regressions](../tests/web-verification.test.mjs) |
 | Review, revise and accept | Explicit fresh start, reviewed-candidate continuation or source replacement; evidence belongs to the complete candidate and policy; acceptance does not publish | [Recovery](recovery.md), [queue](../factory/queue.mjs), [review tests](../tests/review-evidence.test.mjs) |

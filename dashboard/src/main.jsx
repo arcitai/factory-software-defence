@@ -1,3 +1,4 @@
+import { Inbox } from "./inbox.jsx";
 import { RunComposer } from "./run-composer.jsx";
 import { Github } from "./github-icon.jsx";
 import { TaskDetail } from "./task-detail.jsx";
@@ -35,9 +36,12 @@ function App() {
   const [submitError, setSubmitError] = useState("");
   const [taskActionError, setTaskActionError] = useState("");
   const [deliveryActionError, setDeliveryActionError] = useState("");
+  const [removalError,setRemovalError] = useState("");
   const [deletingJob, setDeletingJob] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [composerLocal,setComposerLocal] = useState(false);
+  const [inboxRefresh,setInboxRefresh] = useState(0);
   const [filter, setFilter] = useState([]);
   const [runsView, setRunsView] = useState(() => localStorage.getItem("factory-runs-view") === "board" ? "board" : "list");
   const [search, setSearch] = useState("");
@@ -93,6 +97,7 @@ function App() {
       previousHash.current = window.location.hash;
       setTaskActionError("");
       setDeliveryActionError("");
+      setRemovalError("");
       setRoute(routeFromHash(window.location.hash));
     };
     window.addEventListener("hashchange", updateView);
@@ -183,9 +188,9 @@ function App() {
   }
 
   async function deleteJob(job) {
-    if (!window.confirm(`Delete issue ${shortId(job.id)} from the dashboard? Private evidence will be retained.`)) return;
+    if (!window.confirm(`Remove local execution ${shortId(job.id)} from history? Private evidence is retained. The repository issue is unchanged.`)) return;
     setDeletingJob(job.id);
-    setTaskActionError("");
+    setRemovalError("");
     try {
       const response = await fetch(`/api/v1/jobs/${encodeURIComponent(job.id)}`, {
         method: "DELETE",
@@ -193,12 +198,12 @@ function App() {
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Delete failed (${response.status})`);
+        throw new Error(body.error || `Removal failed (${response.status})`);
       }
       await statusLoader.current.refresh();
       window.location.hash = "#/runs";
     } catch (requestError) {
-      setTaskActionError(requestError.message);
+      setRemovalError(requestError.message);
     } finally {
       setDeletingJob("");
     }
@@ -211,12 +216,12 @@ function App() {
           <a href="#/runs" className="brand-wordmark" aria-label="Factory home"><span>factory<span className="brand-period">.</span></span><span className="brand-descriptor">Software &amp; Defence</span></a>
         </div>
         <nav className="desktop-nav" aria-label="Primary">
-          <PrimaryLinks view={view} count={statusLoaded ? counts.all : undefined} />
+          <PrimaryLinks view={view} />
         </nav>
         <details className="mobile-nav">
           <summary aria-label="Open navigation"><Menu className="size-4" /><span>Menu</span></summary>
           <nav aria-label="Primary mobile">
-            <PrimaryLinks view={view} count={statusLoaded ? counts.all : undefined} mobile />
+            <PrimaryLinks view={view} mobile />
             <div className="mobile-settings"><DefinitionLink view={view} mobile /></div>
           </nav>
         </details>
@@ -232,13 +237,15 @@ function App() {
       </aside>
 
       <main className="workshop min-w-0 flex-1">
-        <ProjectContext identity={identity} links={status.project_links} compact={view === "task"} loaded={statusLoaded} error={statusError} showNewTask={view === "runs"} onNewTask={() => (setSubmitError(""), setComposerOpen(true))} />
-        {view === "task" ? <TaskDetail identity={identity} links={status.project_links} navigation={visibleJobs.map(job => ({ id: job.id, title: jobDisplayTitle(job) }))} csrfToken={status.csrf_token} job={selectedJob} loaded={statusLoaded} error={statusError || taskActionError} deliveryActionError={deliveryActionError} deleting={deletingJob === route.jobID} onDelete={deleteJob} onWorkflowAction={workflowAction} />
+        <ProjectContext identity={identity} links={status.project_links} compact={view === "task"} loaded={statusLoaded} error={statusError} showNewTask={view === "runs"} onNewTask={() => (setComposerLocal(false), setSubmitError(""), setComposerOpen(true))} />
+        {view === "task" ? <TaskDetail identity={identity} links={status.project_links} navigation={visibleJobs.map(job => ({ id: job.id, title: jobDisplayTitle(job) }))} csrfToken={status.csrf_token} job={selectedJob} loaded={statusLoaded} error={statusError} actionError={taskActionError} removalError={removalError} deliveryActionError={deliveryActionError} deleting={deletingJob === route.jobID} onDelete={deleteJob} onWorkflowAction={workflowAction} />
           : view === "analytics" ? <Analytics jobs={status.jobs} workflows={status.workflows || []} loaded={statusLoaded} error={statusError} />
             : view === "infrastructure" ? <InfrastructurePage infrastructure={status.infrastructure} workers={status.workers} identity={identity} loaded={statusLoaded} error={statusError} />
               : view === "automations" ? <AutomationsPage control={status.automation_control} loaded={statusLoaded} error={statusError} />
                   : ["agents", "skills", "definition"].includes(view) ? <DefinitionPage key={view} section={view} />
-                  : <RunsOverview
+                  : null}
+        <div hidden={view !== "runs"}>
+          <Inbox onLocalRequest={()=>{setComposerLocal(true);setSubmitError("");setComposerOpen(true);}} token={status.csrf_token} provider={status.issue_provider} history={status.issue_history || []} statusError={statusError} refreshKey={inboxRefresh} onStarted={async created=>{await statusLoader.current.refresh();window.location.hash=`#/runs/${created.id}`;}} executionView={<RunsOverview
                     visibleJobs={visibleJobs}
                     counts={facetCounts}
                     jobs={status.jobs}
@@ -259,9 +266,10 @@ function App() {
                     runsView={runsView}
                     setRunsView={changeRunsView}
                     refresh={() => statusLoader.current.refresh()}
-                    openComposer={() => (setSubmitError(""), setComposerOpen(true))}
-                    composer={composerOpen && <RunComposer issueProvider={status.issue_provider} csrfToken={status.csrf_token} projectLinks={status.project_links} sourceRefDefault={status.source_ref_default || "HEAD"} sourceRef={sourceRef} setSourceRef={setSourceRef} error={submitError} title={title} setTitle={setTitle} sourceURL={sourceURL} setSourceURL={setSourceURL} choices={choices} repositories={repositories} identity={identity} selection={selection} setSelection={setSelection} repository={repository} setRepository={setRepository} prompt={prompt} setPrompt={setPrompt} model={model} setModel={setModel} submitting={submitting} submit={submit} close={() => setComposerOpen(false)} />}
-                  />}
+                    openComposer={() => (setComposerLocal(false), setSubmitError(""), setComposerOpen(true))}
+                  />} />
+          {composerOpen && <RunComposer localOnly={composerLocal} onCreated={()=>setInboxRefresh(value=>value+1)} issueProvider={status.issue_provider} csrfToken={status.csrf_token} projectLinks={status.project_links} sourceRefDefault={status.source_ref_default || "HEAD"} sourceRef={sourceRef} setSourceRef={setSourceRef} error={submitError} title={title} setTitle={setTitle} sourceURL={sourceURL} setSourceURL={setSourceURL} choices={choices} repositories={repositories} identity={identity} selection={selection} setSelection={setSelection} repository={repository} setRepository={setRepository} prompt={prompt} setPrompt={setPrompt} model={model} setModel={setModel} submitting={submitting} submit={submit} close={() => setComposerOpen(false)} />}
+        </div>
       </main>
     </div>
   );
@@ -271,12 +279,12 @@ function DefinitionLink({ view, mobile = false }) {
   return <a href="#/definition" title="Factory settings and definition" aria-current={view === "definition" ? "page" : undefined} className={cn("nav-item", view === "definition" && "nav-item-active")} onClick={event => { if (mobile) event.currentTarget.closest("details")?.removeAttribute("open"); }}><Settings2 className="size-4" /><span>Definition</span></a>;
 }
 
-function PrimaryLinks({ view, count, mobile = false }) {
-  const link = (href, Icon, label, active, badge) => <a href={href} aria-current={active ? "page" : undefined} className={cn("nav-item", active && "nav-item-active")} onClick={(event) => { if (mobile) event.currentTarget.closest("details")?.removeAttribute("open"); }}>
-    <Icon className="size-4" /><span>{label}</span>{badge !== undefined && <span className="nav-count">{badge}</span>}
+function PrimaryLinks({ view, mobile = false }) {
+  const link = (href, Icon, label, active) => <a href={href} aria-current={active ? "page" : undefined} className={cn("nav-item", active && "nav-item-active")} onClick={(event) => { if (mobile) event.currentTarget.closest("details")?.removeAttribute("open"); }}>
+    <Icon className="size-4" /><span>{label}</span>
   </a>;
   return <>
-    {link("#/inbox", Activity, "Inbox", view === "runs" || view === "task", count)}
+    {link("#/inbox", Activity, "Inbox", view === "runs" || view === "task")}
     {link("#/analytics", BarChart3, "Analytics", view === "analytics")}
     {link("#/agents", Bot, "Agents", view === "agents")}
     {link("#/skills", BookOpen, "Skills", view === "skills")}
@@ -315,7 +323,7 @@ function ProjectTooltip({ path }) {
 }
 
 const filterOptions = [
-  { id: "all", label: "All issues", count: "all" },
+  { id: "all", label: "All executions", count: "all" },
   { id: "in_progress", label: "In progress", count: "active" },
   { id: "queued", label: "Queued", count: "queued" },
   { id: "running", label: "Running", count: "running" },
@@ -341,22 +349,22 @@ function RunsOverview({ visibleJobs, jobs, workflows, counts, loaded, statusErro
   const selectStatus = value => setFilter(value === "all" || filter.length === 1 && filter[0] === value ? [] : [value]);
   return <div className="runs-page">
     <div className="tasks-toolbar">
-      <h2 className="sr-only">Issues</h2>
+      <h2 className="sr-only">Executions</h2>
       <TaskFilters jobs={jobs} availableWorkflows={workflows} workflow={workflowFilter} setWorkflow={setWorkflowFilter} model={modelFilter} setModel={setModelFilter} filter={filter} setFilter={setFilter} options={filterOptions} disabled={!loaded} />
       <div className="tasks-tools">
-        <div className="view-toggle" role="group" aria-label="Inbox view">
+        <div className="view-toggle" role="group" aria-label="Execution view">
           <Button variant="ghost" size="sm" className={cn(runsView === "list" && "view-active")} aria-pressed={runsView === "list"} onClick={() => setRunsView("list")} aria-label="List" title="List view"><List className="size-3.5" /><span className="sr-only">List</span></Button>
           <Button variant="ghost" size="sm" className={cn(runsView === "board" && "view-active")} aria-pressed={runsView === "board"} onClick={() => setRunsView("board")} aria-label="Board" title="Kanban board"><Columns3 className="size-3.5" /><span className="sr-only">Board</span></Button>
         </div>
         <div className="task-search" role="search">
           <Search className="size-4" aria-hidden="true" />
-          <input type="search" aria-label="Search issues" placeholder="Search issues" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <input type="search" aria-label="Search executions" placeholder="Search executions" value={search} onChange={(event) => setSearch(event.target.value)} />
           {search && <button type="button" className="clear-search" aria-label="Clear search" onClick={() => setSearch("")}><X className="size-3.5" /></button>}
         </div>
       </div>
     </div>
     {synthetic && <p className="synthetic-note">Synthetic installation demo — no model calls.</p>}
-    <div className="active-filters"><span role="status">{loaded ? filtering ? `Showing ${visibleJobs.length} of ${jobs.length} issues` : `${jobs.length} ${jobs.length === 1 ? "issue" : "issues"}` : "Loading issues…"}</span><div className="task-list-actions"><button onClick={clearFilters} disabled={!filtering}>Clear filters<X size={12} /></button></div></div>
+    <div className="active-filters"><span role="status">{loaded ? filtering ? `Showing ${visibleJobs.length} of ${jobs.length} executions` : `${jobs.length} ${jobs.length === 1 ? "execution" : "executions"}` : "Loading executions…"}</span><div className="task-list-actions"><button onClick={clearFilters} disabled={!filtering}>Clear filters<X size={12} /></button></div></div>
 
     {composer}
 
@@ -364,9 +372,9 @@ function RunsOverview({ visibleJobs, jobs, workflows, counts, loaded, statusErro
 
     <div className={cn("run-workspace", runsView === "board" && "is-board")}>
       <TaskFilterRail counts={counts} loaded={loaded} filter={filter} setFilter={selectStatus} />
-      <section className="task-results" aria-label="Issue results">
-        {!loaded && !statusError ? <TaskMessage kind="loading" title="Loading issues" description="Checking the latest task state." />
-          : !loaded && statusError ? <TaskMessage kind="error" title="Issue status unavailable" description={statusError} action="Retry status" onAction={refresh} />
+      <section className="task-results" aria-label="Execution results">
+        {!loaded && !statusError ? <TaskMessage kind="loading" title="Loading executions" description="Checking the latest task state." />
+          : !loaded && statusError ? <TaskMessage kind="error" title="Execution status unavailable" description={statusError} action="Retry status" onAction={refresh} />
             : runsView === "board" ? <RunBoard jobs={visibleJobs} />
             : !visibleJobs.length ? <EmptyRuns filtered={filtering} clearFilters={clearFilters} openComposer={openComposer} />
                 : <div className="task-list" role="list">{visibleJobs.map((job) => <RunRow key={job.id} job={job} setFilter={selectStatus} />)}</div>}
@@ -379,8 +387,8 @@ function TaskFilterRail({ counts, loaded, filter, setFilter }) {
   const icons = { in_progress: Code2, needs_attention: CircleAlert, awaiting_approval: ShieldCheck, succeeded: CheckCircle2, cancelled: CirclePause, other: CircleHelp };
   const groups = statusGroups.filter(group => group.id !== "other" || counts.other).map(group => ({ ...group, Icon: icons[group.id] }));
   const [expanded, setExpanded] = useState({ in_progress: true, needs_attention: true });
-  return <aside className="task-filter-rail" aria-label="Filter issues by status">
-    <button className="all-tasks-filter" type="button" aria-pressed={filter.length === 0} onClick={() => setFilter("all")} disabled={!loaded}><span>All statuses</span></button>
+  return <aside className="task-filter-rail" aria-label="Filter executions by status">
+    <button className="all-tasks-filter" type="button" aria-pressed={filter.length === 0} onClick={() => setFilter("all")} disabled={!loaded}><span>All executions</span></button>
     {groups.map(({ Icon, ...group }) => <section className={`filter-card tone-${group.tone}`} key={group.id}>
       <button className="filter-card-main" type="button" aria-pressed={filter.includes(group.id)} onClick={() => setFilter(group.id)} disabled={!loaded}>
         <span className="filter-card-heading"><Icon size={14} /><span>{group.label}</span><span className="filter-card-count">{loaded ? counts[group.count] : "—"}</span></span>
@@ -412,7 +420,7 @@ function RunBoard({ jobs }) {
         <Badge className="shrink-0 border-border bg-surface text-muted-foreground" aria-label={`${groupedJobs[column.id].length} visible ${column.title.toLowerCase()} runs`}>{groupedJobs[column.id].length}</Badge>
       </header>
       <div className="grid min-w-0 gap-2 p-2">
-        {groupedJobs[column.id].length ? groupedJobs[column.id].map((job) => <RunCard key={job.id} job={job} />) : <p className="px-2 py-8 text-center text-xs text-muted-foreground">No issues</p>}
+        {groupedJobs[column.id].length ? groupedJobs[column.id].map((job) => <RunCard key={job.id} job={job} />) : <p className="px-2 py-8 text-center text-xs text-muted-foreground">No executions</p>}
       </div>
     </section>)}
   </div></div>;
@@ -420,7 +428,7 @@ function RunBoard({ jobs }) {
 
 function RunCard({ job }) {
   const title = jobDisplayTitle(job);
-  return <Card className="overflow-hidden"><a href={`#/runs/${encodeURIComponent(job.id)}`} className="run-card-link" aria-label={`Open issue ${title}`}>
+  return <Card className="overflow-hidden"><a href={`#/runs/${encodeURIComponent(job.id)}`} className="run-card-link" aria-label={`Open execution ${title}`}>
     <p className="run-card-title">{title}</p>
     <p className="run-card-meta">{friendlyName(job.workflow?.name || job.command)} · {friendlyName(taskPhase(job))}</p>
     <div className="run-card-status"><State value={job.state} /><span>{nextOperatorAction(job)}</span></div>
@@ -434,7 +442,7 @@ function RunRow({ job, setFilter }) {
   const usage = tokenUsageSummary(job.runs || []);
   return <article className="task-row" role="listitem">
     <TaskStateIcon value={job.state} />
-    <a href={`#/runs/${encodeURIComponent(job.id)}`} className="task-row-link" aria-label={`Open issue ${title}, ${stateLabel(job.state)}, ${nextOperatorAction(job)}`}>
+    <a href={`#/runs/${encodeURIComponent(job.id)}`} className="task-row-link" aria-label={`Open execution ${title}, ${stateLabel(job.state)}, ${nextOperatorAction(job)}`}>
       <p className="task-row-title">{title}</p>
       <div className="task-row-meta">
         <time dateTime={job.updated_at}>{job.updated_at ? `Last activity ${relativeTime(job.updated_at)}` : "Last activity unavailable"}</time>
@@ -448,8 +456,8 @@ function RunRow({ job, setFilter }) {
 
 function EmptyRuns({ filtered, clearFilters, openComposer }) {
   return <div className="empty-tasks" role="status">
-    <h3>{filtered ? "No matching issues" : "No issues yet"}</h3>
-    <p>{filtered ? "Try another state or search term." : "Describe the work to create an issue in this project."}</p>
+    <h3>{filtered ? "No matching executions" : "No executions yet"}</h3>
+    <p>{filtered ? "Try another state or search term." : "Start work explicitly from a repository issue or a local execution request."}</p>
     {filtered ? <Button variant="outline" size="sm" onClick={clearFilters}>Clear filters</Button> : <Button variant="outline" size="sm" onClick={openComposer}><Plus className="size-3.5" />New issue</Button>}
   </div>;
 }

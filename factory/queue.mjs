@@ -1,3 +1,4 @@
+import { canonicalIssue, executionReservesIssue } from './issue-lifecycle.mjs';
 import { currentReviewedCandidate, currentExecutionPolicy } from './execution-evidence.mjs';
 import { publicContinuation } from './source-admission.mjs';
 import { DatabaseSync } from 'node:sqlite';
@@ -20,7 +21,7 @@ export class JobQueue {
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, data TEXT NOT NULL);');
     this.execute = execute; this.stop = stop; this.reconcile = reconcile; this.prepare = prepare; this.reviewVerdict = reviewVerdict; this.sourceAdmission = sourceAdmission;
     this.maintenanceFile = join(state, 'maintenance.json');
-    this.active = null; this.closing = false; this.pumping = false; this.actions = new Set(); this.maintenance = existsSync(this.maintenanceFile);
+    this.active = null; this.closing = false; this.pumping = false; this.actions = new Set(); this.issueActions = new Map(); this.maintenance = existsSync(this.maintenanceFile);
     for (const job of this.all()) {
       if (['running', 'cancelling'].includes(job.state)) {
         job.state = 'interrupted';
@@ -41,7 +42,21 @@ export class JobQueue {
     if (job.deleted_at) throw new QueueError('Job not found', 404);
     return job;
   }
-  save(job) { job.updated_at = now(); this.db.prepare('INSERT INTO jobs VALUES (?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(job.id, JSON.stringify(job)); return job; }
+  save(job) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const identity = canonicalIssue(job.task?.source_url);
+      if (identity && executionReservesIssue(job)) {
+        // Existing conflicting legacy rows remain stoppable; only new reservations fail.
+        const previous = this.db.prepare('SELECT data FROM jobs WHERE id=?').get(job.id);
+        if (!previous || !executionReservesIssue(JSON.parse(previous.data))) this.assertIssueAvailable(job);
+      }
+      job.updated_at = now();
+      this.db.prepare('INSERT INTO jobs VALUES (?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(job.id, JSON.stringify(job));
+      this.db.exec('COMMIT');
+      return job;
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
   submit(input) {
     if (this.closing) throw new QueueError('Controller is stopping');
     if (this.maintenance) throw new QueueError('Controller is reserved for maintenance');
@@ -50,6 +65,8 @@ export class JobQueue {
     if (input?.source_url && !input.spec?.trim()) input = { ...input, spec: `Investigate the linked requirements within this repository's scope: ${input.source_url}` };
     if (!input || !Object.hasOwn(workflows, input.workflow) || input.repository !== 'app' || typeof input.spec !== 'string' || !input.spec.trim() || Buffer.byteLength(input.spec) > 240000)
       throw new QueueError('Choose a workflow, the configured app, and a task under 240 KB', 400);
+    const sourceIdentity = canonicalIssue(input.source_url)?.key;
+    if (sourceIdentity && this.issueActions.has(sourceIdentity)) throw new QueueError('Issue execution is changing; reload before starting another attempt.');
     if (!this.sourceAdmission?.admit) throw new QueueError('Source retention is unavailable; no executable job was admitted.', 503);
     const jobId = id('job');
     const sourceAdmission = this.sourceAdmission.admit(jobId, input.source_ref);
@@ -114,12 +131,29 @@ export class JobQueue {
       }
     } finally { this.pumping = false; }
   }
+  assertIssueAvailable(job) {
+    const identity = canonicalIssue(job.task?.source_url);
+    if (!identity) return;
+    const collision = this.all().find(other => other.id !== job.id && canonicalIssue(other.task?.source_url)?.key === identity.key && executionReservesIssue(other));
+    if (collision) throw new QueueError(`Issue already has active or unresolved execution ${collision.id}. Open that execution before starting another.`);
+  }
   async exclusive(jobId, perform) {
     if (this.closing || this.maintenance || this.actions.has(jobId)) throw new QueueError('Job is already changing or controller is reserved for maintenance; reload before acting');
+    // Receipt publication also uses this generic lock with a non-job key.
+    const row = this.db.prepare('SELECT data FROM jobs WHERE id=?').get(jobId);
+    const identity = row ? canonicalIssue(JSON.parse(row.data).task?.source_url)?.key : null;
+    if (identity && this.issueActions.has(identity)) throw new QueueError('Issue execution is already changing; reload before acting');
     this.actions.add(jobId);
-    try { return await perform(); } finally { this.actions.delete(jobId); }
+    if (identity) this.issueActions.set(identity, jobId);
+    try { return await perform(); }
+    finally { this.actions.delete(jobId); if (identity) this.issueActions.delete(identity); }
   }
-  action(jobId, action, input) { return this.exclusive(jobId, () => this.applyAction(jobId, action, input)); }
+  action(jobId, action, input) { return this.exclusive(jobId, () => {
+    // Reject before source/checkpoint retention or checkout reconciliation. The
+    // issue reservation also blocks admission while those operations await I/O.
+    if (['retry', 'request_changes', 'approve'].includes(action)) this.assertIssueAvailable(this.get(jobId));
+    return this.applyAction(jobId, action, input);
+  }); }
   canRequestChanges(job) {
     if (job.workflow?.name !== 'software' || job.source_admission?.status !== 'retained') return false;
     if (job.state === 'awaiting_approval') return true;
@@ -232,10 +266,10 @@ export class JobQueue {
   remove(jobId) { return this.exclusive(jobId, () => this.removeStopped(jobId)); }
   removalBlockReason(job) {
     if (job.delivery && !['published', 'abandoned'].includes(job.delivery.state)) {
-      return 'Trusted PR delivery is unresolved. Reconcile the saved delivery or inspect its remote collision before deleting this issue.';
+      return 'Trusted PR delivery is unresolved. Reconcile the saved delivery or inspect its remote collision before removing this local execution history.';
     }
     if (!['succeeded', 'failed', 'cancelled'].includes(job.state) || this.active?.jobId === job.id) {
-      return 'Stop the task before removing it';
+      return 'Stop the execution before removing its local history';
     }
     return null;
   }

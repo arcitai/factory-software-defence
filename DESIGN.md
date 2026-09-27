@@ -36,8 +36,7 @@ reference's clipped narrow view is not part of the target.
   status selector at narrow widths.
 - Show real Factory state groups and counts. Include queued/running work,
   failed or blocked work, review revision availability, pending acceptance,
-  completed work, cancellation and unknown states. Do not imply that a GitHub
-  backlog has synchronized.
+  completed work, cancellation and unknown states. Repository issue readiness is separate from these execution states. Inbox fetches provider pages explicitly; it is not a background synchronization service.
 - Make the task title, actual state and workflow phase, last activity and next
   operator action scannable in each row. Use the runtime's `updated_at` for
   activity. Put result, workflow stages, instructions, execution details,
@@ -59,7 +58,7 @@ reference's clipped narrow view is not part of the target.
   Filter tasks and analytics by workflow; a source issue link does not choose
   the execution type. Defence remains scoped investigation, distinct from
   software delivery and from production recovery authority.
-- New issue opens a repository template chooser or blank form; selecting an existing provider issue is a separate mode. Review the destination and acting identity before publishing. Creation saves the remote issue without execution; Start work is a separate action. Local execution is explicitly labelled. Project/model defaults are inherited and advanced options stay secondary.
+- New issue only opens a repository template chooser or blank form for creation. Existing issues are selected in Inbox. Review the destination and acting identity before publishing. Creation saves the remote issue without execution; Start work is a separate action. Local execution is explicitly labelled. Project/model defaults are inherited and advanced options stay secondary.
 - Agents distinguish roles from deterministic checks and operator gates. Skills expose actual instructions; Definition exposes shared settings. Automations explain harness-owned scheduling and show when schedule discovery is unavailable. Both interfaces inspect the same installed catalog.
 - One project/controller per dashboard. There is no global project hub.
 
@@ -121,7 +120,7 @@ controller mid-attempt.
 
 ## Task intake
 
-New issue starts with repository templates, a blank form or a selectable provider issue list. GitHub is the first supported adapter. Unknown providers retain an explicitly local brief. Keep work type
+New issue starts with repository templates or a blank form. Inbox owns the provider issue list, state filters, paging and explicit Start work. GitHub is the first supported adapter. Unknown providers retain an explicitly local brief. Keep work type
 out of the first step; review the shared, editable suggestion before execution.
 Issue rows show open-state icon, title, number and wrapping label pills. Map
 Provider label colors into the accessible light/dark palette, without interpreting
@@ -137,3 +136,33 @@ requested labels and any missing-label result, and keeps an ambiguous submission
 recoverable through its saved receipt. Freeze the published content; a successful
 issue link is not proof that work started. Do not claim browser GitHub sign-in or
 background synchronization.
+
+## Repository Inbox lifecycle (0.11.0)
+
+Inbox opens on repository issues. Identify the provider/repository, loaded page,
+open/closed/all filter, unknown total and refresh time. A failed request leaves
+an explicitly stale page or an unavailable state, never an empty-repository claim.
+Search covers only the loaded page and visible execution associations. A single
+canonical provider/repository/number row owns its separate execution attempts.
+Local execution requests and remote histories outside the page remain visible,
+with source state explicitly unknown until preview succeeds. The execution history
+tab retains workflow/model/state filters, list and board; its counts are executions.
+Its filters and empty states name executions. The Inbox navigation has no count
+badge: a local job count cannot stand for the unknown repository issue total.
+
+Opening an issue reads context and a deterministic Software/Defence suggestion;
+Start work is explicit. Preserve issue context, choices and operator brief across
+navigation and errors. The controller rechecks current context and rejects stale
+scope or duplicate active work atomically. Closed issues, blocked or conflicting
+readiness, and active/unresolved work explain why new admission is unavailable.
+An unknown readiness label is not evidence of activity or scope approval.
+
+Default readiness labels map factory:triage/spec/ready/blocked to Needs triage,
+Needs specification, Ready and Blocked. The private issueReadinessLabels mapping
+is exposed in Definition; labels remain provider-owned. No label writes or triage
+agent run occurs during browsing. All other project labels remain visible.
+
+Creation ends with the provider receipt and Done; it refreshes Inbox without a
+job. Unsupported hosts clearly offer a local execution request. Sensitive security
+reports retain their private contact/incident route. Removal controls say Remove
+local execution history; they never imply deletion of a repository issue.
