@@ -178,6 +178,15 @@ if (command === 'run') {
   state.jobArgs = args;
   const mountArgs = [];
   for (let i = 0; i < args.length - 1; i++) if (args[i] === '--mount') mountArgs.push(args[i + 1]);
+  const localMount = mountArgs.find(value => value.includes('target=/factory-local,'));
+  state.localDirectory = localMount?.split('source=')[1]?.split(',')[0] || null;
+  if (state.localDirectory) {
+    state.localRegistry = JSON.parse(readFileSync(state.localDirectory + '/models.json', 'utf8'));
+    state.localLauncher = readFileSync(state.localDirectory + '/launch.mjs', 'utf8');
+    state.localMode = statSync(state.localDirectory + '/models.json').mode & 0o777;
+    state.localReadOnly = localMount.endsWith(',readonly');
+  }
+  if (state.mode === 'local-unavailable') { save(); fail('Selected local inference is unavailable; no fallback'); }
   const scratchMount = mountArgs.find(value => /(?:^|,)target=\\/scratch(?:,|$)/.test(value));
   state.scratchPath = scratchMount?.match(/(?:^|,)source=([^,]+),target=\\/scratch(?:,|$)/)?.[1] ?? null;
   if (state.scratchPath) {
@@ -928,6 +937,8 @@ for (const [phase, role, expectedHarness, expectedModel, expectedCredential, inh
       assert.equal(command[command.indexOf('--model') + 1], expectedModel);
     } else assert.equal(command[0], 'sh');
     if (phase === 'build') assert(command.includes('model_reasoning_effort="high"'));
+    assert.equal(launched.localDirectory, null, 'cloud and legacy roles receive no local registry');
+    assert.equal(argv.some(value => value.startsWith('PI_CODING_AGENT_DIR=')), false);
     const names = launched.selectedEnvironmentNames;
     assert.deepEqual(names, expectedHarness === 'codex' ? ['OPENAI_API_KEY', 'FACTORY_CODEX_AUTH_JSON'] : expectedCredential ? [expectedCredential] : []);
     assert.equal(argv.includes('--env-file'), Boolean(expectedCredential));
@@ -935,3 +946,100 @@ for (const [phase, role, expectedHarness, expectedModel, expectedCredential, inh
     assert.equal(execution.policyHash, executionProfile(common, 'handoff').policyHash);
   });
 }
+
+for (const phase of ['build', 'review', 'defence', 'verify']) {
+  test(`synthetic executor freezes and mounts only the selected local binding for ${phase}`, async t => {
+    const { effectiveExecutionConfig, executionProfile } = await import('../factory/execution-profile.mjs');
+    const { SourceAdmissionStore } = await import('../factory/source-admission.mjs');
+    const f = fixture(t, 'success', phase), privateConfig = JSON.parse(readFileSync(join(f.attemptFolder, 'execution-config.json')));
+    const role = { build: 'implement', review: 'review', defence: 'investigate' }[phase];
+    const binding = { endpoint: 'http://inference.invalid:9000/v1', model: 'fixture/local:model', contextWindow: 131072, maxTokens: 4096, reasoningEffort: { build: 'low', review: 'none', defence: 'default', verify: 'high' }[phase] };
+    privateConfig.localBindings = { selected: binding, unused: { ...binding, model: 'unused' } };
+    privateConfig.roleDefinition = { version: 1, roles: { implement: { harness: 'pi', localBinding: 'selected' },
+      review: { harness: 'pi', localBinding: 'selected' }, investigate: { harness: 'pi', localBinding: 'selected' } } };
+    const common = effectiveExecutionConfig(privateConfig, null, join(f.state, 'model.env')), execution = executionProfile(common, phase);
+    writeFileSync(join(f.attemptFolder, 'execution-config.json'), JSON.stringify(common));
+    writeFileSync(join(f.artifacts, 'execution.json'), JSON.stringify(execution));
+    const checks = JSON.parse(readFileSync(join(f.folder, 'checks.json'))); checks.policyHash = execution.policyHash;
+    writeFileSync(join(f.folder, 'checks.json'), JSON.stringify(checks));
+    if (['build', 'defence'].includes(phase)) {
+      const source = join(f.rootDir, 'source'); renameSync(join(f.folder, 'checkout'), source);
+      f.executorEnv.SDF_SOURCE_ADMISSION = JSON.stringify(new SourceAdmissionStore(f.state, source, 'HEAD').admit(job));
+      if (phase === 'defence') {
+        const scope = { project: 'p', service: 's', environment: 'e', owner: 'o' };
+        const { roleDefinition, localBindings, ...base } = privateConfig;
+        writeFileSync(join(f.state, 'factory.json'), JSON.stringify({ ...base, version: 1, repo: source, port: 7351, scope }));
+        mkdirSync(join(f.state, 'incidents')); const key = 'b'.repeat(64);
+        writeFileSync(join(f.state, 'incidents', key + '.json'), JSON.stringify({ job, case_id: 'case_fixture', input: { contract_version: 1, ...scope, sanitized: true, source: 'fixture', event_id: 'fixture', summary: 'Controlled incident', evidence: [] } }));
+        f.input = 'ARCITAI_INCIDENT_REF:' + key;
+      }
+    }
+    const result = runExecutor(f); assert.equal(result.status, 0, result.stderr || result.stdout);
+    const launched = stateOf(f), argv = launched.jobArgs;
+    assert.equal(argv.includes('--env-file'), false); assert.deepEqual(launched.selectedEnvironmentNames, []);
+    assert.equal(execution.policyHash, executionProfile(common, 'handoff').policyHash);
+    assert.equal(existsSync(join(f.attemptFolder, `.local-${phase}`)), false, 'removed after confirmed container shutdown');
+    assert.equal(existsSync(join(f.attemptFolder, `.model-${phase}.env`)), false);
+    if (phase === 'verify') {
+      assert.equal(launched.localDirectory, null); assert.equal(execution.localBinding, null);
+      assert.equal(argv.some(value => value.startsWith('PI_CODING_AGENT_DIR=')), false);
+    } else {
+      assert.equal(execution.role, role); assert.equal(launched.localReadOnly, true); assert.equal(launched.localMode, 0o600);
+      const registry = launched.localRegistry.providers['factory-local'];
+      assert.equal(execution.localBinding.reasoningEffort, binding.reasoningEffort);
+      assert.equal(registry.models[0].reasoning, binding.reasoningEffort !== 'default');
+      assert.deepEqual(registry.models[0].thinkingLevelMap, binding.reasoningEffort === 'none' ? { off: 'none' } : undefined);
+      assert.equal(registry.baseUrl, binding.endpoint); assert.equal(registry.models[0].contextWindow, 131072);
+      assert.equal(registry.models.length, 1); assert.equal(registry.models[0].id, binding.model);
+      assert.equal(launched.localLauncher, readFileSync(join(root, 'factory/pi-local-launch.mjs'), 'utf8'));
+      assert(argv.includes('PI_CODING_AGENT_DIR=/factory-local'));
+      const command = argv.slice(argv.lastIndexOf('factory') + 1);
+      assert.deepEqual(command, common.resolvedRoleProfiles[role].command);
+      assert.equal(command[command.indexOf('--thinking') + 1], binding.reasoningEffort === 'low' ? 'low' : 'off');
+      assert.equal(command[command.indexOf('--model') + 1], binding.model);
+      assert.equal(command[command.indexOf('--provider') + 1], 'factory-local');
+      assert.equal(command[command.indexOf('--skill') + 1], '/factory-skills');
+      assert(command.includes('--no-skills')); assert(command.includes('/factory-local/launch.mjs'));
+    }
+  });
+}
+
+test('unavailable local inference retains failure, leaves candidate unchanged and cleans registry without cloud fallback', async t => {
+  const { effectiveExecutionConfig, executionProfile } = await import('../factory/execution-profile.mjs');
+  const f = fixture(t, 'local-unavailable');
+  const config = JSON.parse(readFileSync(join(f.attemptFolder, 'execution-config.json')));
+  config.roleDefinition = { version: 1, roles: { review: { harness: 'pi', localBinding: 'local' } } };
+  config.localBindings = { local: { endpoint: 'http://missing.invalid/v1', model: 'missing:model', contextWindow: 32768, maxTokens: 1024 } };
+  const common = effectiveExecutionConfig(config), execution = executionProfile(common, 'review');
+  writeFileSync(join(f.attemptFolder, 'execution-config.json'), JSON.stringify(common));
+  writeFileSync(join(f.artifacts, 'execution.json'), JSON.stringify(execution));
+  const checks = JSON.parse(readFileSync(join(f.folder, 'checks.json'))); checks.policyHash = execution.policyHash;
+  writeFileSync(join(f.folder, 'checks.json'), JSON.stringify(checks));
+  const before = readFileSync(join(f.folder, 'checkout/fixture.txt'));
+  const result = runExecutor(f); assert.notEqual(result.status, 0);
+  assert.deepEqual(readFileSync(join(f.folder, 'checkout/fixture.txt')), before);
+  assert.equal(existsSync(join(f.artifacts, 'review.json')), false);
+  assert.match(readFileSync(join(f.attemptFolder, 'review.log'), 'utf8'), /unavailable; no fallback/);
+  assert.equal(stateOf(f).jobArgs.includes('--env-file'), false);
+  assert.equal(existsSync(join(f.attemptFolder, '.local-review')), false);
+});
+
+test('local registry stays fenced on uncertain shutdown and ordinary recovery removes it', async t => {
+  const { effectiveExecutionConfig, executionProfile } = await import('../factory/execution-profile.mjs');
+  const f = fixture(t, 'unknown');
+  const config = JSON.parse(readFileSync(join(f.attemptFolder, 'execution-config.json')));
+  config.roleDefinition = { version: 1, roles: { review: { harness: 'pi', localBinding: 'local' } } };
+  config.localBindings = { local: { endpoint: 'http://fixture.invalid/v1', model: 'fixture:model', contextWindow: 32768, maxTokens: 1024 } };
+  const common = effectiveExecutionConfig(config), execution = executionProfile(common, 'review');
+  writeFileSync(join(f.attemptFolder, 'execution-config.json'), JSON.stringify(common));
+  writeFileSync(join(f.artifacts, 'execution.json'), JSON.stringify(execution));
+  const checks = JSON.parse(readFileSync(join(f.folder, 'checks.json'))); checks.policyHash = execution.policyHash;
+  writeFileSync(join(f.folder, 'checks.json'), JSON.stringify(checks));
+  assert.notEqual(runExecutor(f).status, 0);
+  assert.equal(existsSync(join(f.attemptFolder, '.local-review/models.json')), true);
+  assert.equal(existsSync(f.lock), true);
+  enableRecovery(f);
+  const recovered = runOrdinaryRecovery(f); assert.equal(recovered.status, 0, recovered.stderr);
+  assert.equal(existsSync(join(f.attemptFolder, '.local-review')), false);
+  assert.equal(existsSync(f.lock), false);
+});

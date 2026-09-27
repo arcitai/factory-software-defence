@@ -383,6 +383,105 @@ and indexed by `/output/agent-report.md`. Independent native Review and the
 operator's affected installed-package qualification rerun remain pending;
 no acceptance, publication or fresh browser qualification is claimed.
 
+## Role-profile release reconciliation (operator report)
+
+The supplied #69 operator brief reports that PR #98 and release **0.14.0** are
+complete at main `35aae68403d3060a935dc7cce6bfe0d5f9533d17`: independent Review,
+13 installed runtime cases, 15 native parser cases and six real-browser cases
+passed; 107 npm files matched before Mac/Z13 adoption. Private configuration and
+23+18 execution rows were preserved; inherited profiles and prior PR #96 check
+readback remain valid. This supersedes the earlier #53 candidate/review pending
+gates above. This worker verified the supplied source revision locally, not those
+remote installations or the operator's measurement records.
+
+## Isolated local inference bindings (#69), 0.15.0 candidate
+
+The opt-in [binding contract](definition.md#opt-in-local-bindings-0150-69) separates
+portable role references from private installation endpoint/model declarations.
+CLI, authenticated API and the existing Agents/Definition editor share validation,
+diff, current-revision idle apply and atomic role/binding rollback. No inference,
+service change or work admission occurs during configuration. Local/hybrid attempts
+freeze selected endpoint/model/context/output/compatibility and command under one
+policy, requiring protected v3 evidence for agent and deterministic phases.
+Unchanged profiles preserve v1/v2 behavior, including honest 0.14.0 writer readback.
+
+Focused source regressions cover invalid/missing/stale/busy bindings, restart,
+old-record migration, rollback, public endpoint omission, model/credential isolation,
+frozen-policy tamper refusal and admission before source retention. Controlled
+Docker runners inspect actual executor argv and the generated single-model registry
+for Implement/Review/Investigate, deterministic exclusion, readonly mounts, failure
+retention, confirmed cleanup and ordinary uncertain-shutdown recovery. These are
+synthetic runners, not Docker-daemon or hardware qualification.
+
+A **native installed Pi 0.73.1** protocol test uses only a controlled loopback
+chat-completions server and a temporary home. The server observes the exact selected
+model, output limit, tools, packaged skill catalog and a returned tool result; Pi's
+write tool produces a fixture report. A filesystem-readonly registry directory also
+works. Missing-model HTTP 404, mismatched selection and absent registry fail without
+fallback/report creation. The deterministic launcher handles Pi JSON mode's zero
+exit after provider error. This test proves bounded adapter/tool/report compatibility,
+not inference, reasoning quality, token throughput or actual context allocation.
+The native test explicitly skips on machines without the exact pinned adapter; the
+worker's run exercised it without a skip.
+
+`npm run build:dashboard`, final `npm run check` and `npm pack` passed: **375
+runtime/package tests and 63 dashboard tests**, no failures or skips; the 0.15.0
+tarball contains 109 files. The full suite includes a real temporary npm installation
+and served-asset checks. Initial empty-map CLI/API parity failures and a DOM test
+refresh race were corrected; their logs and the passing final run are retained in
+`/output/agent-report.md`. No native browser or Docker executable is available in
+this worker; DOM interaction tests do not qualify viewport rendering and controlled
+Docker runners do not prove mount enforcement. Lead owns independent installed
+0.15.0 package/Docker and desktop/390/320px light/dark browser qualification, followed
+by actual local hardware/model testing. No models were downloaded or queried here.
+64k/128k allocation, KV cache/Flash Attention tradeoffs, model digest/quantization,
+memory/offload, prefill/decode, token/cost accounting, the matched two-software-fixture
+comparison and subsequent real Factory issue remain unmeasured. #69 stays open.
+
+## #69 reviewed-checkpoint revision: endpoint persistence and reasoning requests
+
+This continuation retains checkpoint `238445110aadea25b7ecc739531d082c51e5c77c`
+(tree `4a59e7da5b9fa15f364f6f970fc3fe3f9cb19703`) staged on original delivery
+base `35aae68403d3060a935dc7cce6bfe0d5f9533d17`. The operator reports ten
+installed CLI/API/real-Pi Docker transport cases passed after correcting an
+external synthetic-server process-lifetime bug, plus six installed browser cases
+at 1440/390/320 in both themes with visual inspection. Those results belong to
+the rejected checkpoint and are **superseded proof**, not qualification of this
+revision. They used controlled protocol/UI fixtures, not model inference.
+
+R1 was reproduced before repair: all three unused-binding store/CLI/API cases
+changed the private record before readback failed for a Unicode endpoint path.
+Selected-binding cases already rejected it. All six paths now reject before
+replacement and preserve the exact bytes, readable state and rollback history.
+Additional checks cover canonical URL idempotence, normalized forbidden escapes
+and validation of the entire serialized record, including sequence overflow.
+
+Local bindings now optionally request `default`, `none`, `low`, `medium` or `high`
+through `reasoningEffort`. Omission/default sends no request field. Native pinned
+Pi 0.73.1 against a controlled loopback server verifies actual payloads for all
+choices, rotating default/none/low through independent Implement/Review/Investigate
+processes and contexts. The same fixture exercises tools/results/report creation,
+missing models, rejected reasoning requests and selection mismatch without fallback.
+CLI/API/UI regressions cover diff/apply/readback/rollback and retained invalid drafts;
+controlled container runners cover selected registry/argv, frozen reasoning evidence,
+credential isolation and deterministic exclusion. These are synthetic protocol and
+runner tests, not live inference or Docker enforcement proof.
+
+The operator's first real Qwen3.8 comparison reportedly exhausted 8192 output
+tokens before editing with an explicit low request. This motivates the operator
+choice; it does not qualify any model or justify a hardcoded tuning recommendation.
+Real fixtures, effective allocation, memory/offload, throughput, tokens and total
+cost remain unqualified/unmeasured here. #69 remains open.
+
+`npm ci --ignore-scripts`, `npm run build:dashboard`, `npm run check` and
+`npm pack` passed for this revision: **385 runtime/package tests and 63 dashboard
+tests**, no failures or skips, including native Pi wire assertions. The 0.15.0
+tarball contains 109 files. Before/after logs and remaining qualification are
+recorded in `/output/agent-report.md`. This worker has native Pi 0.73.1 but no Docker or browser
+executable/tool. The lead still owns independent Review and refreshed installed
+package, Docker and desktop/narrow light/dark browser qualification. No live model
+calls, downloads, publication or acceptance were performed.
+
 ## Remaining limits
 
 - Namespace/account migration and automated GitHub Releases remain separate work

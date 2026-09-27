@@ -615,3 +615,9 @@ body { font-size: 14px; }
 .role-error { color: var(--danger); font-size: 13px; overflow-wrap: anywhere; }
 @media (max-width: 1000px) { .role-editor-grid { grid-template-columns: 1fr; } }
 @media (max-width: 480px) { .role-editor-actions { align-items: stretch; flex-direction: column; } .role-editor button { white-space: normal; height: auto; min-height: 36px; } }
+
+.local-bindings { margin: 20px 0; min-width: 0; }
+.local-bindings summary { cursor: pointer; font-size: 14px; font-weight: 600; }
+.local-bindings > .role-profile { margin: 12px 0; }
+.local-bindings input[type="checkbox"] { width: auto; margin-right: 5px; }
+.role-diff p { overflow-wrap: anywhere; }

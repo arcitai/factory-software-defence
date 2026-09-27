@@ -1,3 +1,4 @@
+import { localRegistry, LOCAL_AGENT_DIR } from './local-inference.mjs';
 import { assertFrozenExecution, phaseExecutionConfig } from './execution-profile.mjs';
 import { withReconstructedCandidate } from './candidate-patch.mjs';
 import { harnessOf } from './lib.mjs';
@@ -32,7 +33,7 @@ let sourceAdmission, continuation;
 try { sourceAdmission = JSON.parse(process.env.SDF_SOURCE_ADMISSION || 'null'); continuation = JSON.parse(process.env.SDF_CONTINUATION || 'null'); }
 catch { throw new Error('Protected source admission metadata is malformed'); }
 const policyHash = digest(JSON.stringify(commonConfig));
-if (commonConfig.roleDefinition || execution.version === 2) assertFrozenExecution(commonConfig, execution, phase);
+if (commonConfig.roleDefinition || [2, 3].includes(execution.version)) assertFrozenExecution(commonConfig, execution, phase);
 else if (execution.policyHash !== policyHash || execution.phase !== phase) throw new Error('Admitted execution profile does not match this attempt');
 const output = process.env.SDF_OUTPUT_DIR, result = process.env.SDF_STEP_RESULT_PATH;
 if (!output || !result) throw new Error('Missing workflow result paths');
@@ -78,6 +79,7 @@ async function container(mode, input, command, options = {}) {
   const reportDir = join(folder, attempt, mode);
   mkdirSync(reportDir, { recursive: true, mode: 0o700 });
   const modelEnvironmentPath = join(folder, attempt, `.model-${mode}.env`);
+  const localDirectory = mode !== 'verify' && config.localBinding ? join(folder, attempt, `.local-${mode}`) : null;
   // Native builds need disk-backed scratch space, not the small temporary RAM disk.
   // Only this attempt can write here; the candidate and its Git metadata stay read-only.
   const scratch = mode === 'verify' ? join(folder, attempt, 'check-workspace') : null;
@@ -104,6 +106,14 @@ async function container(mode, input, command, options = {}) {
   const log = new BoundedLog(), usageParser = execution.executor === 'codex' ? new CodexUsageParser() : null;
   let exitSignal, selectedModelEnvironment = false, inferenceSecrets = [], code, cleanupError, reportError;
   try {
+    if (localDirectory) {
+      mkdirSync(localDirectory, { mode: 0o700 });
+      const { reference, ...binding } = config.localBinding;
+      writeFileSync(join(localDirectory, 'launch.mjs'), readFileSync(join(ROOT, 'factory/pi-local-launch.mjs')), { mode: 0o600, flag: 'wx' });
+      writeFileSync(join(localDirectory, 'models.json'), JSON.stringify(localRegistry(binding)), { mode: 0o600, flag: 'wx' });
+      args.push('--mount', `type=bind,source=${localDirectory},target=${LOCAL_AGENT_DIR},readonly`,
+        '--env', `PI_CODING_AGENT_DIR=${LOCAL_AGENT_DIR}`);
+    }
     selectedModelEnvironment = writeSelectedModelEnvironment(join(state, 'model.env'), modelEnvironmentPath, {
       phase: mode, executor: execution.executor, inferenceProvider: config.inferenceProvider,
     });
@@ -129,6 +139,7 @@ async function container(mode, input, command, options = {}) {
     // selected inference file and mounted scratch until a host-side listing
     // proves the container is absent. A client exit alone is not that proof.
     removeContainerAndConfirmAbsence(name, mode === 'verify');
+    if (localDirectory) rmSync(localDirectory, { recursive: true, force: true });
     try { redactRetainedPhaseOutputs(join(folder, attempt), mode, inferenceSecrets); }
     catch (error) { reportError = error; }
     try { if (scratch && mode === 'verify' && !keepScratch) removeScratch(scratch); } catch (error) { cleanupError = error; }
@@ -402,6 +413,8 @@ try {
   }
   // Failed filtering is recoverable state: keep its exact secret source and
   // active fence until a later stopped-process recovery completes it.
+  if (['build', 'review', 'defence'].includes(phase))
+    rmSync(join(folder, attempt, `.local-${phase}`), { recursive: true, force: true });
   if (outputRetentionComplete && ['build', 'review', 'defence'].includes(phase))
     rmSync(join(folder, attempt, `.model-${phase}.env`), { force: true });
   if (outputRetentionComplete) rmSync(lock);

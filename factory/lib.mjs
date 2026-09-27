@@ -80,9 +80,12 @@ export function configAt(state) {
   if (typeof config.check !== 'string' || !config.scope || !['project','service','environment','owner'].every(k=>typeof config.scope[k]==='string'&&config.scope[k].trim())) throw new Error('Missing check or installation scope');
   readinessMapping(config.issueReadinessLabels);
   validateWebVerification(config.webVerification);
-  if (config.roleDefinition !== undefined || config.resolvedRoleProfiles !== undefined) throw new Error('Role profiles belong in the controller-managed definition; use definition apply');
-  const definition = installedRoleRecord(state).definition;
-  if (hasRoleOverrides(definition)) config.roleDefinition = definition;
+  if (config.roleDefinition !== undefined || config.resolvedRoleProfiles !== undefined || config.localBindings !== undefined) throw new Error('Role profiles belong in the controller-managed definition; use definition apply');
+  const { definition, localBindings } = installedRoleRecord(state);
+  if (hasRoleOverrides(definition)) {
+    config.roleDefinition = definition;
+    if (Object.keys(localBindings || {}).length) config.localBindings = localBindings;
+  }
   return config;
 }
 export async function api(state, path, body, method, { timeoutMs = API_TIMEOUT_MS } = {}) {

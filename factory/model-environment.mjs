@@ -118,6 +118,7 @@ export function effectiveInferenceProvider(config, environmentPath) {
 // Checks and non-agent phases validate installation settings but receive no
 // credential env file. Provider selection is tied to the trusted executor.
 export function writeSelectedModelEnvironment(sourcePath, destinationPath, { phase, executor, inferenceProvider }) {
+  if (executor === 'pi' && inferenceProvider === 'factory-local') return false;
   const values = readModelEnvironment(sourcePath);
   if (!credentialedWorkerPhases.has(phase) || !['codex', 'pi'].includes(executor)) return false;
 

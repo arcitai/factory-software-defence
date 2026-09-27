@@ -37,7 +37,7 @@ export function trustedExecutionProfile(state, job, run, phase, expectedPolicy) 
       assertPrivateDirectory(path);
     const profile = readPrivateJson(join(folder, 'artifacts', run.id, 'execution.json'));
     if (profile.version === 1 && hasRoleOverrides(installedRoleRecord(state).definition)) return false;
-    if (profile.version === 2) {
+    if ([2, 3].includes(profile.version)) {
       const frozen = readPrivateJson(join(folder, run.id, 'execution-config.json'));
       if (!frozen.roleDefinition || !frozen.resolvedRoleProfiles || digest(JSON.stringify(frozen)) !== expectedPolicy) return false;
       assertFrozenExecution(frozen, profile, phase);
