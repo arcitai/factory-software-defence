@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { digest } from '../factory/lib.mjs';
 import { createController } from '../factory/server.mjs';
@@ -14,12 +14,26 @@ const attempt = `run_${'d'.repeat(24)}`;
 const inertAuth = 'inert-executor-auth-sentinel';
 const inertApiKey = 'inert-executor-api-key-sentinel';
 
+function hostExecutable(name) {
+  const extensions = process.platform === 'win32' ? (process.env.PATHEXT || '.EXE;.CMD;.BAT').split(';') : [''];
+  for (const directory of (process.env.PATH || '').split(delimiter).filter(Boolean)) {
+    for (const extension of extensions) {
+      const candidate = join(directory, `${name}${extension}`);
+      try {
+        accessSync(candidate, constants.X_OK);
+        return realpathSync(candidate);
+      } catch { /* Continue through the host PATH until the actual tool is found. */ }
+    }
+  }
+  throw new Error(`Could not resolve required host executable ${name}`);
+}
+
 function fixture(t, mode, phase = 'review', harness = 'codex') {
   const rootDir = mkdtempSync(join(tmpdir(), 'sdf-executor-container-recovery-'));
   t.after(() => rmSync(rootDir, { recursive: true, force: true }));
   const dockerRoot = mkdtempSync(join(root, '.sdf-controlled-docker-'));
   t.after(() => rmSync(dockerRoot, { recursive: true, force: true }));
-  const state = join(rootDir, 'state'), bin = join(dockerRoot, 'bin');
+  const state = join(rootDir, 'state'), bin = join(dockerRoot, 'bin'), fallbackBin = join(dockerRoot, 'fallback-bin');
   const folder = join(state, 'jobs', job), attemptFolder = join(folder, attempt);
   const artifacts = join(folder, 'artifacts', attempt), workspace = join(folder, 'checkout');
   const output = artifacts, dockerState = join(rootDir, 'docker-state.json');
@@ -27,6 +41,17 @@ function fixture(t, mode, phase = 'review', harness = 'codex') {
   mkdirSync(artifacts, { recursive: true, mode: 0o700 });
   mkdirSync(workspace, { recursive: true, mode: 0o700 });
   mkdirSync(bin, { mode: 0o700 });
+  mkdirSync(fallbackBin, { mode: 0o700 });
+
+  // Keep executor and recovery command lookup independent from the machine's
+  // Docker installation. The second PATH entry is an inert stand-in for a
+  // host Docker fallback, so spawn-error coverage also asserts it stays unused.
+  for (const [name, executable] of [['node', realpathSync(process.execPath)], ['git', hostExecutable('git')], ['ps', hostExecutable('ps')]])
+    symlinkSync(executable, join(bin, name));
+  const fallbackDockerLog = join(dockerRoot, 'fallback-docker.log');
+  writeFileSync(fallbackDockerLog, '', { mode: 0o600 });
+  writeFileSync(join(fallbackBin, 'docker'), '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$SDF_FALLBACK_DOCKER_LOG"\nexit 0\n', { mode: 0o700 });
+  chmodSync(join(fallbackBin, 'docker'), 0o700);
 
   execFileSync('git', ['-C', workspace, 'init', '--quiet', '-b', 'main']);
   writeFileSync(join(workspace, 'fixture.txt'), 'review fixture\n');
@@ -176,14 +201,15 @@ fail('unsupported controlled Docker operation');
   chmodSync(docker, 0o700);
 
   return {
-    rootDir, state, folder, attemptFolder, artifacts, output, dockerState, docker, dockerProgram, outsideReport,
+    rootDir, state, folder, attemptFolder, artifacts, output, dockerState, docker, dockerProgram, outsideReport, fallbackBin, fallbackDockerLog,
     selectedEnvironment: join(attemptFolder, '.model-review.env'),
     verifyScratch: join(attemptFolder, 'check-workspace'),
     phase,
     lock: join(folder, 'active.json'),
     executorEnv: {
       ...process.env,
-      PATH: `${bin}:${process.env.PATH}`,
+      PATH: bin,
+      SDF_FALLBACK_DOCKER_LOG: fallbackDockerLog,
       SDF_DOCKER_STATE: dockerState,
       SDF_JOB_ID: job,
       SDF_RUN_ID: attempt,
@@ -198,6 +224,19 @@ function runExecutor(f) {
   return spawnSync(process.execPath, [join(root, 'factory/executor.mjs'), f.state, f.phase], {
     input: 'bounded executor cleanup fixture', encoding: 'utf8', env: f.executorEnv, timeout: 30_000,
   });
+}
+
+function withHostFallback(f, action) {
+  const previousPath = process.env.PATH;
+  process.env.PATH = [f.fallbackBin, previousPath].filter(Boolean).join(delimiter);
+  try {
+    assert.equal(process.env.PATH.split(delimiter)[0], f.fallbackBin, 'the inert fallback is present in the surrounding host PATH');
+    assert.equal(f.executorEnv.PATH.split(delimiter).includes(f.fallbackBin), false, 'executor lookup remains limited to fixture-owned tools');
+    return action();
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+  }
 }
 
 function stateOf(f) { return JSON.parse(readFileSync(f.dockerState, 'utf8')); }
@@ -287,19 +326,23 @@ test('a Docker client failure with confirmed prelaunch absence does not leave th
 
 test('a Docker spawn error retains the file and fence until ordinary recovery confirms absence', t => {
   const f = fixture(t, 'spawn-error-absent');
-  const execution = runExecutor(f);
-  assert.notEqual(execution.status, 0, 'a missing Docker client blocks the phase');
-  assert.equal(stateOf(f).launchAttempted, false);
-  assert.equal(existsSync(f.selectedEnvironment), true, 'the failed launch cannot establish that no environment-bearing container exists');
-  assert.equal(existsSync(f.lock), true, 'the executor fence survives unknown Docker availability');
-  assert.doesNotMatch(execution.stdout + execution.stderr, new RegExp(inertAuth));
+  withHostFallback(f, () => {
+    const execution = runExecutor(f);
+    assert.notEqual(execution.status, 0, 'a missing Docker client blocks the phase');
+    assert.equal(stateOf(f).launchAttempted, false);
+    assert.equal(existsSync(f.selectedEnvironment), true, 'the failed launch cannot establish that no environment-bearing container exists');
+    assert.equal(existsSync(f.lock), true, 'the executor fence survives unknown Docker availability');
+    assert.equal(readFileSync(f.fallbackDockerLog, 'utf8'), '', 'the inert Docker fallback in the surrounding PATH was not invoked');
+    assert.doesNotMatch(execution.stdout + execution.stderr, new RegExp(inertAuth));
 
-  restoreDockerClient(f);
-  enableRecovery(f);
-  const recovered = runOrdinaryRecovery(f);
-  assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
-  assert.equal(existsSync(f.selectedEnvironment), false);
-  assert.equal(existsSync(f.lock), false);
+    restoreDockerClient(f);
+    enableRecovery(f);
+    const recovered = runOrdinaryRecovery(f);
+    assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
+    assert.equal(existsSync(f.selectedEnvironment), false);
+    assert.equal(existsSync(f.lock), false);
+    assert.equal(readFileSync(f.fallbackDockerLog, 'utf8'), '', 'ordinary recovery used the restored controlled Docker client');
+  });
 });
 
 test('verify preserves scratch while shutdown is present or unknown, then recovery removes it', async t => {
@@ -355,17 +398,21 @@ test('outer stopContainers cleanup removes verify scratch only after confirming 
 
 test('verify spawn failure retains scratch until ordinary recovery confirms absence', t => {
   const f = fixture(t, 'spawn-error-absent', 'verify');
-  const execution = runExecutor(f);
-  assert.notEqual(execution.status, 0, 'a missing Docker client blocks verification');
-  assert.equal(existsSync(f.verifyScratch), true, 'a spawn error cannot establish that the container is absent');
-  assert.equal(existsSync(f.lock), true, 'the executor fence survives unknown Docker availability');
+  withHostFallback(f, () => {
+    const execution = runExecutor(f);
+    assert.notEqual(execution.status, 0, 'a missing Docker client blocks verification');
+    assert.equal(existsSync(f.verifyScratch), true, 'a spawn error cannot establish that the container is absent');
+    assert.equal(existsSync(f.lock), true, 'the executor fence survives unknown Docker availability');
+    assert.equal(readFileSync(f.fallbackDockerLog, 'utf8'), '', 'the inert Docker fallback in the surrounding PATH was not invoked');
 
-  restoreDockerClient(f);
-  enableRecovery(f);
-  const recovered = runOrdinaryRecovery(f);
-  assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
-  assert.equal(existsSync(f.verifyScratch), false, 'confirmed recovery removes scratch after a spawn failure');
-  assert.equal(existsSync(f.lock), false);
+    restoreDockerClient(f);
+    enableRecovery(f);
+    const recovered = runOrdinaryRecovery(f);
+    assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
+    assert.equal(existsSync(f.verifyScratch), false, 'confirmed recovery removes scratch after a spawn failure');
+    assert.equal(existsSync(f.lock), false);
+    assert.equal(readFileSync(f.fallbackDockerLog, 'utf8'), '', 'ordinary recovery used the restored controlled Docker client');
+  });
 });
 
 test('selected inference credentials are redacted from retained logs and reports after recovery confirms shutdown', t => {
