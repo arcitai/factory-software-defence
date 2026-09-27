@@ -1,3 +1,4 @@
+import { withReconstructedCandidate } from './candidate-patch.mjs';
 import { harnessOf } from './lib.mjs';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
@@ -7,7 +8,7 @@ import { incidentFor, validateReport } from './incident.mjs';
 import { BoundedLog } from './bounded-log.mjs';
 import { CodexUsageParser, emptyUsage, usageFields } from './usage.mjs';
 import { assertRetainedSource, publicSourceAdmission, publicContinuation, restoreBuildCheckout } from './source-admission.mjs';
-import { runCandidateGit } from './git-environment.mjs';
+import { runCandidateGit, runCandidateGitRaw } from './git-environment.mjs';
 import { selectedInferenceSecrets, writeSelectedModelEnvironment } from './model-environment.mjs';
 import { redactInferenceText, redactRetainedPhaseOutputs } from './inference-redaction.mjs';
 import { assertCurrentHandoffEvidence } from './execution-evidence.mjs';
@@ -293,8 +294,7 @@ try {
       source_admission: publicSourceAdmission(sourceAdmission) };
     save(join(folder,'candidate.json'),meta);
     save(join(output,'candidate.json'),meta);
-    const patchText = git('--no-pager', 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', meta.base, meta.head);
-    const patch = patchText ? `${patchText}\n` : '';
+    const patch = runCandidateGitRaw(workspace, '--no-pager', 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', meta.base, meta.head);
     writeFileSync(join(output,'change.patch'), patch);
     writeFileSync(join(output,'implementation.md'),safeRead(join(reports,'agent-report.md')));
   } else if (phase === 'verify') {
@@ -343,9 +343,8 @@ try {
     if (config.webVerification?.enabled) assertCurrentWebArtifacts(config.webVerification, checks.web_verification,
       join(folder, 'artifacts', checks.run_id));
     assertCurrentHandoffEvidence(meta, checks, review, policyHash, config, job);
-    const patchText = git('--no-pager', 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', meta.base, meta.head);
-    const patch = patchText ? `${patchText}\n` : '';
-    if (!patch) throw new Error('Candidate has no content changes to accept');
+    const patch = runCandidateGitRaw(workspace, '--no-pager', 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', meta.base, meta.head);
+    if (!patch.length) throw new Error('Candidate has no content changes to accept');
     const patchHash = digest(patch);
     const deliveryInput = join(folder, 'delivery-input');
     mkdirSync(deliveryInput, { recursive: true, mode: 0o700 });
@@ -355,6 +354,9 @@ try {
       if (!stat.isFile() || stat.isSymbolicLink() || digest(readFileSync(deliveryPatch)) !== patchHash)
         throw new Error('A different protected candidate patch already exists');
     } else writeFileSync(deliveryPatch, patch, { mode: 0o600, flag: 'wx' });
+    const retained = assertRetainedSource(state, job, sourceAdmission);
+    withReconstructedCandidate({ state, jobId: job, sourcePath: retained.path,
+      objectFormat: sourceAdmission.object_format, candidate: { ...meta, patch_sha256: patchHash } });
     const sourceSha = meta.source_admission?.resolved_sha || 'Not recorded (legacy/unknown)';
     writeFileSync(join(output,'handoff.md'), `Accepted candidate ${meta.head} (tree ${meta.tree}), based on source ${sourceSha}.\nPatch handoff remains available. Optional PR delivery is a separate explicit operator action when configured.\nNo integration, merge, release or deployment performed.\nSee docs/quickstart.md for applying the reviewed change.patch to your own branch.\n`);
     save(join(folder,'accepted.json'), { base: meta.base, head: meta.head, tree: meta.tree, patch_sha256: patchHash,

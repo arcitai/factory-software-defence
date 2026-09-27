@@ -30,13 +30,32 @@ adoption preserved histories. Those results apply to 0.11.0, not later revisions
 | [Profile](../tests/execution-profile.test.mjs) and [delivery tests](../tests/delivery.test.mjs) | Exact writer versions, unchanged retained records, current provenance/policy/revision guards and unsupported writer rejection | Controlled records/providers do not prove live account writes. |
 | [Service](../tests/services.test.mjs) and [source admission tests](../tests/source-admission.test.mjs) | Stable launch/update contracts and retained-source behavior | Does not prove a running installation's service/image/history preservation. |
 
-Factory 0.11.1 adds the shared `factory` executable and product identity; package,
-repository and persistent identifiers retain their [compatibility contracts](npm.md).
-Its release qualification is tracked in [#61](https://github.com/arcitai/software-and-defence-factory/issues/61)
-and linked delivery PRs: exact installed upgrades, protected CI/publication and
-registry readback, rendered branding at desktop/narrow widths in both themes,
-and service/history preservation require release-specific evidence. Source
-checks and prior delivered proof do not establish that external acceptance.
+Factory 0.11.1's naming first slice was delivered via protected maintainer
+[PR #92](https://github.com/arcitai/software-and-defence-factory/pull/92), per the
+operator brief. Native publication refused its malformed retained patch before
+provider writes ([#91](https://github.com/arcitai/software-and-defence-factory/issues/91)).
+That maintainer delivery does not establish successful native publication.
+
+The 0.11.2 candidate preserves exact Buffer output for Build and handoff patches.
+The executor regression failed on the original writer and passes with the fix:
+trailing blank context, missing final newline, binary and non-UTF-8 text survive
+continued Build and handoff; retained bytes/digest match Git output and replay
+against the exact retained base to the candidate tree in new bare storage.
+SHA-1 and SHA-256 local handoff are covered; GitHub publication remains SHA-1.
+Malformed and wrong-tree patches fail before acceptance; scratch cleanup
+preserves unrelated prior evidence. A modeled 0.11.1 accepted malformed patch
+with a matching digest still refuses publication with zero provider writes and
+unchanged patch/approval records. Exact supported v1 writers now include 0.11.2;
+all current provenance, source, browser, workflow and publication gates remain.
+
+`npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check`
+passed for this candidate: 297 runtime/package tests and 58 dashboard tests.
+These are real local Git/executor/controller regressions using controlled
+Docker/model/provider fixtures, not installed native or live provider proof.
+Operator installed/native proof on Z13, independent native Review, guarded
+publication and adoption remain pending. No UI source changed; #90 remains the
+next restoration slice before #62/#63. See [recovery](recovery.md) for preserving
+old malformed evidence and the separately reviewed maintainer/new-attempt routes.
 
 ## Remaining limits
 

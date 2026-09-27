@@ -19,7 +19,7 @@ export function run(command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, ...options });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command} failed (${result.status}): ${result.stderr || result.stdout || ''}`);
-  return result.stdout?.trim() ?? '';
+  return Buffer.isBuffer(result.stdout) ? result.stdout : result.stdout?.trim() ?? '';
 }
 export function stream(command, args, options = {}) {
   return new Promise((ok, fail) => {

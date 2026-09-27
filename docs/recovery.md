@@ -332,6 +332,27 @@ approval; do not edit SQLite or acceptance evidence to bypass the guard. A stale
 target after branch creation leaves that unique branch for inspection and does
 not open a PR. A PR does not imply integration or deployment.
 
+## Already accepted malformed patches (#91)
+
+A matching digest does not prove a patch can reproduce its candidate. Before
+0.11.2, trimming Git diff output could remove trailing blank context lines.
+Native publication correctly refuses such a patch before provider writes.
+Preserve the accepted record, patch, digests, retained Git objects and prior
+attempts. Restarting or reading state does not repair or migrate this evidence.
+
+For recovery, use a separately reviewed, normal protected maintainer PR from
+the exact retained candidate tree, checking its tree identity and original base,
+or run a new native attempt with fresh Verify, independent Review and approval.
+The maintainer route is not successful native publication. Never replace an old
+patch or acceptance hash, fabricate approval, or disable reconstruction guards.
+
+New handoffs in 0.11.2 retain raw Git bytes and reconstruct the protected patch
+against the original retained base in private bare storage before acceptance.
+Failure retains evidence and creates no accepted record or provider writes.
+Publication still repeats reconstruction and all current provenance, source,
+workflow and target checks. Operator installed/native qualification on Z13 is
+required before further general unattended delivery.
+
 ## Continue a reviewed candidate (first #42 slice)
 
 Use one explicit starting point for a current software review with a returned

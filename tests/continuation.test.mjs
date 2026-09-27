@@ -26,11 +26,16 @@ async function wait(queue, id, predicate) {
 
 // Real local Git objects and controller/API; controlled phase outputs and Docker
 // client probes only. These tests do not claim native/provider/browser proof.
-async function fixture(t, { runtimeVersion, nativePhases = false, webVerification } = {}) {
+async function fixture(t, { runtimeVersion, nativePhases = false, webVerification, patchBytes = false, badHandoffPatch, objectFormat = 'sha1' } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'sdf-continuation-')), state = join(root, 'state'), repo = join(root, 'repo');
   mkdirSync(state, { mode: 0o700 }); mkdirSync(repo);
-  execFileSync('git', ['init', '--quiet', '-b', 'main', repo]);
-  writeFileSync(join(repo, 'base.txt'), 'original source\n'); commit(repo);
+  execFileSync('git', ['init', '--quiet', '-b', 'main', `--object-format=${objectFormat}`, repo]);
+  writeFileSync(join(repo, 'base.txt'), 'original source\n');
+  if (patchBytes) {
+    writeFileSync(join(repo, 'z-context.txt'), 'old\ncontext\n\n\n');
+    writeFileSync(join(repo, 'binary.dat'), Buffer.from([0, 1, 255]));
+  }
+  commit(repo);
   const base = git(repo, 'rev-parse', 'HEAD');
   git(repo, 'remote', 'add', 'origin', 'https://github.com/example/app.git');
   const config = { version: 1, repo, sourceRef: 'main', harness: 'codex', command: ['codex', 'exec', '-'], model: null,
@@ -43,6 +48,24 @@ async function fixture(t, { runtimeVersion, nativePhases = false, webVerificatio
   const clientBin = mkdtempSync(join(process.cwd(), '.sdf-controlled-docker-'));
   t.after(() => rmSync(clientBin, { recursive: true, force: true }));
   for (const name of ['git', 'ps']) symlinkSync(execFileSync('which', [name], { encoding: 'utf8' }).trim(), join(clientBin, name));
+  if (badHandoffPatch) {
+    const actualGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+    rmSync(join(clientBin, 'git'));
+    writeFileSync(join(clientBin, 'git'), `#!${process.execPath}
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+const result = spawnSync(${JSON.stringify(actualGit)}, args, { input: readFileSync(0) });
+let bytes = result.stdout;
+if (process.env.FIXTURE_BAD_PATCH && args.includes('--binary') && args.includes('diff')) {
+  const text = bytes.toString('latin1');
+  bytes = Buffer.from(process.env.FIXTURE_BAD_PATCH === 'corrupt' ? text.trimEnd() + '\\n' : text.replace('+new', '+bad'), 'latin1');
+}
+process.stdout.write(bytes);
+process.stderr.write(result.stderr);
+process.exit(result.status ?? 1);
+`, { mode: 0o700 });
+  }
   const docker = join(clientBin, 'docker');
   writeFileSync(docker, `#!${process.execPath}
 import { writeFileSync, readFileSync } from 'node:fs';
@@ -56,7 +79,15 @@ process.stdin.on('end', () => {
   const mount = target => args.find(arg => arg.includes('target=' + target + ',') || arg.endsWith('target=' + target))?.split('source=')[1].split(',')[0];
   const workspace = mount('/workspace'), output = mount('/output');
   const phase = args.find(arg => arg.startsWith('FACTORY_PHASE=')).slice('FACTORY_PHASE='.length);
-  if (phase === 'build') writeFileSync(join(workspace, process.env.FIXTURE_BUILD_FILE), 'controlled repair\\n');
+  if (phase === 'build') {
+    writeFileSync(join(workspace, process.env.FIXTURE_BUILD_FILE), 'controlled repair\\n');
+    if (process.env.FIXTURE_PATCH_BYTES === '1') {
+      writeFileSync(join(workspace, 'z-context.txt'), 'new\\ncontext\\n\\n\\n');
+      writeFileSync(join(workspace, 'binary.dat'), Buffer.from([0, 2, 254]));
+      writeFileSync(join(workspace, 'no-newline.txt'), 'no final newline');
+      writeFileSync(join(workspace, 'non-utf8.txt'), Buffer.from([255, 254, 10]));
+    }
+  }
   if (phase === 'review') {
     writeFileSync(join(output, 'review.json'), JSON.stringify({verdict:process.env.FIXTURE_REVIEW_VERDICT,summary:'Controlled review only',findings:[]}));
     writeFileSync(process.env.FIXTURE_REVIEW_INPUT, input);
@@ -90,7 +121,7 @@ process.stdin.on('end', () => {
             env: { ...process.env, PATH: clientBin, SDF_JOB_ID: job.id, SDF_RUN_ID: run.id,
               SDF_OUTPUT_DIR: output, SDF_STEP_RESULT_PATH: result, SDF_SOURCE_ADMISSION: JSON.stringify(job.source_admission),
               SDF_CONTINUATION: JSON.stringify(job.continuation || null), FIXTURE_BUILD_FILE: buildFile,
-              FIXTURE_REVIEW_VERDICT: reviewPass ? 'pass' : 'changes', FIXTURE_REVIEW_INPUT: join(root, 'review-input.txt') },
+              FIXTURE_BAD_PATCH: run.command === 'handoff' ? badHandoffPatch || '' : '', FIXTURE_PATCH_BYTES: patchBytes ? '1' : '0', FIXTURE_REVIEW_VERDICT: reviewPass ? 'pass' : 'changes', FIXTURE_REVIEW_INPUT: join(root, 'review-input.txt') },
           });
         } catch (error) { if (!existsSync(result)) throw error; }
         if (run.command === 'review') {
@@ -108,7 +139,7 @@ process.stdin.on('end', () => {
           build_run_id: run.id, build_policy_hash: policyHash, synthetic: false,
           source_admission: publicSourceAdmission(job.source_admission), continuation: publicContinuation(job.continuation) };
         save(join(folder, 'candidate.json'), meta); save(join(output, 'candidate.json'), meta);
-        writeFileSync(join(output, 'change.patch'), git(workspace, 'diff', '--binary', meta.base, meta.head) + '\n');
+        writeFileSync(join(output, 'change.patch'), execFileSync('git', ['-C', workspace, 'diff', '--binary', '--full-index', meta.base, meta.head]));
       } else if (run.command === 'verify') {
         const meta = read(join(folder, 'candidate.json'));
         const checks = { run_id: run.id, head: meta.head, tree: meta.tree, policyHash, command: configAt(state).check, passed: true, synthetic: false };
@@ -360,4 +391,56 @@ test('continuation retains current profile and required browser gates', async t 
   assert.equal(status.available, false); assert.match(status.reason, /browser/i);
   await assert.rejects(web.queue.action(web.id, 'request_changes', web.input()), /browser/i);
   assert(existsSync(join(web.workspace, 'A.txt')));
+});
+
+
+for (const objectFormat of ['sha1', 'sha256']) test(`executor retains exact ${objectFormat} patch bytes through continued Build and accepted handoff`, async t => {
+  const f = await fixture(t, { nativePhases: true, patchBytes: true, objectFormat });
+  f.next(); await f.queue.action(f.id, 'request_changes', f.input());
+  let job = await wait(f.queue, f.id, job => job.state === 'awaiting_approval');
+  const meta = read(join(f.folder, 'candidate.json'));
+  const expected = execFileSync('git', ['-C', f.workspace, '--no-pager', 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', f.base, meta.head]);
+  assert.equal(expected.subarray(-4).toString(), ' \n \n');
+  assert.match(expected.toString(), /GIT binary patch/);
+  assert.match(expected.toString(), /No newline at end of file/);
+  const buildPatch = readFileSync(join(f.folder, 'artifacts', meta.build_run_id, 'change.patch'));
+  assert.deepEqual(buildPatch, expected, 'Build must retain Git stdout without trimming or UTF-8 conversion');
+  await f.queue.action(f.id, 'approve', { run_id: job.runs.at(-1).id });
+  job = await wait(f.queue, f.id, job => ['succeeded', 'failed'].includes(job.state));
+  assert.equal(job.state, 'succeeded', JSON.stringify(job.runs.at(-1)));
+  const patch = readFileSync(join(f.folder, 'delivery-input', 'candidate.patch'));
+  assert.deepEqual(patch, expected);
+  assert.equal(read(join(f.folder, 'accepted.json')).patch_sha256, digest(expected));
+  const scratch = join(f.root, 'replay.git');
+  git(f.root, 'init', '--bare', '--quiet', `--object-format=${objectFormat}`, scratch);
+  git(scratch, 'fetch', '--no-tags', join(f.folder, job.source_admission.retained_repo), f.base);
+  git(scratch, 'read-tree', f.base);
+  const oldPatch = Buffer.from(expected.toString().trim() + '\n');
+  assert.throws(() => execFileSync('git', ['--git-dir', scratch, 'apply', '--cached', '--binary', '-'], { input: oldPatch, stdio: ['pipe', 'pipe', 'pipe'] }), /corrupt patch/);
+  execFileSync('git', ['--git-dir', scratch, 'apply', '--cached', '--binary', '-'], { input: patch });
+  assert.equal(git(scratch, 'write-tree'), meta.tree);
+});
+
+
+for (const badHandoffPatch of ['corrupt', 'wrong-tree']) test(`handoff rejects ${badHandoffPatch} before acceptance and cleans only owned scratch`, async t => {
+  const f = await fixture(t, { nativePhases: true, patchBytes: true, badHandoffPatch });
+  f.next(); await f.queue.action(f.id, 'request_changes', f.input());
+  const reviewed = await wait(f.queue, f.id, job => job.state === 'awaiting_approval');
+  const oldScratch = join(f.folder, 'delivery-work-preserved');
+  mkdirSync(oldScratch); writeFileSync(join(oldScratch, 'evidence'), 'previous attempt');
+  const meta = read(join(f.folder, 'candidate.json'));
+  const buildPatch = readFileSync(join(f.folder, 'artifacts', meta.build_run_id, 'change.patch'));
+  const reviewBefore = readFileSync(join(f.folder, 'review.json'));
+  await f.queue.action(f.id, 'approve', { run_id: reviewed.runs.at(-1).id });
+  const failed = await wait(f.queue, f.id, job => ['failed', 'succeeded'].includes(job.state));
+  assert.equal(failed.state, 'failed');
+  assert.match(failed.runs.at(-1).summary, badHandoffPatch === 'corrupt' ? /Could not reconstruct/ : /does not reproduce/);
+  assert.equal(existsSync(join(f.folder, 'accepted.json')), false);
+  assert.equal(existsSync(join(f.folder, 'artifacts', failed.runs.at(-1).id, 'handoff.md')), false);
+  assert.deepEqual(readFileSync(join(f.folder, 'review.json')), reviewBefore);
+  assert.deepEqual(readFileSync(join(f.folder, 'artifacts', meta.build_run_id, 'change.patch')), buildPatch);
+  assert.deepEqual(readdirSync(f.folder).filter(name => name.startsWith('delivery-work-')), ['delivery-work-preserved']);
+  assert.equal(readFileSync(join(oldScratch, 'evidence'), 'utf8'), 'previous attempt');
+  assert(existsSync(join(f.folder, 'delivery-input', 'candidate.patch')), 'failed retained bytes remain evidence');
+  assert.equal(failed.delivery, undefined, 'handoff creates no provider intent');
 });

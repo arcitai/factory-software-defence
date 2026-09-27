@@ -1,8 +1,8 @@
-import { readPrivateJson, assertPrivateDirectory, trustedExecutionProfile } from './execution-evidence.mjs';
+import { withReconstructedCandidate } from './candidate-patch.mjs';
+import { readPrivateJson, trustedExecutionProfile } from './execution-evidence.mjs';
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { configAt, digest } from './lib.mjs';
 import { effectiveExecutionConfig, isSupportedExecutionProfile } from './execution-profile.mjs';
 import { publicSourceAdmission } from './source-admission.mjs';
@@ -11,7 +11,6 @@ import { readProjectLinks } from './project-links.mjs';
 import { qualifyGitHubActions } from './workflow-qualification.mjs';
 import { assertCurrentWebEvidence, assertCurrentWebArtifacts } from './web-verification.mjs';
 
-const MAX_PATCH_BYTES = 8 * 1024 * 1024;
 const MAX_CHANGED_FILES = 500;
 const MAX_TREE_BYTES = 8 * 1024 * 1024;
 const SHA1 = /^[a-f0-9]{40}$/;
@@ -39,7 +38,6 @@ class BranchCollisionError extends QueueError {
   }
 }
 
-function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
 function utcGitDate(value) {
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) throw new Error('Accepted timestamp is invalid.');
@@ -53,40 +51,6 @@ function commitObjectSha({ tree, parents, message, author, committer }) {
     || author.email !== 'factory@localhost' || committer.email !== author.email) throw new Error('Candidate commit identity is invalid.');
   const raw = Buffer.from(`tree ${tree}\nparent ${parents[0]}\nauthor ${author.name} <${author.email}> ${date.epoch} +0000\ncommitter ${committer.name} <${committer.email}> ${date.epoch} +0000\n\n${message}`, 'utf8');
   return createHash('sha1').update(`commit ${raw.length}\0`).update(raw).digest('hex');
-}
-function readPrivateFile(path, limit) {
-  const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || stat.size > limit)
-    throw new Error('Protected candidate patch is missing, unsafe or too large.');
-  return readFileSync(path);
-}
-function runGitCommand(args) {
-  const env = {
-    PATH: process.env.PATH || '/usr/bin:/bin', HOME: '/nonexistent',
-    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
-    GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0',
-  };
-  const result = spawnSync('git', args, { env, encoding: 'utf8', maxBuffer: MAX_TREE_BYTES + MAX_PATCH_BYTES + 1024 * 1024 });
-  if (result.error || result.status !== 0) throw new Error('Could not prepare private candidate reconstruction storage.');
-  return result.stdout.trim();
-}
-function runGit(repo, args, { input, binary = false } = {}) {
-  // Delivery reconstruction runs only trusted Git operations in a newly made
-  // bare repository. Candidate hooks, filters, global config and credentials
-  // are unavailable to these subprocesses.
-  const env = {
-    PATH: process.env.PATH || '/usr/bin:/bin',
-    HOME: '/nonexistent',
-    GIT_CONFIG_NOSYSTEM: '1',
-    GIT_CONFIG_GLOBAL: '/dev/null',
-    GIT_TERMINAL_PROMPT: '0',
-    GIT_OPTIONAL_LOCKS: '0',
-  };
-  const result = spawnSync('git', ['--git-dir', repo, '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', ...args], {
-    env, input, encoding: binary ? null : 'utf8', maxBuffer: MAX_TREE_BYTES + MAX_PATCH_BYTES + 1024 * 1024,
-  });
-  if (result.error || result.status !== 0) throw new Error('Could not reconstruct the accepted candidate from retained Git objects.');
-  return binary ? result.stdout : result.stdout.trim();
 }
 function parseTree(bytes) {
   const entries = new Map();
@@ -112,24 +76,8 @@ function parseTree(bytes) {
 function candidateTree(state, job, sourcePath, sourceAdmission, accepted, { branch, target }) {
   if (sourceAdmission.object_format !== 'sha1' || !SHA1.test(accepted.base || '') || !SHA1.test(accepted.tree || ''))
     throw new Error('GitHub delivery currently requires a SHA-1 candidate from the retained source repository.');
-  const patchPath = join(state, 'jobs', job.id, 'delivery-input', 'candidate.patch');
-  assertPrivateDirectory(join(state, 'jobs'));
-  assertPrivateDirectory(join(state, 'jobs', job.id));
-  assertPrivateDirectory(join(state, 'jobs', job.id, 'delivery-input'));
-  const patch = readPrivateFile(patchPath, MAX_PATCH_BYTES);
-  if (!patch.length || sha256(patch) !== accepted.patch_sha256) throw new Error('Accepted patch digest does not match the approval record.');
-  const folder = join(state, 'jobs', job.id);
-  const scratchRoot = mkdtempSync(join(folder, 'delivery-work-'));
-  const scratchRepo = join(scratchRoot, 'candidate.git');
-  try {
-    runGitCommand(['init', '--bare', '--quiet', '--object-format=sha1', scratchRepo]);
-    runGit(scratchRepo, ['fetch', '--quiet', '--no-tags', '--', sourcePath, `${accepted.base}:refs/heads/factory-base`]);
-    const baseCommit = runGit(scratchRepo, ['rev-parse', '--verify', `${accepted.base}^{commit}`]);
-    if (baseCommit !== accepted.base) throw new Error('Accepted base differs from the retained source commit.');
-    runGit(scratchRepo, ['read-tree', accepted.base]);
-    runGit(scratchRepo, ['apply', '--cached', '--binary', '--whitespace=nowarn', patchPath]);
-    const tree = runGit(scratchRepo, ['write-tree']);
-    if (tree !== accepted.tree) throw new Error('Protected patch does not reproduce the accepted candidate tree.');
+  return withReconstructedCandidate({ state, jobId: job.id, sourcePath,
+    objectFormat: sourceAdmission.object_format, candidate: accepted }, ({ repo: scratchRepo, patch, tree, git: runGit }) => {
     const baseTree = runGit(scratchRepo, ['rev-parse', `${accepted.base}^{tree}`]);
     const before = parseTree(runGit(scratchRepo, ['ls-tree', '-r', '-z', accepted.base], { binary: true }));
     const after = parseTree(runGit(scratchRepo, ['ls-tree', '-r', '-z', tree], { binary: true }));
@@ -159,9 +107,7 @@ function candidateTree(state, job, sourcePath, sourceAdmission, accepted, { bran
       entries.push({ path, mode: next.mode, type: 'blob', content });
     }
     return { patch, patch_sha256: accepted.patch_sha256, base_tree: baseTree, tree, entries, workflowQualification };
-  } finally {
-    rmSync(scratchRoot, { recursive: true, force: true });
-  }
+  });
 }
 
 function sourceIssue(job, repository) {
