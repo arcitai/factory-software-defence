@@ -104,6 +104,10 @@ claim publication, live provider mutations or customer application jobs.
 
 ## Skill ownership (#62)
 
+Delivered in PR #96 / 0.13.0, as reported in the accepted operator brief.
+The following records the earlier checkpoint/source evidence and its limits;
+its historical pending gates do not describe the current delivery status.
+
 The 0.13.0 candidate separates one canonical `kit/skills/` runtime catalog from
 `.agents/skills/factory-foundation/` operator guidance and removes the obsolete
 operator store. All six runtime SKILL.md files are byte-identical to the admitted
@@ -151,6 +155,9 @@ availability remain separately qualified capabilities.
 
 ## Ownership diagrams (#63)
 
+Delivered in PR #96 / 0.13.0, as reported in the accepted operator brief.
+The following is the retained pre-delivery evidence record.
+
 Three operator-authored, visually inspected views now cover setup/deployment,
 runtime layers/ownership and work lifecycle in [architecture](architecture.md),
 with a compact README preview and editable sources. The six Excalidraw/SVG files
@@ -161,6 +168,120 @@ delivered Inbox behavior from planned profiles/providers/MCP and quality work,
 inference-only job credentials from repository/CI/merge authority, and packaged
 Foundation guidance from job execution. Independent Review must assess the actual
 diagram semantics across #62/#63; final visual/installed acceptance is operator-owned.
+
+## Delivered-commit check readback (#37, 0.13.1)
+
+This bounded source slice starts at admitted main
+`e813eec7716349df28d331b9fdfdbb4ddcde2cbe`. A controlled PR96-shaped fixture uses
+reported delivered SHA `74d5c2d5563e44a89ab84434173a8014b4d4fe62`, three completed
+runs, empty PR associations and success/success/skipped conclusions. Before the
+fix it returns `unknown`; the same regression now returns `success`, with two
+passing executions and one visible skipped result. This reproduces the supplied
+observation locally; it is not an actual GitHub query.
+
+The trace covered GitHub normalization, DeliveryService's immutable final SHA
+and before/after PR identity guards, retained receipts, shared publish/status
+CLI/API responses and task-detail rendering. The controller guards and actions
+are unchanged. Exact matching run heads may be commit-scoped when the optional
+association list is empty. Conflicting association numbers, supplied head/repo
+identities, missing/mismatched SHA or combined-status repository/SHA, malformed
+or unreadable data, missing/truncated pagination and unknown conclusions cannot
+produce aggregate success. Skipped/neutral, pending, failed, cancelled and
+unknown remain distinct. See [the shared fields and limits](interfaces.md#delivered-commit-checks-0131-bounded-37-slice).
+
+Focused source regressions cover the positive and negative response matrix,
+merged-PR CLI/authenticated API equivalence without additional provider writes,
+and dashboard DOM rendering of provider-normalized results, legacy uncertainty
+and recovery. Existing delivery tests retain PR-race/restart and protected
+acceptance coverage. Fixtures carry realistic commit/repository identity; none
+qualifies a real integration. The v1 writer audit found protected execution,
+candidate/check/review/acceptance writers and policy/isolation guarantees
+unchanged. The explicit 0.13.1 compatibility entry adds no automatic trust for
+future versions; retained-evidence and refusal tests still pass.
+
+The revision continues checkpoint `b5cb91d89431cae0eeb4a548fe3caa72ef21288b`
+(review `run_3022982b651740367ce7aea4`) on the original admitted base above,
+retaining 0.13.1. Controlled before probes reproduced Review's false successes
+for malformed supplied PR head/base/repository containers and combined-status
+repository URL disagreement. Those cases now return unknown. Regressions also
+cover contradictory repository names/URLs/owner and commit URLs, malformed
+SHAs, missing required combined identity and valid absent optional details.
+PR96-shaped success/success/skipped, matching associations, pagination and
+conclusion rules remain covered. No controller guard or protected writer changed.
+
+`npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check` passed:
+**324 runtime/package tests and 62 dashboard tests**, no failures or skips.
+Package tests exercise a disposable installed tarball; this is source regression
+coverage, not external installed acceptance. The worker report, before/after
+logs, final build/check logs and source/writer hash comparisons are retained
+privately under `/output/` in the job artifacts, outside source/npm.
+
+The lead reports that b5cb's installed provider read actual PR96 as success
+(two successful checks, one skipped), with 11 controlled provider cases and six
+isolated browser cases passing. All 52 tracked dashboard files (including build
+configuration and lockfile), CLI, server, queue and delivery projection code
+match that checkpoint byte for byte; SHA-256 comparisons are retained. This
+permits carrying forward the reported isolated browser presentation evidence
+for unchanged normalized payloads only. The provider changed, so its prior
+installed/live proof does not qualify this revision. The revised provider passed
+the 11-test focused suite and an 11-case controlled probe again from a disposable
+installed 0.13.1 tarball; all 104 installed files match source/build output.
+These synthetic responses are not a rerun of the lead's live provider proof.
+Final installed actual-GitHub and shared
+CLI/API/dashboard readback acceptance remain with the lead. No new live-provider
+or rendered-browser run is claimed inside this job.
+
+Native Factory owns the next independent Review of the combined diff; this
+worker has not started a reviewer or inferred acceptance. The accepted Inbox/
+list/Kanban/filter/detail layout and all actions remain; #37 stays open for its
+remaining parity work. No role profiles, workflow changes or new write operation
+are included. External acceptance, deployment and model quality are not claimed.
+
+### Row API self-identity revision (native Review R1)
+
+This revision retains reviewed checkpoint
+`b8e417906956679d1fe102a922f4a18ef66b6c41` (tree
+`c2c940108102fa49033ed10538be9f519c8f1f21`, review
+`run_b0af7122b2c279427e5e0dd3`) on the original `e813eec` admission/delivery
+base and version 0.13.1. The earlier evidence above remains about its recorded
+candidate. The lead additionally reports b8e417's installed actual PR96 readback
+as success (two successful checks, one skipped), 14 controlled provider cases
+and six browser viewport/theme cases passing. These are retained operator
+observations, not this worker's fresh qualification or external acceptance.
+
+Before probes against b8e417 reproduced false success for both check-run and
+individual commit-status rows with another repository's API self URL. The same
+regressions now require unknown status/scope, `passed: false` and
+`non_blocking: false`. Coverage includes matching/absent self URLs, malformed
+endpoints, conflicting row IDs, exact-SHA status URLs, external CI links and
+mixed valid/invalid rows. The full normalized identity chain was inspected:
+requested immutable target, run head and PR associations, combined repository/
+commit envelope, row self identity and shared receipt projection. Existing
+container, before/after PR, pagination and conclusion guards remain unchanged;
+app/creator identities, context labels and external CI links are not treated
+as the target repository. No new provider abstraction, request or write exists.
+
+Endpoint interpretation follows GitHub's [check-run response contract](https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference)
+and [commit-status response contract](https://docs.github.com/en/rest/commits/statuses#get-the-combined-status-for-a-specific-reference).
+Check self URLs identify `check-runs/{id}`; statuses accept `statuses/{id}` or
+the documented legacy `statuses/{sha}` form. Numeric resource IDs agree with
+supplied row IDs; a SHA suffix agrees with the delivered commit instead.
+
+`npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check` passed
+with **328 runtime/package and 62 dashboard tests**, no failures or skips.
+The final 15-test provider suite fails its two new negative tests against the
+retained reviewed provider, then passes from a disposable installed 0.13.1
+tarball. All 104 installed files match source/build output. These are controlled
+responses, not live GitHub qualification. Before/after logs and hash manifests
+are retained under `/output/r1-*` with the worker report, outside source/npm.
+
+Exact SHA-256 comparisons against b8e417 confirm all 52 dashboard files and
+CLI/server/queue/delivery projection sources unchanged. Prior browser evidence
+can carry forward only for the unchanged presentation of normalized payloads;
+no browser run was performed here. Protected writers, acceptance guarantees and
+the existing explicit 0.13.1 compatibility entry are unchanged. The changed
+provider requires fresh lead installed/live qualification and final acceptance;
+native Factory owns independent Review of the combined diff. #37 remains open.
 
 ## Remaining limits
 

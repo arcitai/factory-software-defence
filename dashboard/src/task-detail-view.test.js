@@ -3,6 +3,7 @@ import test from 'node:test';
 import { createElement, act } from 'react';
 import { JSDOM } from 'jsdom';
 import { createServer } from 'vite';
+import { githubDeliveryProvider } from '../../factory/providers/github-delivery.mjs';
 
 test('failed review offers explicit revision, preserves denied/stale feedback, and labels recorded versus unknown history', async t => {
   const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost/'}), prior=new Map();
@@ -141,7 +142,7 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   assert.match(document.body.textContent,/#29 · open · draft/);
   assert.match(document.body.textContent,/Accepted basee{40}/);
   assert.match(document.body.textContent,/PR basea{40}/);
-  assert.match(document.body.textContent,/Pending/);
+  assert.match(document.body.textContent,/Unknown · recorded queued/);
   assert(button('Refresh PR readback and checks'));
   assert.match(document.body.textContent,/Integration and deployment are separate/);
   job.delivery_status={...job.delivery_status,state:'conflict'};
@@ -162,21 +163,44 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   job.delivery_status.pull_request.merged=true;
   await render();
   assert.match(document.body.textContent,/#29 · closed · merged/);
-  job.delivery_status.checks={state:'success',check_runs:[
-    {name:'Executed check',kind:'check_run',status:'completed',conclusion:'success'},
-    {name:'Skipped publish job',kind:'check_run',status:'completed',conclusion:'skipped'},
-    {name:'Neutral cleanup job',kind:'check_run',status:'completed',conclusion:'neutral'},
-  ],commit_statuses:[]};
+  // Exercise the provider's shared JSON directly; these are controlled payloads, not live GitHub proof.
+  const normalizedChecks = async (conclusions, changes = {}) => githubDeliveryProvider({request: async (_method, path) => path.includes('/check-runs?')
+    ? {total_count:conclusions.length,check_runs:conclusions.map((conclusion,index)=>({id:index+1,name:`Check ${index}`,head_sha:'c'.repeat(40),status:'completed',conclusion,pull_requests:[],...changes}))}
+    : {sha:'c'.repeat(40),repository:{full_name:'example/project'},total_count:0,statuses:[]}
+  }).readChecks('https://github.com/example/project','c'.repeat(40),29);
+  job.delivery_status.checks=await normalizedChecks(['success','skipped','neutral']);
   await render();
-  assert.match(document.body.textContent,/Passed · success/);
+  assert.match(document.body.textContent,/Delivered-commit checksPassed/);
+  assert.doesNotMatch(document.body.textContent,/Triggered PR checks/);
+  assert.match(document.body.textContent,/Passed · success · commit-scoped/);
   assert.match(document.body.textContent,/Skipped · skipped/);
   assert.match(document.body.textContent,/Neutral · neutral/);
-  job.delivery_status.checks={state:'non_blocking',check_runs:[
-    {name:'Skipped publish job',kind:'check_run',status:'completed',conclusion:'skipped'},
-    {name:'Neutral cleanup job',kind:'check_run',status:'completed',conclusion:'neutral'},
-  ],commit_statuses:[]};
+  assert.match(document.body.textContent,/Read from delivered commit c{40}/);
+  job.delivery_status.checks=await normalizedChecks(['skipped','neutral']);
   await render();
   assert.match(document.querySelector('[aria-label="Delivery status"]').textContent,/Non-blocking results/);
+  assert.doesNotMatch(document.querySelector('[aria-label="Delivery status"]').textContent,/Passed/);
+  for(const [conclusion,expected] of [['cancelled','Cancelled'],['failure','Failed'],['future_conclusion','Unknown']]) {
+    job.delivery_status.checks=await normalizedChecks([conclusion]);
+    await render();
+    assert.match(document.body.textContent,new RegExp(`Delivered-commit checks${expected}`));
+  }
+  job.delivery_status.checks=await normalizedChecks([null],{status:'queued'});
+  await render();
+  assert.match(document.body.textContent,/Delivered-commit checksPending/);
+  assert.match(document.body.textContent,/Queued · commit-scoped/);
+  job.delivery_status.checks=await normalizedChecks(['success'],{head_sha:'b'.repeat(40)});
+  await render();
+  assert.match(document.body.textContent,/Delivered-commit checksUnknown/);
+  assert.match(document.body.textContent,/Unknown · recorded success/);
+  assert.doesNotMatch(document.querySelector('[aria-label="Delivery status"]').textContent,/Passed/);
+  assert.match(document.body.textContent,/unverified identity/);
+  job.delivery_status.checks={state:'success',check_runs:[{name:'Legacy check',kind:'check_run',status:'completed',conclusion:'success'}],commit_statuses:[]};
+  await render();
+  assert.match(document.body.textContent,/Check identity was not recorded; refresh PR readback/);
+  assert.match(document.body.textContent,/Delivered-commit checksUnknown/);
+  assert.doesNotMatch(document.querySelector('[aria-label="Delivery status"]').textContent,/Passed/);
+  assert(button('Refresh PR readback and checks'),'legacy readback remains recoverable');
 
   job.delivery_status={...job.delivery_status,state:'uncertain',can_publish:true,action_mode:'reconcile',branch:'factory/job_fixture-candidate',source_ref:'release',pull_request:null};
   job.can_remove=false;job.delivery_removal_blocked=true;

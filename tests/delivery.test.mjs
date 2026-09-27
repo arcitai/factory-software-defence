@@ -485,7 +485,7 @@ test('saved delivery intent rechecks workflow evidence after its earlier qualifi
 });
 
 // These are controlled retained-record/provider fixtures, not production or model proof.
-for (const runtimeVersion of ['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1', '0.11.2', '0.12.0', '0.13.0']) {
+for (const runtimeVersion of ['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1', '0.11.2', '0.12.0', '0.13.0', '0.13.1']) {
   test(`retained ${runtimeVersion} evidence is recognized without rewriting its provenance`, async t => {
     const f = testFixture(t, { runtimeVersion }), gh = fakeGitHub(f), manager = service(f, gh.provider);
     const jobBefore = structuredClone(f.queue.get(jobID));
@@ -1274,6 +1274,16 @@ test(`CLI and authenticated dashboard action share the ${runtimeVersion || 'nati
   const port = reservation.address().port;
   await new Promise(resolve => reservation.close(resolve));
   const f = testFixture(t, { port, runtimeVersion }), gh = fakeGitHub(f);
+  const checksProvider = githubDeliveryProvider({ request: async (method, path) => {
+    assert.equal(method, 'GET');
+    assert(path.includes(`/commits/${gh.finalSha}/`));
+    return path.includes('/check-runs?')
+      ? { total_count: 3, check_runs: ['success', 'success', 'skipped'].map((conclusion, index) => ({
+        id: index + 1, name: `job ${index}`, head_sha: gh.finalSha, status: 'completed', conclusion, pull_requests: [],
+      })) }
+      : { sha: gh.finalSha, repository: { full_name: 'example/project' }, total_count: 0, statuses: [] };
+  } });
+  gh.provider.readChecks = checksProvider.readChecks;
   await f.closeQueue();
   const controller = createController(f.state, { execute: async () => ({ outcome: 'complete' }), stop: async () => {}, reconcile: async () => {} }, { deliveryProvider: gh.provider });
   await new Promise(resolve => controller.server.listen(port, '127.0.0.1', resolve));
@@ -1295,10 +1305,22 @@ test(`CLI and authenticated dashboard action share the ${runtimeVersion || 'nati
   const cliReceipt = JSON.parse(cli);
   assert.equal(cliReceipt.state, 'published');
   assert.equal(cliReceipt.pull_request.url, 'https://github.com/example/project/pull/29');
+  gh.state.pull.state = 'closed'; gh.state.pull.merged = true; gh.state.pull.draft = false;
+  const writes = structuredClone(gh.state.writes);
   const dashboard = await fetch(`${origin}/api/v1/jobs/${jobID}/publish`, { method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Factory-Session': status.csrf_token }, body: JSON.stringify({ run_id: f.run_id }) });
   assert.equal(dashboard.status, 200);
-  assert.equal((await dashboard.json()).pull_request.head_sha, gh.finalSha);
+  const dashboardReceipt = await dashboard.json();
+  assert.equal(dashboardReceipt.pull_request.head_sha, gh.finalSha);
+  assert.equal(dashboardReceipt.pull_request.merged, true);
+  assert.equal(cliReceipt.checks.state, 'success');
+  assert.deepEqual(cliReceipt.checks.check_runs.map(row => row.passed), [true, true, false]);
+  assert.deepEqual(dashboardReceipt.checks, cliReceipt.checks);
+  const { stdout: refreshedCLI } = await execFileAsync(process.execPath, ['bin/software-defence-factory.mjs', 'status', '--state', f.state], {
+    encoding: 'utf8', env: { ...process.env, SDF_AUTO_UPDATE: '0', SDF_BOOTSTRAPPED: '1' },
+  });
+  assert.deepEqual(JSON.parse(refreshedCLI).jobs[0].delivery_status.checks, dashboardReceipt.checks);
+  assert.deepEqual(gh.state.writes, writes, 'merged-PR readback adds no provider writes');
   assert.equal(gh.state.writes.pulls, 1);
 });
 }
@@ -1372,9 +1394,9 @@ test('GitHub adapter keeps unknown and pending PR checks visible without treatin
   const responses = [];
   const adapter = githubDeliveryProvider({ request: async (method, path) => {
     responses.push({ method, path });
-    if (path.endsWith('/check-runs?per_page=100')) return { total_count: 1, check_runs: [{ name: 'build', status: 'queued', conclusion: null,
+    if (path.endsWith('/check-runs?per_page=100')) return { total_count: 1, check_runs: [{ head_sha: 'a'.repeat(40), name: 'build', status: 'queued', conclusion: null,
       pull_requests: [{ number: 29 }], html_url: 'https://github.com/example/project/actions/runs/1' }] };
-    return { state: 'pending', total_count: 0, statuses: [] };
+    return { sha: 'a'.repeat(40), repository: { full_name: 'example/project' }, state: 'pending', total_count: 0, statuses: [] };
   } });
   const checks = await adapter.readChecks('https://github.com/example/project', 'a'.repeat(40), 29);
   assert.equal(checks.state, 'pending');
@@ -1382,14 +1404,14 @@ test('GitHub adapter keeps unknown and pending PR checks visible without treatin
   assert.equal(responses.length, 2);
 
   const unrelated = githubDeliveryProvider({ request: async (_method, path) => path.endsWith('/check-runs?per_page=100')
-    ? { total_count: 1, check_runs: [{ name: 'push-only', status: 'completed', conclusion: 'success', pull_requests: [{ number: 28 }] }] }
-    : { state: 'success', total_count: 1, statuses: [{ context: 'legacy status', state: 'success' }] } });
+    ? { total_count: 1, check_runs: [{ head_sha: 'a'.repeat(40), name: 'push-only', status: 'completed', conclusion: 'success', pull_requests: [{ number: 28 }] }] }
+    : { sha: 'a'.repeat(40), repository: { full_name: 'example/project' }, state: 'success', total_count: 1, statuses: [{ context: 'legacy status', state: 'success' }] } });
   assert.equal((await unrelated.readChecks('https://github.com/example/project', 'a'.repeat(40), 29)).state, 'unknown',
     'a successful run for another PR does not qualify as a PR check');
   const nonBlocking = githubDeliveryProvider({ request: async (_method, path) => path.includes('/check-runs?')
-    ? { total_count: 3, check_runs: ['success', 'skipped', 'neutral'].map((conclusion, index) => ({ name: `job ${index}`, status: 'completed', conclusion,
+    ? { total_count: 3, check_runs: ['success', 'skipped', 'neutral'].map((conclusion, index) => ({ head_sha: 'a'.repeat(40), name: `job ${index}`, status: 'completed', conclusion,
       pull_requests: [{ number: 29 }] })) }
-    : { state: 'success', total_count: 0, statuses: [] } });
+    : { sha: 'a'.repeat(40), repository: { full_name: 'example/project' }, state: 'success', total_count: 0, statuses: [] } });
   const accepted = await nonBlocking.readChecks('https://github.com/example/project', 'a'.repeat(40), 29);
   assert.equal(accepted.state, 'success', 'successful, skipped and neutral conclusions are non-blocking for the aggregate');
   assert.equal(accepted.pagination_complete, true);
@@ -1398,37 +1420,37 @@ test('GitHub adapter keeps unknown and pending PR checks visible without treatin
   assert.deepEqual(accepted.check_runs.map(item => item.passed), [true, false, false], 'skipped and neutral remain distinct from executed passing checks');
   assert.deepEqual(accepted.check_runs.map(item => item.non_blocking), [true, true, true]);
   const skippedOnly = githubDeliveryProvider({ request: async (_method, path) => path.includes('/check-runs?')
-    ? { total_count: 2, check_runs: ['skipped', 'neutral'].map((conclusion, index) => ({ name: `non-run ${index}`, status: 'completed', conclusion,
+    ? { total_count: 2, check_runs: ['skipped', 'neutral'].map((conclusion, index) => ({ head_sha: 'a'.repeat(40), name: `non-run ${index}`, status: 'completed', conclusion,
       pull_requests: [{ number: 29 }] })) }
-    : { state: 'success', total_count: 0, statuses: [] } });
+    : { sha: 'a'.repeat(40), repository: { full_name: 'example/project' }, state: 'success', total_count: 0, statuses: [] } });
   const skippedOnlyResult = await skippedOnly.readChecks('https://github.com/example/project', 'a'.repeat(40), 29);
   assert.equal(skippedOnlyResult.state, 'non_blocking', 'skipped/neutral-only results are not advertised as executed passing checks');
   assert.deepEqual(skippedOnlyResult.check_runs.map(item => item.passed), [false, false]);
   for (const conclusion of ['failure', 'action_required', 'timed_out', 'cancelled']) {
     const failed = githubDeliveryProvider({ request: async (_method, path) => path.includes('/check-runs?')
-      ? { total_count: 1, check_runs: [{ name: 'check', status: 'completed', conclusion, pull_requests: [{ number: 29 }] }] }
-      : { state: 'success', total_count: 0, statuses: [] } });
-    assert.equal((await failed.readChecks('https://github.com/example/project', 'a'.repeat(40), 29)).state, 'failure', `${conclusion} remains a failure`);
+      ? { total_count: 1, check_runs: [{ head_sha: 'a'.repeat(40), name: 'check', status: 'completed', conclusion, pull_requests: [{ number: 29 }] }] }
+      : { sha: 'a'.repeat(40), repository: { full_name: 'example/project' }, state: 'success', total_count: 0, statuses: [] } });
+    assert.equal((await failed.readChecks('https://github.com/example/project', 'a'.repeat(40), 29)).state, conclusion === 'cancelled' ? 'cancelled' : 'failure', `${conclusion} remains unsuccessful`);
   }
   const unrecognized = githubDeliveryProvider({ request: async (_method, path) => path.includes('/check-runs?')
-    ? { total_count: 1, check_runs: [{ name: 'check', status: 'completed', conclusion: 'startup_failure', pull_requests: [{ number: 29 }] }] }
-    : { state: 'success', total_count: 0, statuses: [] } });
+    ? { total_count: 1, check_runs: [{ head_sha: 'a'.repeat(40), name: 'check', status: 'completed', conclusion: 'startup_failure', pull_requests: [{ number: 29 }] }] }
+    : { sha: 'a'.repeat(40), repository: { full_name: 'example/project' }, state: 'success', total_count: 0, statuses: [] } });
   const unrecognizedResult = await unrecognized.readChecks('https://github.com/example/project', 'a'.repeat(40), 29);
   assert.equal(unrecognizedResult.state, 'unknown');
   assert.equal(unrecognizedResult.check_runs[0].conclusion, 'startup_failure');
   const incomplete = githubDeliveryProvider({ request: async (_method, path) => path.endsWith('/check-runs?per_page=100')
-    ? { total_count: 101, check_runs: [{ name: 'build', status: 'completed', conclusion: 'success', pull_requests: [{ number: 29 }] }] }
-    : { state: 'success', total_count: 0, statuses: [] } });
+    ? { total_count: 101, check_runs: [{ head_sha: 'a'.repeat(40), name: 'build', status: 'completed', conclusion: 'success', pull_requests: [{ number: 29 }] }] }
+    : { sha: 'a'.repeat(40), repository: { full_name: 'example/project' }, state: 'success', total_count: 0, statuses: [] } });
   assert.equal((await incomplete.readChecks('https://github.com/example/project', 'a'.repeat(40), 29)).state, 'unknown',
     'truncated check results are not presented as complete success');
   const incompletePending = githubDeliveryProvider({ request: async (_method, path) => path.includes('/check-runs?')
-    ? { total_count: 101, check_runs: [{ name: 'build', status: 'queued', pull_requests: [{ number: 29 }] }] }
-    : { state: 'success', total_count: 0, statuses: [] } });
+    ? { total_count: 101, check_runs: [{ head_sha: 'a'.repeat(40), name: 'build', status: 'queued', pull_requests: [{ number: 29 }] }] }
+    : { sha: 'a'.repeat(40), repository: { full_name: 'example/project' }, state: 'success', total_count: 0, statuses: [] } });
   assert.equal((await incompletePending.readChecks('https://github.com/example/project', 'a'.repeat(40), 29)).state, 'unknown',
     'pending rows do not hide incomplete pagination');
   const missingPaginationCount = githubDeliveryProvider({ request: async (_method, path) => path.includes('/check-runs?')
-    ? { check_runs: [{ name: 'build', status: 'completed', conclusion: 'success', pull_requests: [{ number: 29 }] }] }
-    : { state: 'success', total_count: 0, statuses: [] } });
+    ? { check_runs: [{ head_sha: 'a'.repeat(40), name: 'build', status: 'completed', conclusion: 'success', pull_requests: [{ number: 29 }] }] }
+    : { sha: 'a'.repeat(40), repository: { full_name: 'example/project' }, state: 'success', total_count: 0, statuses: [] } });
   const missingCount = await missingPaginationCount.readChecks('https://github.com/example/project', 'a'.repeat(40), 29);
   assert.equal(missingCount.state, 'unknown', 'absent pagination totals cannot prove a complete result');
   assert.equal(missingCount.pagination_complete, false);

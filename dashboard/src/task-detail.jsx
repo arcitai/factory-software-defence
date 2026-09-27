@@ -615,8 +615,14 @@ function TaskActions({ job, result, deliveryActionError = "", revisionActionErro
 function DeliveryDetails({ delivery }) {
   const pull = delivery.pull_request;
   const checks = delivery.checks;
+  const identifiedChecks = checks?.target?.sha === pull?.head_sha
+    && /^[a-f0-9]{40}$/.test(checks?.target?.sha || "")
+    && checks?.target?.repository === delivery.repository
+    && checks?.target?.pull_request_number === pull?.number;
   const status = value => ({success:"Passed",failure:"Failed",pending:"Pending",queued:"Queued",in_progress:"In progress",unknown:"Unknown",non_blocking:"Non-blocking results",skipped:"Skipped",neutral:"Neutral",action_required:"Action required",timed_out:"Timed out",cancelled:"Cancelled"}[value] || "Unknown");
   const checkResult = item => {
+    if (!identifiedChecks || !["commit", "pull_request"].includes(item.scope))
+      return `Unknown · recorded ${item.conclusion || item.status || "unknown"}`;
     if (item.kind !== "check_run" || item.status !== "completed") return status(item.status || "unknown");
     const conclusion = typeof item.conclusion === "string" ? item.conclusion : "unknown";
     return `${status(conclusion)} · ${conclusion}`;
@@ -654,16 +660,19 @@ function DeliveryDetails({ delivery }) {
         <div><dt className="text-muted-foreground">PR base</dt><dd className="break-all font-mono">{pull.base_sha}</dd></div>
         <div><dt className="text-muted-foreground">PR head / tree</dt><dd className="break-all font-mono">{pull.head_sha} / {pull.tree}</dd></div>
         {delivery.candidate_sha && <div><dt className="text-muted-foreground">Accepted candidate</dt><dd className="break-all font-mono">{delivery.candidate_sha}</dd></div>}
-        <div><dt className="text-muted-foreground">Triggered PR checks</dt><dd>{status(checks?.state || "unknown")}</dd></div>
+        <div><dt className="text-muted-foreground">Delivered-commit checks</dt><dd>{status(identifiedChecks ? checks?.state || "unknown" : "unknown")}</dd></div>
       </dl>}
-      {checks && <ul className="space-y-1 text-xs" aria-label="Actual PR check results">
+      {checks && <p className="text-xs text-muted-foreground">{identifiedChecks
+        ? <>Read from delivered commit <span className="break-all font-mono">{checks.target.sha}</span>. Commit-scoped results may have no PR association.</>
+        : "Check identity was not recorded; refresh PR readback to verify the delivered commit."}</p>}
+      {checks && <ul className="space-y-1 text-xs" aria-label="Delivered-commit check results">
         {[...(checks.check_runs || []), ...(checks.commit_statuses || [])].map((item, index) => <li key={`${item.kind || item.name}-${index}`} className="flex flex-wrap justify-between gap-2">
           {item.url && /^https:\/\//.test(item.url) ? <a className="underline" href={item.url} target="_blank" rel="noreferrer">{item.name}</a> : <span>{item.name}</span>}
-          <span>{checkResult(item)}</span>
+          <span>{checkResult(item)}{identifiedChecks && item.scope === "commit" ? " · commit-scoped" : ""}</span>
         </li>)}
-        {checks.state === "unknown" && <li className="text-muted-foreground">No successful PR check result is recorded.</li>}
+        {checks.state === "unknown" && <li className="text-muted-foreground">{checks.reason || "Check readback is incomplete or unverified; individual results do not establish overall success."}</li>}
       </ul>}
-      <p className="text-xs text-muted-foreground">Delivery records a PR only. Integration and deployment are separate.</p>
+      <p className="text-xs text-muted-foreground">Observed checks do not establish required-check completion, branch protection or mergeability. Integration and deployment are separate.</p>
     </section>
   );
 }
