@@ -2,13 +2,38 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { hostname, tmpdir } from 'node:os';
 import { createController } from '../factory/server.mjs';
-import { configAt } from '../factory/lib.mjs';
-import { withRequestedModel, effectiveExecutionConfig, executionProfile, attemptPresentation } from '../factory/execution-profile.mjs';
+import { configAt, digest } from '../factory/lib.mjs';
+import { withRequestedModel, effectiveExecutionConfig, executionProfile, attemptPresentation, isSupportedExecutionProfile } from '../factory/execution-profile.mjs';
+import { VERSION } from '../factory/updates.mjs';
 import { execFileSync } from 'node:child_process';
 
 const image='sha256:'+'a'.repeat(64);
+test('native profiles record the actual runtime while protected compatibility is an explicit v1 contract', () => {
+  const config = { harness: 'codex', command: ['codex', 'exec', '-'], model: 'requested', image };
+  for (const phase of ['build', 'verify', 'review', 'handoff']) {
+    const deterministic = ['verify', 'handoff'].includes(phase);
+    const profile = executionProfile(config, phase);
+    assert.deepEqual(profile, {
+      version: 1, phase, executor: deterministic ? 'deterministic' : 'codex',
+      requestedModel: deterministic ? null : 'requested',
+      modelSelection: deterministic ? 'not_applicable' : 'explicit',
+      runtimeVersion: VERSION, image: phase === 'handoff' ? null : image,
+      policyHash: digest(JSON.stringify(config)), hostName: hostname(),
+    });
+    assert.equal(isSupportedExecutionProfile(profile), true, 'native writer must be explicitly qualified');
+  }
+  for (const runtimeVersion of ['0.8.0', '0.9.0', '0.9.1'])
+    assert.equal(isSupportedExecutionProfile({ version: 1, runtimeVersion }), true);
+  for (const runtimeVersion of ['0.7.0', '0.8.1', '0.9.2', '1.0.0', '0.9.1-dev', 'v0.8.0', '', null, undefined])
+    assert.equal(isSupportedExecutionProfile({ version: 1, runtimeVersion }), false);
+  for (const version of [undefined, null, 0, 2, '1'])
+    assert.equal(isSupportedExecutionProfile({ version, runtimeVersion: '0.9.1' }), false);
+  assert.equal(isSupportedExecutionProfile(null), false);
+  assert.equal(isSupportedExecutionProfile(undefined), false);
+});
+
 test('model overrides and public phase facts are isolated from credentials and mutable config',()=>{
   const config={agent:'codex',command:['codex','exec','-'],model:'old',image,secret:'PRIVATE_SENTINEL'};
   const effective=withRequestedModel(config,'requested');

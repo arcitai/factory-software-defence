@@ -126,6 +126,16 @@ proof of the model/provider that served inference. Changing the installation's
 profile affects subsequent attempts, never the recorded history. A changed
 check/review policy still invalidates acceptance of earlier proof.
 
+Protected delivery evidence uses an explicit [runtime compatibility
+contract](npm.md#protected-evidence-compatibility): version-1 profiles from
+0.8.0, 0.9.0 and 0.9.1 can be interpreted by 0.9.1 while every existing trust
+and current-policy guard still applies. An upgrade alone does not require
+re-approval. Preserve original runtime versions, hashes and phase records;
+do not normalize old configuration or manufacture provenance to unblock a job.
+Unknown formats/versions remain blocked. Published PR receipt reconciliation
+stays read-only, and compatibility does not relax the original-base/remote-target
+guard or add checkpoint continuation.
+
 Attempts made before this metadata existed display **Not recorded
 (legacy/unknown)**. Do not copy today's profile onto them. For an investigation,
 compare the retained per-attempt measurement, logs, candidate/check/review hashes

@@ -1029,3 +1029,59 @@ Native Verify and independent Review must cover the **entire aggregate** from
 `380f74983d278f4a517d26a6a4bad4e3dbcb6809`, including `4b9e8a3`, `7fc3395`,
 `7d5fb6a` and this repair. Both timed-out Build histories remain failed;
 this manual continuation does not deliver #42 or claim acceptance/publication.
+
+## #84 protected evidence compatibility — 27 September 2026
+
+This bounded 0.9.1 patch starts at admitted main
+`cdaadef1baa0992059032d80e356e0f2600654f3`. Git history inspection compared the
+0.8.0 release at `380f74983d278f4a517d26a6a4bad4e3dbcb6809` with that 0.9.0
+main: `execution-profile.mjs` emits the same version-1 phase, executor,
+requested-model/selection, runtime, image, policy-hash and host fields.
+`executor.mjs` retains the same candidate/base/tree, synthetic marker,
+check/review policy and run links, and acceptance/patch bindings. 0.9.0 adds
+optional browser facts to the profile and browser evidence to checks, enforced
+by its handoff and delivery validators. Browser-disabled core evidence is
+compatible; enabled browser policy still requires its complete current proof.
+
+The new controlled 0.8.0 retained-record fixture failed before the repair in
+both shared status (the reported protected-provenance error) and the actual
+publication validator. The corresponding 0.9.0 fixture passed under the
+pre-patch 0.9.0 runtime. These fixtures follow the inspected historical writer
+shape independently of the current profile generator; they are not private
+production records. The failure is the repeated current-package-version gate,
+not web-default policy normalization. No policy normalization was changed.
+
+One exact version-1 compatibility predicate now recognizes only 0.8.0, 0.9.0
+and 0.9.1 in all three delivery gates. Existing protected-file/run-record
+equality, role/model/phase success, source/candidate/patch, effective-policy,
+checks/review/approval, synthetic refusal and browser validations remain.
+Tests exercise derived capability, direct publication validation and explicit
+fake-provider publication for retained evidence, checking byte-for-byte
+preservation of profiles, hashes, acceptance and patch. Existing PR receipt
+refresh writes nothing to the fake provider. The unchanged remote-target guard
+still refuses an advanced target before any provider write.
+
+Negative cases cover unknown runtime/schema, absent provenance, inconsistent
+frozen/recorded profiles, wrong or unsuccessful phases, incomplete legacy
+acceptance, broken phase links, changed check/browser policy and synthetic or
+unknown evidence. Current native browser cases require the tool, story/action
+trace, job/attempt/candidate/tree/policy identity and protected screenshot
+artifacts. Every refusal is exercised in status, direct validation and publish,
+with all fake-provider write counters zero. CLI status and publication and the
+authenticated dashboard API exercise the same capability for native, 0.8.0 and
+0.9.0 evidence; this is API/CLI fixture evidence, not browser inspection.
+
+On Node 22.23.3 / npm 10.9.9, `npm ci --ignore-scripts` and
+`npm run build:dashboard` passed (exit 0). `npm run check` passed (exit 0):
+259 runtime/package tests, including local tarball installation tests, and
+54 dashboard tests. `git diff --check` passed. Private logs are retained under
+`/output` as `compatibility-before.log`, `compatibility-after.log`,
+`npm-ci.log`, `build-dashboard.log` and `npm-check.log`.
+Native Verify and independent Review remain pending. After Review, the lead
+owns read-only qualification of the installed patch against actual retained
+production evidence. This Build did not access private host data, call a live
+provider, run Docker or browser qualification, alter production configuration,
+commit, push or release. The reported job already shipped via PR #81; this
+compatibility change neither republishes it nor resolves the separate #42
+checkpoint/original-base versus current-target limit. See the compatibility
+and removal contract in [npm guidance](npm.md#protected-evidence-compatibility).
