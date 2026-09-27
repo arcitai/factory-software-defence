@@ -1,3 +1,4 @@
+import { installedRoleRecord, hasRoleOverrides } from './role-definition.mjs';
 import { readinessMapping } from './issue-lifecycle.mjs';
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { resolve, dirname, join, isAbsolute } from 'node:path';
@@ -79,6 +80,9 @@ export function configAt(state) {
   if (typeof config.check !== 'string' || !config.scope || !['project','service','environment','owner'].every(k=>typeof config.scope[k]==='string'&&config.scope[k].trim())) throw new Error('Missing check or installation scope');
   readinessMapping(config.issueReadinessLabels);
   validateWebVerification(config.webVerification);
+  if (config.roleDefinition !== undefined || config.resolvedRoleProfiles !== undefined) throw new Error('Role profiles belong in the controller-managed definition; use definition apply');
+  const definition = installedRoleRecord(state).definition;
+  if (hasRoleOverrides(definition)) config.roleDefinition = definition;
   return config;
 }
 export async function api(state, path, body, method, { timeoutMs = API_TIMEOUT_MS } = {}) {

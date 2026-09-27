@@ -13,7 +13,7 @@ Use `status --state PATH` and the private supervisor.log to identify the active 
 
 Do not remove active.json merely to unblock a job. Establish that its PID, process group and labelled containers are stopped. PID reuse or missing process identity requires operator investigation. Preserve logs and work before cleanup.
 
-For backup, stop the installation and copy the complete private state directory, including SQLite files, factory.json and credentials, to an authorized private destination. Restore only while stopped. Update the repository path if it moved, verify ownership/permissions and the pinned image, then inspect state before any retry. Keep previous backups; no automatic destructive schema migration is provided.
+For backup, stop the installation and copy the complete private state directory, including SQLite files, factory.json, role-definition.json when present, and credentials, to an authorized private destination. Restore only while stopped. Update the repository path if it moved, verify ownership/permissions and the pinned image, then inspect state before any retry. Keep previous backups; no automatic destructive schema migration is provided.
 
 Earlier experimental engines use a different journal. Start a new state directory for the native 0.3 runtime; preserve old journals separately. There is no automatic import of their jobs or approval state.
 
@@ -135,6 +135,16 @@ do not normalize old configuration or manufacture provenance to unblock a job.
 Unknown formats/versions remain blocked. Published PR receipt reconciliation
 stays read-only, and compatibility does not relax the original-base/remote-target
 guard or add checkpoint continuation.
+
+In 0.14.0, role overrides use v2 protected evidence and one frozen common policy.
+Use [definition rollback](definition.md) through an idle controller to restore the
+previous portable selection. It preserves all attempts and changes the definition
+revision; it does not change separate private settings or credentials. Changed
+roles invalidate checkpoint/new-publication evidence until the exact prior policy
+is restored or a fresh complete cycle succeeds. Task-wide model overrides are
+refused when role overrides are active; an old task with such a model needs a
+replacement admission without it. Incomplete definition temporary files are ignored
+on restart; never splice historical execution evidence into a new profile.
 
 Attempts made before this metadata existed display **Not recorded
 (legacy/unknown)**. Do not copy today's profile onto them. For an investigation,

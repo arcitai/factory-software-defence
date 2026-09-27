@@ -49,15 +49,13 @@ explicit [capability matrix](docs/interfaces.md):
    operator boundary, including behavior when a project controller is stopped.
 4. Source and delivery controls from #28/#29 in both interfaces.
 
-The accepted **0.13.1** slice fixes truthful delivered-commit check readback:
-exact SHA and provider identity, optional empty PR associations, conservative
-aggregates and shared CLI/API/dashboard provenance. Source checks are recorded
-in [proof](docs/proof.md). The reviewed-checkpoint revision rejects malformed
-identity containers, contradictory combined-status repository identity and
-malformed/contradictory row API self URLs;
-refreshed native independent Review and lead installed/live acceptance remain
-pending. Unchanged UI evidence is carried forward only by exact source hash
-comparison. **#37 stays open** for remaining parity work.
+Completed: **0.13.1** delivered-commit check readback shipped in
+[PR #97](https://github.com/arcitai/software-and-defence-factory/pull/97).
+[The issue's delivery record](https://github.com/arcitai/software-and-defence-factory/issues/37#issuecomment-5858449096)
+confirms native independent Review, 328 runtime/package and 62 dashboard tests,
+protected Node 22/24 CI, exact installed package, 16 controlled provider cases,
+actual PR96 readback, six browser cases and preserved-state adoption on both
+hosts. Those operator gates are complete; **#37 stays open** for other parity work.
 
 Current gaps are tracked work, not shipped capabilities. Do not hide unsupported
 operations behind decorative buttons or introduce another scheduler for the GUI.
@@ -116,7 +114,7 @@ and the [self-development recipe](docs/development.md) before submitting work.
 - [ ] [#50 — Defence roles, skills and evidence](https://github.com/arcitai/software-and-defence-factory/issues/50), then the bounded case in #7.
 - [ ] [#51 — scorers, benchmarks and improvement analytics](https://github.com/arcitai/software-and-defence-factory/issues/51). Recorded token coverage is not a quality score.
 - [ ] [#52 — native intake and GitHub identity](https://github.com/arcitai/software-and-defence-factory/issues/52). Repository/credential boundaries and persistent intake scope; #58 delivers the first provider bridge.
-- [ ] [#53 — versioned definitions and role profiles](https://github.com/arcitai/software-and-defence-factory/issues/53). Current roles share one installation profile; schedules belong to the selected harness.
+- [ ] [#53 — versioned definitions and role profiles](https://github.com/arcitai/software-and-defence-factory/issues/53). **0.14.0 first role-profile slice implemented**: shared portable parser, role harness/model selection, common frozen policy, CLI/API/dashboard preview/apply/rollback. Native Review's Codex model-option and effort-only prompt-boundary findings are repaired with adoption/execution regressions. [Proof](docs/proof.md) retains the operator's c5 package/Docker/browser evidence and 432a model-parser Review evidence; independent Review and affected qualification rerun on the corrected candidate remain pending. Broader skills/resources/access, project/flow/automation definitions and readiness attestation stay open. #69 owns model benchmarks, #51 measurement and #70 improvement. Schedules remain harness-owned.
 - [ ] [#54 — scoped MCP over the shared API](https://github.com/arcitai/software-and-defence-factory/issues/54). One controller and authorization policy.
 
 These extend the #37 parity track. Hosting (#39), observability (#32), quality

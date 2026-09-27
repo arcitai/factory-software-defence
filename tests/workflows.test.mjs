@@ -19,7 +19,7 @@ test('installed CLI, controller and queue share the same phase/skill contract fo
   await new Promise(resolve=>controller.server.listen(0,'127.0.0.1',resolve));t.after(()=>controller.close());
   const origin=`http://127.0.0.1:${controller.server.address().port}`;
   const api=await (await fetch(origin+'/api/v1/definitions')).json();
-  assert.deepEqual(api,cli);assert.deepEqual(api,workflowDefinitions(config));
+  assert.deepEqual(api,cli);const { role_definition, ...catalog } = api; assert.deepEqual(catalog,workflowDefinitions(config)); assert.equal(role_definition.definition.version, 1);
   for(const [name,steps] of Object.entries(api.workflows)) assert.deepEqual(steps.map(step=>step.name),WORKFLOWS[name]);
   assert.equal(api.skills.length,6);assert.equal(api.operator_skills.length,1);
   assert.equal(api.configuration.harness,'pi');assert.equal(api.agents.length,3);assert(api.agents.every(role=>role.harness==='pi'));

@@ -283,6 +283,106 @@ the existing explicit 0.13.1 compatibility entry are unchanged. The changed
 provider requires fresh lead installed/live qualification and final acceptance;
 native Factory owns independent Review of the combined diff. #37 remains open.
 
+## Completed 0.13.1 delivery readback qualification
+
+The earlier pending gates above are superseded by the lead's
+[delivery record](https://github.com/arcitai/software-and-defence-factory/issues/37#issuecomment-5858449096)
+and merged [PR #97](https://github.com/arcitai/software-and-defence-factory/pull/97):
+independent native Review, 328 runtime/package and 62 dashboard tests, protected
+Node 22/24 PR/main CI and npm publication; exact installed package, 16 controlled
+provider cases, actual read-only PR96 check results and six browser cases.
+The lead records 104 public files matching before Mac/Z13 adoption and preservation
+of private config, services/tunnels and 22+18 stored jobs. This job reconciled those
+records; it did not repeat those operator runs. #37 retains its other parity work.
+
+## First role-profile slice (#53), 0.14.0 candidate
+
+The [portable role contract](definition.md) now drives CLI/API/Agents/Definition,
+including inherited private commands, explicit Codex/Pi models, bounded Codex
+effort, preview, revision-guarded idle apply and bounded atomic rollback history.
+Legacy all-inherit configurations keep their exact effective policy. Overrides
+use v2 protected profiles and a single common policy across agent and deterministic
+phases. Source tests exercise schema refusal, legacy/private inheritance, stale/
+busy/concurrent/failed application, restart/rollback, historical evidence and
+actual executor launch argv/provider-specific environment through a controlled
+Docker executable. They do not run a Docker daemon or inference.
+
+Mixed-profile continuation runs the native executor with controlled Docker outputs,
+retains failed attempts through restart, rejects changed policy, resumes after
+explicit rollback and completes deterministic handoff. Delivery tests exercise
+both capability and publication validation and a controlled provider publication.
+The DOM editor test uses the real local API/parser/store for invalid/busy refusal,
+visible diff, explicit apply, immediate readback and rollback. Source boundary
+checks keep Factory-owned output separate from ephemeral harness final capture;
+legacy commands and historical reports are never rewritten.
+
+`npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check` passed:
+**341 runtime/package tests and 63 dashboard tests**, no failures or skips.
+Detailed command results are recorded in `/output/agent-report.md`. No native browser executable or browser tool is available
+in this worker. DOM tests and a successful dashboard build do not qualify layout:
+lead desktop/390/320px inspection in both themes remains pending, along with
+independent Review and exact installed-package CLI/API/mixed-Docker qualification.
+Provider/model access, quality, native discovery and cross-platform readiness
+remain unqualified here. No new credentials, model downloads, schedules, external provider writes,
+commits, deployment or .github changes were performed by this job. #53 remains
+open for broader definitions, skills/resources/access and readiness; #69 owns model
+benchmarks, #51 measurement and #70 improvement.
+
+### Native Review model-option repair
+
+The operator reports that reviewed checkpoint `c5f2f7e` passed 13 isolated
+installed-package Docker/CLI/API checks and six real-browser cases at
+1440/390/320px in light/dark themes, with visual inspection. Those controlled
+runners did not prove inference quality or cover the short-model-option defect;
+they are retained evidence, not acceptance of this corrected candidate.
+
+The repair preserves that checkpoint on the original `156ae65c` source/delivery
+base and keeps version 0.14.0 and all dashboard source unchanged. Before-state
+adoption regressions failed for explicit and null models, and installed
+`codex-cli 0.156.1` reproduced the duplicate-option rejection without inference.
+The shared resolver now normalizes supported short/long model and direct config
+model options, preserves argument/prompt boundaries and rejects ambiguous commands
+before adoption. All-inherit private commands and legacy policy remain unchanged.
+
+Focused adoption/evidence and CLI/API regressions cover both model selections,
+attached forms, config settings, unchanged inheritance and atomic refusal. The
+controlled executor checks the exact corrected Review argv and protected profile
+for explicit/default selections. Twenty native parser probes reach an intentional
+missing-value error after normalization, without opening an inference session.
+`npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check` passed;
+the final suite has **347 runtime/package and 63 dashboard tests**, no failures
+or skips. Logs are retained under `/output/`; independent native Review and the operator's
+affected qualification rerun remain pending. No new browser or real Docker run
+is claimed by this worker, and historical evidence is not rewritten.
+
+### Native Review effort-option repair
+
+The operator reports that independent Review of checkpoint `432a08f` passed
+24 explicit/null model-option adoption/evidence/native-parser cases and found
+one remaining effort-only prompt-boundary defect. That model repair, prior
+evidence, version 0.14.0 and the original `156ae65c` source/delivery base remain
+intact. This continuation changes no dashboard source.
+
+Before repair, nine new adoption/evidence regressions failed. Offline probes
+with installed `codex-cli 0.156.1` reproduced the invalid effort placement after
+`--`. One bounded parser now transforms only selected model/effort options,
+removes conflicting direct effort settings and inserts the selection before the
+prompt boundary. Effort-only changes preserve inherited model argv; all-inherit
+commands remain exact. Ambiguous commands fail CLI/API validation and application
+without changing the private definition or installation.
+
+All 24 corrected native probes match their expected argv and pass parsing to an
+intentional missing-directory stop, with a private empty home and no inference
+credentials. The 60 focused tests also cover frozen evidence, shared policy,
+CLI/API adoption/refusal and the controlled executor launch boundary. This is
+parser/control-flow evidence, not inference or real Docker qualification.
+`npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check` passed:
+**360 runtime/package tests and 63 dashboard tests**, no failures or skips.
+Before/after logs and the reproducible native probe are retained in `/output/`
+and indexed by `/output/agent-report.md`. Independent native Review and the
+operator's affected installed-package qualification rerun remain pending;
+no acceptance, publication or fresh browser qualification is claimed.
+
 ## Remaining limits
 
 - Namespace/account migration and automated GitHub Releases remain separate work

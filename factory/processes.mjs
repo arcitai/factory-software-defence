@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { ROOT, configAt, run, json, save, stopContainers, containers, sleep } from './lib.mjs';
 import { assertRetainedCheckpoint } from './source-admission.mjs';
-import { effectiveExecutionConfig, executionProfile } from './execution-profile.mjs';
+import { effectiveExecutionConfig, executionProfile, isSupportedExecutionProfile } from './execution-profile.mjs';
 import { parseCodexJsonl, emptyUsage, usageFields } from './usage.mjs';
 import { removeScratch } from './scratch.mjs';
 import { selectedInferenceSecrets } from './model-environment.mjs';
@@ -70,7 +70,7 @@ export function retainedCodexUsage(state, job, attempt) {
     const profileBytes = readPrivate(join(artifactFolder, 'execution.json'), 16 * 1024);
     if (!profileBytes) return null;
     const profile = JSON.parse(profileBytes.toString('utf8'));
-    if (profile?.version !== 1 || profile.executor !== 'codex' || profile.phase !== attempt.command
+    if ((profile?.version !== 1 && !(profile?.version === 2 && isSupportedExecutionProfile(profile))) || profile.executor !== 'codex' || profile.phase !== attempt.command
       || !/^[a-f0-9]{64}$/.test(profile.policyHash || '')
       || (attempt.execution && !isDeepStrictEqual(attempt.execution, profile))) return null;
     const bytes = readPrivate(join(runFolder, `${attempt.command}.log`), MAX_LEGACY_LOG_BYTES);

@@ -1,8 +1,9 @@
+import { installedRoleRecord, hasRoleOverrides } from './role-definition.mjs';
 import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { configAt, digest } from './lib.mjs';
-import { effectiveExecutionConfig, isSupportedExecutionProfile } from './execution-profile.mjs';
+import { effectiveExecutionConfig, isSupportedExecutionProfile, assertFrozenExecution } from './execution-profile.mjs';
 import { assertCurrentWebArtifacts, assertCurrentWebEvidence } from './web-verification.mjs';
 
 export function assertCurrentHandoffEvidence(meta, checks, review, policyHash, config = {}, job) {
@@ -35,6 +36,12 @@ export function trustedExecutionProfile(state, job, run, phase, expectedPolicy) 
     for (const path of [join(state, 'jobs'), folder, join(folder, 'artifacts'), join(folder, 'artifacts', run.id)])
       assertPrivateDirectory(path);
     const profile = readPrivateJson(join(folder, 'artifacts', run.id, 'execution.json'));
+    if (profile.version === 1 && hasRoleOverrides(installedRoleRecord(state).definition)) return false;
+    if (profile.version === 2) {
+      const frozen = readPrivateJson(join(folder, run.id, 'execution-config.json'));
+      if (!frozen.roleDefinition || !frozen.resolvedRoleProfiles || digest(JSON.stringify(frozen)) !== expectedPolicy) return false;
+      assertFrozenExecution(frozen, profile, phase);
+    }
     const agentPhase = phase === 'build' || phase === 'review';
     const executorMatches = agentPhase
       ? ['codex', 'pi'].includes(profile.executor)

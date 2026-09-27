@@ -1,3 +1,5 @@
+import { changeDefinition, inspectDefinition } from '../factory/definition-store.mjs';
+import { parseRoleDefinition } from '../factory/role-definition.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
@@ -26,7 +28,7 @@ async function wait(queue, id, predicate) {
 
 // Real local Git objects and controller/API; controlled phase outputs and Docker
 // client probes only. These tests do not claim native/provider/browser proof.
-async function fixture(t, { runtimeVersion, nativePhases = false, webVerification, patchBytes = false, badHandoffPatch, objectFormat = 'sha1' } = {}) {
+async function fixture(t, { roleDefinition, runtimeVersion, nativePhases = false, webVerification, patchBytes = false, badHandoffPatch, objectFormat = 'sha1' } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'sdf-continuation-')), state = join(root, 'state'), repo = join(root, 'repo');
   mkdirSync(state, { mode: 0o700 }); mkdirSync(repo);
   execFileSync('git', ['init', '--quiet', '-b', 'main', `--object-format=${objectFormat}`, repo]);
@@ -44,6 +46,7 @@ async function fixture(t, { runtimeVersion, nativePhases = false, webVerificatio
     ...(webVerification ? { webVerification } : {}),
     ...(nativePhases ? { delivery: { provider: 'github', repository: 'https://github.com/example/app', target: 'main' } } : {}) };
   save(join(state, 'factory.json'), config); writeFileSync(join(state, 'model.env'), 'OPENAI_API_KEY=controlled-inert-key\n', { mode: 0o600 }); writeFileSync(join(state, 'worker.token'), 'fixture-token', { mode: 0o600 });
+  if (roleDefinition) save(join(state, 'role-definition.json'), { version: 1, sequence: 1, definition: parseRoleDefinition(roleDefinition), history: [] });
   const phases = [], observed = [];
   const clientBin = mkdtempSync(join(process.cwd(), '.sdf-controlled-docker-'));
   t.after(() => rmSync(clientBin, { recursive: true, force: true }));
@@ -443,4 +446,31 @@ for (const badHandoffPatch of ['corrupt', 'wrong-tree']) test(`handoff rejects $
   assert.equal(readFileSync(join(oldScratch, 'evidence'), 'utf8'), 'previous attempt');
   assert(existsSync(join(f.folder, 'delivery-input', 'candidate.patch')), 'failed retained bytes remain evidence');
   assert.equal(failed.delivery, undefined, 'handoff creates no provider intent');
+});
+
+
+test('mixed role continuation preserves attempts across restart, rejects changed policy and accepts after explicit rollback', async t => {
+  const definition = { version: 1, roles: { implement: { harness: 'codex', model: 'build-fixture' }, review: { harness: 'pi', model: 'anthropic/review-fixture' } } };
+  const f = await fixture(t, { nativePhases: true, roleDefinition: definition });
+  const first = structuredClone(f.first), input = f.input();
+  assert.deepEqual(first.runs.map(run => run.execution.executor), ['codex', 'deterministic', 'pi']);
+  assert(first.runs.every(run => run.execution.version === 2));
+  await f.restart();
+  assert.equal(f.queue.continuationStatus(f.queue.get(f.id)).head, input.candidate_head);
+  const applied = changeDefinition(f.state, f.queue, { expected_revision: inspectDefinition(f.state).revision,
+    definition: { ...definition, roles: { ...definition.roles, review: { harness: 'codex', model: 'changed-review' } } } });
+  assert.equal((await f.post(input)).status, 409);
+  assert.deepEqual(f.queue.get(f.id).runs, first.runs);
+  changeDefinition(f.state, f.queue, { expected_revision: applied.revision }, true);
+  f.next(); assert.equal((await f.post(f.input())).status, 200);
+  let job = await wait(f.queue, f.id, job => job.state === 'awaiting_approval');
+  assert.equal(new Set(job.runs.filter(run => run.execution).map(run => run.execution.policyHash)).size, 1);
+  assert.deepEqual(f.observed.at(-1).files, ['A.txt', 'B.txt']);
+  await f.queue.action(f.id, 'approve', { run_id: job.runs.at(-1).id });
+  job = await wait(f.queue, f.id, job => job.state === 'succeeded');
+  const manager = new DeliveryService(f.queue, f.state, { config: () => configAt(f.state), provider: { id: 'github', supported: false },
+    sourceAdmission: new SourceAdmissionStore(f.state, f.repo, 'main') });
+  assert.equal(manager.validateEvidence(job, configAt(f.state)).accepted.base, f.base);
+  assert.equal(job.runs.at(-1).execution.executor, 'deterministic');
+  for (const run of first.runs) assert.deepEqual(read(join(f.folder, 'artifacts', run.id, 'execution.json')), run.execution);
 });

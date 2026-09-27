@@ -1,3 +1,4 @@
+import { configAt, harnessOf } from './lib.mjs';
 import { canonicalIssue, executionReservesIssue } from './issue-lifecycle.mjs';
 import { currentReviewedCandidate, currentExecutionPolicy } from './execution-evidence.mjs';
 import { publicContinuation } from './source-admission.mjs';
@@ -61,6 +62,11 @@ export class JobQueue {
     if (this.closing) throw new QueueError('Controller is stopping');
     if (this.maintenance) throw new QueueError('Controller is reserved for maintenance');
     if (input?.source_url && (typeof input.source_url !== 'string' || !/^https?:\/\/[^\s]+$/.test(input.source_url) || input.source_url.length > 2048)) throw new QueueError('Expected an HTTP(S) source link', 400);
+    if (input?.model) {
+      const installed = configAt(this.state);
+      if (installed.roleDefinition) throw new QueueError('Task model overrides are unavailable with role profiles; edit the role definition instead', 400);
+      if (input.model !== installed.model && !['codex', 'pi'].includes(harnessOf(installed))) throw new QueueError('Model overrides require a codex or pi executor', 400);
+    }
     if (input?.model && (typeof input.model !== 'string' || !/^[\w.:/+-]{1,128}$/.test(input.model))) throw new QueueError('Invalid model identifier', 400);
     if (input?.source_url && !input.spec?.trim()) input = { ...input, spec: `Investigate the linked requirements within this repository's scope: ${input.source_url}` };
     if (!input || !Object.hasOwn(workflows, input.workflow) || input.repository !== 'app' || typeof input.spec !== 'string' || !input.spec.trim() || Buffer.byteLength(input.spec) > 240000)

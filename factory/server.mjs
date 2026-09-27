@@ -1,3 +1,4 @@
+import { inspectDefinition, previewDefinition, previewRollback, changeDefinition } from './definition-store.mjs';
 import { associateIssue, backlogHistory, readinessMapping, workRecords } from './issue-lifecycle.mjs';
 import { harnessOf } from './lib.mjs';
 import http from 'node:http';
@@ -68,7 +69,8 @@ export function createController(state, adapter = executors(state), integrations
   const deliveryAdapter = deliveryProvider(config, integrations);
   const delivery = new DeliveryService(queue, state, { config: () => configAt(state), sourceAdmission, provider: deliveryAdapter });
   const projectLinks = readProjectLinks(config.repo);
-  const definitions = factoryDefinition(config), host = machineInfo();
+  const host = machineInfo();
+  const catalog = () => ({ ...factoryDefinition(configAt(state)), role_definition: inspectDefinition(state) });
   const server = http.createServer(async (request, response) => {
     const send = (status, value, type = 'application/json; charset=utf-8') => { response.writeHead(status, { 'Content-Type': type }); response.end(type.startsWith('application/json') ? JSON.stringify(value) : value); };
     response.setHeader('Cache-Control', 'no-store'); response.setHeader('X-Content-Type-Options', 'nosniff'); response.setHeader('Referrer-Policy', 'no-referrer');
@@ -81,6 +83,7 @@ export function createController(state, adapter = executors(state), integrations
       const url = new URL(request.url, `http://${request.headers.host}`);
       const authenticated = equal(request.headers.authorization, `Bearer ${token}`) || equal(request.headers['x-factory-session'], csrf);
       if (request.method === 'GET' && url.pathname === '/api/v1/status') {
+        const definitions = catalog();
         const jobs = queue.all().map(job => ({ ...job, source_admission: publicSourceAdmission(job.source_admission),
           continuation: publicContinuation(job.continuation), continuation_status: queue.continuationStatus(job),
           source_history: (job.source_history || []).map(publicSourceAdmission), can_request_changes: queue.canRequestChanges(job),
@@ -96,7 +99,11 @@ export function createController(state, adapter = executors(state), integrations
           repositories: ['app'], repo: config.repo, project_links: projectLinks, source_ref_default: config.sourceRef || 'HEAD', harness: harnessOf(config), agent: harnessOf(config) });
       }
       if (request.method === 'GET' && url.pathname === '/api/v1/definitions') {
-        return send(200, definitions);
+        return send(200, catalog());
+      }
+      if (request.method === 'GET' && url.pathname === '/api/v1/definition') {
+        if (!authenticated) throw new QueueError('Session required', 403);
+        return send(200, inspectDefinition(state));
       }
       if (request.method === 'GET' && url.pathname === '/api/v1/issues') {
         if (!authenticated) throw new QueueError('Session required', 403);
@@ -144,6 +151,13 @@ export function createController(state, adapter = executors(state), integrations
           if (!equal(request.headers.authorization, `Bearer ${token}`)) throw new QueueError('Operator token required for maintenance', 403);
           return send(200, queue.setMaintenance(input.enabled));
         }
+        if (['/api/v1/definition/validate', '/api/v1/definition/diff'].includes(url.pathname)) {
+          if (url.pathname.endsWith('/diff') && input.rollback === true && Object.keys(input).length === 1) return send(200, previewRollback(state));
+          if (Object.keys(input).some(key => key !== 'definition')) throw new QueueError('Expected definition only', 400);
+          return send(200, previewDefinition(state, input.definition));
+        }
+        if (['/api/v1/definition/apply', '/api/v1/definition/rollback'].includes(url.pathname))
+          return send(200, changeDefinition(state, queue, input, url.pathname.endsWith('/rollback')));
         if (url.pathname === '/api/v1/issues/preview') {
           try { return send(200, associateIssue(await provider.preview(input.url), queue.all(), readinessMapping(config.issueReadinessLabels))); }
           catch (error) { throw new QueueError(error.message, error.status || 400); }
@@ -168,7 +182,6 @@ export function createController(state, adapter = executors(state), integrations
           input.repository = 'app';
         }
         if (['/api/v1/jobs', '/api/v1/issues/start'].includes(url.pathname)) {
-          if (input.model && input.model !== config.model && !['codex','pi'].includes(harnessOf(config))) throw new QueueError('Model overrides require a codex or pi executor', 400);
           const created = queue.submit(input);
           return send(201, { id: created.id, source_admission: publicSourceAdmission(created.source_admission) });
         }

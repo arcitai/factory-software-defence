@@ -1,3 +1,4 @@
+import { resolveRoleProfiles, publicRoleProfiles } from './role-definition.mjs';
 import { readinessMapping } from './issue-lifecycle.mjs';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -23,6 +24,7 @@ const skillRoles = {
 };
 export function factoryDefinition(config) {
   const harness = harnessOf(config);
+  const profiles = publicRoleProfiles(resolveRoleProfiles(config));
   const skills = Object.entries(skillRoles).map(([role, purpose]) => {
     const id = `factory-${role}`, path = `kit/skills/${id}/SKILL.md`;
     const content = readFileSync(join(ROOT, path), 'utf8');
@@ -33,12 +35,12 @@ export function factoryDefinition(config) {
     version: 1, workflows, terminology: JSON.parse(readFileSync(join(ROOT, 'factory/terminology.json'), 'utf8')),
     agents: Object.entries(phaseInfo).filter(([, info]) => info.owner === 'agent').map(([phase, info]) => ({
       id: phase === 'build' ? 'implement' : phase === 'defence' ? 'investigate' : phase,
-      phase, title: info.title, responsibility: info.description, harness, model: config.model || null, skills: info.skills,
+      phase, title: info.title, responsibility: info.description, ...profiles[phase === 'build' ? 'implement' : phase === 'defence' ? 'investigate' : phase], skills: info.skills,
     })),
     operator_skills: [foundationSkill()],
     automations: { owner: 'harness', harness, managed_by_factory: false, discovery: 'unavailable', items: null },
     commands: Object.entries(phaseInfo).map(([name, info]) => ({ name, ...info, prompt: info.description,
-      executor: info.owner === 'agent' ? harnessOf(config) : 'factory', timeout: `${config.timeoutSeconds}s` })),
+      executor: info.owner === 'agent' ? profiles[name === 'build' ? 'implement' : name === 'defence' ? 'investigate' : name].harness : 'factory', timeout: `${config.timeoutSeconds}s` })),
     skills,
     configuration: { issueReadinessLabels: readinessMapping(config.issueReadinessLabels), harness, agent: harness, // agent is a v1 compatibility alias
       model: config.model || null, check: config.check, timeoutSeconds: config.timeoutSeconds,
@@ -52,7 +54,7 @@ export function factoryDefinition(config) {
     method: {
       preparation: ['factory-triage', 'factory-spec'], evaluation: ['factory-evaluate'],
       instructions: 'All six skills are available read-only to agent phases. A skill is an instruction set, not a separate agent or an automatic workflow step.',
-      customization: 'Choose the harness, model, project check and resource limits in the installation’s private factory.json while stopped, then restart. Task scope belongs in the issue or work instructions. Phase order, gates and packaged skills change through a reviewed Factory release; they are not editable prompt templates.',
+      customization: 'Use definition export/validate/diff/apply/rollback for role harness and model selections. Shared checks and resources remain in private factory.json, edited while stopped. Task scope belongs in the issue or work instructions. Phase order, gates and packaged skills change through a reviewed Factory release; they are not editable prompt templates.',
     },
   };
 }

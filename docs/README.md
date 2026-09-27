@@ -7,6 +7,7 @@
 - [Dashboard design](../DESIGN.md): accepted project-focused visual direction and interface boundaries.
 - [Factory concepts](concepts.md): host, controller, worker, harness, agent and compatibility.
 - [Workflows, skills and intake](workflows.md): one method/catalog, explicit execution and customization boundaries.
+- [Portable role definitions](definition.md): inheritance, shared schema, preview/apply/rollback and evidence.
 - [CLI/dashboard capabilities](interfaces.md): current shared operations, gaps and parity work.
 
 - [Setup plan](setup.md): host access, application/CI, inference, autostart, reboot proof and handoff.
@@ -43,7 +44,7 @@ use the linked guides for details rather than copying their specifications.
 | Review, revise and accept | Explicit fresh start, reviewed-candidate continuation or source replacement; evidence belongs to the complete candidate and policy; acceptance does not publish | [Recovery](recovery.md), [queue](../factory/queue.mjs), [review tests](../tests/review-evidence.test.mjs) |
 | Publish an accepted candidate | Optional configured GitHub target; protected evidence and bounded workflow qualification before new writes; one draft PR with durable readback and actual PR checks | [Quickstart](quickstart.md), [recovery](recovery.md), [delivery regressions](../tests/delivery.test.mjs) |
 | Inspect project work | Primary Inbox list/board, canonical all-work identities, shared filters and progressive task detail; real usage and unknown costs | [Design](../DESIGN.md), [dashboard](../dashboard/src/main.jsx), [dashboard tests](../dashboard/package.json) |
-| Inspect configuration and compute | Catalog roles/skills/settings; host distinct from execution worker | [Concepts](concepts.md), [definition](../factory/definition.mjs), [catalog tests](../tests/workflows.test.mjs) |
+| Inspect configuration and compute | Catalog plus portable role harness/model editor, shared validation/diff and idle atomic apply/rollback; host distinct from execution worker | [Concepts](concepts.md), [definition contract](definition.md), [role regressions](../tests/role-definition.test.mjs) |
 | Keep a private installation running | Services/tunnels, idle-only update activation, preserved state | [Operation](services.md), [updates](../factory/updates.mjs), [service tests](../tests/services.test.mjs) |
 
 Roadmap features remain in [issues](https://github.com/arcitai/software-and-defence-factory/issues)

@@ -1,3 +1,5 @@
+import { changeDefinition, inspectDefinition } from '../factory/definition-store.mjs';
+import { parseRoleDefinition } from '../factory/role-definition.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
@@ -27,7 +29,7 @@ const git = (repo, ...args) => execFileSync('git', ['-C', repo, ...args], { enco
 const save = (path, value) => { mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 }); writeFileSync(path, JSON.stringify(value), { mode: 0o600 }); };
 
 function testFixture(t, { delivery = true, port = 7331, harness = 'codex', model = null, taskModel = null, modelEnv = '',
-  runtimeVersion, webVerification,
+  roleDefinition, runtimeVersion, webVerification,
   baseWorkflows = {}, candidateFiles = {}, candidateDeletes = [], candidateSymlinks = {} } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'sdf-delivery-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -52,6 +54,10 @@ function testFixture(t, { delivery = true, port = 7331, harness = 'codex', model
   writeFileSync(join(state, 'factory.json'), JSON.stringify(config), { mode: 0o600 });
   writeFileSync(join(state, 'model.env'), modelEnv, { mode: 0o600 });
   writeFileSync(join(state, 'worker.token'), 'fixture-token', { mode: 0o600 });
+  if (roleDefinition) {
+    save(join(state, 'role-definition.json'), { version: 1, sequence: 1, definition: parseRoleDefinition(roleDefinition), history: [] });
+    config.roleDefinition = parseRoleDefinition(roleDefinition);
+  }
   const sourceAdmission = new SourceAdmissionStore(state, repo, 'main');
   const admission = sourceAdmission.admit(jobID, undefined);
   assert.equal(admission.requested_ref, 'main');
@@ -106,8 +112,10 @@ function testFixture(t, { delivery = true, port = 7331, harness = 'codex', model
       runtimeVersion, image: phase === 'handoff' ? null : effective.image,
       policyHash, hostName: 'retained-fixture-host' }];
   }));
-  for (const phase of ['build', 'verify', 'review', 'handoff'])
+  for (const phase of ['build', 'verify', 'review', 'handoff']) {
     save(join(folder, 'artifacts', runIDs[phase], 'execution.json'), executions[phase]);
+    if (roleDefinition) save(join(folder, runIDs[phase], 'execution-config.json'), effective);
+  }
   const runs = [
     { id: runIDs.build, command: 'build', state: 'succeeded', outcome: 'complete', execution: executions.build },
     { id: runIDs.verify, command: 'verify', state: 'succeeded', outcome: 'complete', execution: executions.verify },
@@ -1478,4 +1486,22 @@ test('old accepted malformed patch with matching digest refuses publication and 
   assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
   assert.deepEqual(readFileSync(acceptedPath), before);
   assert.deepEqual(readFileSync(path), malformed);
+});
+
+
+test('mixed-role v2 evidence authorizes only current-policy delivery and survives explicit rollback without rewriting attempts', async t => {
+  const definition = { version: 1, roles: { implement: { harness: 'codex', model: 'implement-fixture' }, review: { harness: 'pi', model: 'anthropic/review-fixture' } } };
+  const f = testFixture(t, { roleDefinition: definition }), gh = fakeGitHub(f), manager = service(f, gh.provider);
+  const attempts = structuredClone(f.queue.get(jobID).runs);
+  assert.deepEqual(attempts.map(run => run.execution.executor), ['codex', 'deterministic', 'pi', 'deterministic']);
+  assert.equal(manager.summary(f.queue.get(jobID)).can_publish, true);
+  assert.equal(manager.validateEvidence(f.queue.get(jobID), configAt(f.state)).expectedPolicy, f.policyHash);
+  const changed = changeDefinition(f.state, f.queue, { expected_revision: inspectDefinition(f.state).revision,
+    definition: { version: 1, roles: { implement: { harness: 'codex', model: 'changed' } } } });
+  await assertPublicationRefused(f, gh, manager);
+  changeDefinition(f.state, f.queue, { expected_revision: changed.revision }, true);
+  assert.equal(manager.summary(f.queue.get(jobID)).can_publish, true);
+  const result = await manager.publish(jobID, { run_id: f.run_id });
+  assert.equal(result.state, 'published'); assert.equal(gh.state.writes.pulls, 1);
+  assert.deepEqual(f.queue.get(jobID).runs, attempts);
 });
