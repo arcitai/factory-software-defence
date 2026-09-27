@@ -30,6 +30,36 @@ adoption preserved histories. Those results apply to 0.11.0, not later revisions
 | [Profile](../tests/execution-profile.test.mjs) and [delivery tests](../tests/delivery.test.mjs) | Exact writer versions, unchanged retained records, current provenance/policy/revision guards and unsupported writer rejection | Controlled records/providers do not prove live account writes. |
 | [Service](../tests/services.test.mjs) and [source admission tests](../tests/source-admission.test.mjs) | Stable launch/update contracts and retained-source behavior | Does not prove a running installation's service/image/history preservation. |
 
+### Bounded release-download freshness (#83)
+
+The 0.15.1 source candidate requests fresh npm metadata for the already-selected
+exact release. Only `ETARGET` receives up to three attempts with one-second waits,
+all within the existing 120-second download budget. Identity validation precedes
+immutable adoption; selection, activation, rollback and maintenance ownership
+remain in the existing callers.
+
+Controlled injected-runner tests exercise the actual `installRelease` path for
+stale metadata, delayed visibility followed by success, three-attempt exhaustion,
+shared deadline exhaustion, offline/authentication/spawn failures, wrong package
+identity, and cleanup that preserves prior releases and unrelated staging/state.
+The new freshness/retry cases failed before the change. No PATH or environment
+mutation, registry write or model call is used by these fixtures.
+
+The patch explicitly supports its unchanged v1/v2/v3 writers and retains 0.15.0
+local/hybrid evidence. Protected-profile regressions cover both patch versions
+across Build/Verify/Review/handoff, unchanged retained bytes, and rejection of
+unknown writers, wrong phases, policy/selection/identity changes and frozen-config
+tampering. Profile compatibility tests failed before the allowlist/readback fix.
+
+Local Node 22.23.3/npm 10.9.9 checks passed: locked dependency installation,
+dashboard build, `npm run check` (394 runtime/package and 63 dashboard tests),
+including installation and invocation of the actual candidate tarball. This is
+controlled source/package evidence, not a reproduction of npm propagation or
+installed managed-service qualification. The lead must separately qualify a real
+public package download from the exact installed candidate. The cache-versus-registry
+cause of the observed incident remains unknown; independent Review, publication
+and operator adoption are not claimed.
+
 Factory 0.11.1's naming first slice was delivered via protected maintainer
 [PR #92](https://github.com/arcitai/software-and-defence-factory/pull/92), per the
 operator brief. Native publication refused its malformed retained patch before

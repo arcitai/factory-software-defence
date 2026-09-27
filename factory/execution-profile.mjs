@@ -21,16 +21,17 @@ import { expectedWebStories, webPolicyHash } from './web-verification.mjs';
 // selection digest. V1 can never attest an adopted role override.
 // 0.15.0 keeps unchanged v1/v2 policies and writers; local selections require
 // v3 for every phase. Legacy evidence cannot attest the new registry/launcher.
+// 0.15.1 changes release downloads only; v1/v2/v3 writers and policy are unchanged.
 // Older writers still require exact patch/tree reconstruction before publication.
 // Deliberately independent of VERSION: a release bump is not
 // evidence compatibility. Re-audit this list for every trust-relevant writer,
 // isolation or validation change; remove versions whose guarantees no longer
 // satisfy current policy. See docs/npm.md. This predicate alone grants no trust.
-const SUPPORTED_EXECUTION_RUNTIMES_V1 = new Set(['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1', '0.11.2', '0.12.0', '0.13.0', '0.13.1', '0.14.0', '0.15.0']);
+const SUPPORTED_EXECUTION_RUNTIMES_V1 = new Set(['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1', '0.11.2', '0.12.0', '0.13.0', '0.13.1', '0.14.0', '0.15.0', '0.15.1']);
 
 export function isSupportedExecutionProfile(profile) {
-  if ([2, 3].includes(profile?.version)) return (profile.version === 3 ? profile.runtimeVersion === '0.15.0' && Object.hasOwn(profile, 'localBinding')
-    : ['0.14.0', '0.15.0'].includes(profile.runtimeVersion) && !Object.hasOwn(profile, 'localBinding') && profile.inferenceProvider !== 'factory-local')
+  if ([2, 3].includes(profile?.version)) return (profile.version === 3 ? ['0.15.0', '0.15.1'].includes(profile.runtimeVersion) && Object.hasOwn(profile, 'localBinding')
+    : ['0.14.0', '0.15.0', '0.15.1'].includes(profile.runtimeVersion) && !Object.hasOwn(profile, 'localBinding') && profile.inferenceProvider !== 'factory-local')
     && profile.role === (Object.keys(ROLE_PHASES).find(role => ROLE_PHASES[role] === profile.phase) || null)
     && (profile.reasoningEffort === null || ['low', 'medium', 'high'].includes(profile.reasoningEffort))
     && /^[a-f0-9]{64}$/.test(profile.selectionHash || '');
@@ -132,7 +133,7 @@ export function assertFrozenExecution(config, execution, phase) {
   delete expected.hostName;
   // Audited legacy writers retain their real version. Never let v1/v2 attest
   // a local binding, including a deterministic phase of a hybrid attempt.
-  if (expected.version < 3 && isSupportedExecutionProfile(execution) && execution.version === expected.version)
+  if (isSupportedExecutionProfile(execution) && execution.version === expected.version)
     expected.runtimeVersion = execution.runtimeVersion;
   const actual = { ...execution }; delete actual.hostName; delete actual.workerName;
   if (!isDeepStrictEqual(expected, actual)) throw new Error('Admitted execution profile does not match this attempt');

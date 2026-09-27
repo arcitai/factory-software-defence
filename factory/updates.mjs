@@ -65,17 +65,33 @@ function installedEntry(dataHome, version) {
     return pkg.name === PACKAGE && pkg.version === version && existsSync(entry) ? entry : null;
   } catch { return null; }
 }
-export function installRelease(version, dataHome = DATA_HOME, runner = spawnSync) {
+export function installRelease(version, dataHome = DATA_HOME, runner = spawnSync, {
+  now = () => performance.now(),
+  sleep = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
+} = {}) {
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Invalid release version');
   const existing = installedEntry(dataHome, version);
   if (existing) return existing;
   const releases = join(dataHome, 'releases'); privateDir(releases);
   const staging = mkdtempSync(join(releases, '.download-'));
   try {
-    const result = runner('npm', ['install', '--prefix', staging, '--no-save', '--package-lock=false',
-      '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', '--registry', REGISTRY, `${PACKAGE}@${version}`],
-      { encoding: 'utf8', timeout: 120000, maxBuffer: 1024 * 1024 });
-    if (result.error || result.status !== 0) throw new Error(`npm update download failed: ${result.error?.message || result.stderr || result.status}`);
+    // Metadata refresh and visibility retries share the original download budget.
+    // Only ETARGET is retried; offline/auth/identity failures keep their own errors.
+    const deadline = now() + 120000;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const remaining = Math.floor(deadline - now());
+      if (remaining <= 0) throw new Error(`npm update download failed for ${PACKAGE}@${version}: 120-second download budget exhausted`);
+      const result = runner('npm', ['install', '--prefix', staging, '--no-save', '--package-lock=false',
+        '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', '--prefer-online', '--prefer-offline=false', '--registry', REGISTRY, `${PACKAGE}@${version}`],
+        { encoding: 'utf8', timeout: remaining, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024 });
+      if (!result.error && result.status === 0) break;
+      const detail = result.error?.message || result.stderr || result.status;
+      const visibilityDelay = !result.error && /^npm (?:ERR!|error) code ETARGET\s*$/m.test(result.stderr || '');
+      if (!visibilityDelay) throw new Error(`npm update download failed for ${PACKAGE}@${version}: ${detail}`);
+      if (attempt === 3 || deadline - now() <= 1000)
+        throw new Error(`npm release ${PACKAGE}@${version} is not yet downloadable; publication may still be processing. Retry the update later. ${detail}`);
+      sleep(1000);
+    }
     const pkg = read(join(staging, 'node_modules', PACKAGE, 'package.json'));
     if (pkg.name !== PACKAGE || pkg.version !== version || !existsSync(join(staging, 'node_modules', PACKAGE, 'bin/software-defence-factory.mjs')))
       throw new Error('Downloaded package identity does not match the requested release');

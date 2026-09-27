@@ -210,3 +210,101 @@ test('registered live controllers and unresolved executor fences defer updates',
   writeFileSync(join(state, 'jobs/job_one/active.json'), '{}');
   assert.deepEqual(busyInstallations(home), [state]);
 });
+
+function downloadFixture(t) {
+  const home = temporary(t), data = join(home, 'data');
+  const packageAt = (prefix, version = '0.15.1', name = 'software-defence-factory') => {
+    const pkg = join(prefix, 'node_modules/software-defence-factory');
+    mkdirSync(join(pkg, 'bin'), { recursive: true });
+    writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name, version }));
+    writeFileSync(join(pkg, 'bin/software-defence-factory.mjs'), '// controlled package fixture\n');
+  };
+  packageAt(join(data, 'releases/0.15.0'), '0.15.0');
+  mkdirSync(join(data, 'releases/.download-unrelated'));
+  const retained = ['updates.json', 'service-release.json', 'factory.json', 'jobs.json'].map(name => join(home, name));
+  for (const path of retained) writeFileSync(path, '{"version":"0.15.0","fixture":"retained"}\n');
+  let elapsed = 0;
+  const waits = [], timeouts = [];
+  const timing = { now: () => elapsed, sleep: ms => { waits.push(ms); elapsed += ms; } };
+  const runner = outcome => (name, args, options) => {
+    assert.equal(name, 'npm');
+    assert.equal(args.at(-1), 'software-defence-factory@0.15.1');
+    assert.equal(args[args.indexOf('--registry') + 1], 'https://registry.npmjs.org');
+    assert(args.includes('--ignore-scripts'));
+    assert.equal(options.killSignal, 'SIGKILL');
+    assert(options.timeout > 0 && elapsed + options.timeout <= 120000);
+    timeouts.push(options.timeout);
+    const prefix = args[args.indexOf('--prefix') + 1];
+    assert(prefix.startsWith(join(data, 'releases/.download-')));
+    return outcome({ args, options, prefix, attempt: timeouts.length });
+  };
+  const preserved = (success = false) => {
+    assert.deepEqual(readdirSync(join(data, 'releases')).sort(),
+      ['.download-unrelated', '0.15.0', ...(success ? ['0.15.1'] : [])]);
+    assert.equal(JSON.parse(readFileSync(join(data, 'releases/0.15.0/node_modules/software-defence-factory/package.json'))).version, '0.15.0');
+    for (const path of retained) assert.equal(readFileSync(path, 'utf8'), '{"version":"0.15.0","fixture":"retained"}\n');
+  };
+  return { data, packageAt, timing, waits, timeouts, runner, preserved, advance: ms => { elapsed += ms; } };
+}
+const invisibleRelease = { status: 1, stderr: 'npm error code ETARGET\nnpm error notarget No matching version found for software-defence-factory@0.15.1.' };
+
+test('exact release download forces metadata freshness without changing process settings', t => {
+  const f = downloadFixture(t), environment = { ...process.env };
+  const entry = installRelease('0.15.1', f.data, f.runner(({ args, prefix }) => {
+    // Controlled stale-cache behavior: the release exists only after revalidation.
+    if (!args.includes('--prefer-online') || !args.includes('--prefer-offline=false')) return invisibleRelease;
+    f.packageAt(prefix); return { status: 0 };
+  }), f.timing);
+  assert(existsSync(entry)); assert.equal(f.timeouts.length, 1);
+  assert.deepEqual({ ...process.env }, environment); f.preserved(true);
+});
+
+test('delayed exact release visibility retries the same version and eventually adopts it', t => {
+  const f = downloadFixture(t);
+  const entry = installRelease('0.15.1', f.data, f.runner(({ prefix, attempt }) => {
+    f.advance(200);
+    if (attempt < 3) return invisibleRelease;
+    f.packageAt(prefix); return { status: 0 };
+  }), f.timing);
+  assert(existsSync(entry)); assert.deepEqual(f.waits, [1000, 1000]);
+  assert.deepEqual(f.timeouts, [120000, 118800, 117600]); f.preserved(true);
+});
+
+test('unavailable exact release exhausts three attempts and cleans only its own staging', t => {
+  const f = downloadFixture(t);
+  assert.throws(() => installRelease('0.15.1', f.data, f.runner(({ prefix }) => {
+    writeFileSync(join(prefix, 'partial'), 'partial download'); return invisibleRelease;
+  }), f.timing), /0\.15\.1.*not yet downloadable.*publication.*processing.*ETARGET/s);
+  assert.equal(f.timeouts.length, 3); assert.deepEqual(f.waits, [1000, 1000]); f.preserved();
+});
+
+test('visibility retries share the original 120-second budget including waits', t => {
+  for (const duration of [119500, 118500]) {
+    const f = downloadFixture(t);
+    assert.throws(() => installRelease('0.15.1', f.data, f.runner(({ options, attempt }) => {
+      f.advance(attempt === 1 ? duration : options.timeout); return invisibleRelease;
+    }), f.timing), /not yet downloadable/);
+    assert.deepEqual(f.timeouts, duration === 119500 ? [120000] : [120000, 500]);
+    assert.deepEqual(f.waits, duration === 119500 ? [] : [1000]); f.preserved();
+  }
+});
+
+test('offline, authentication, spawn and identity errors do not get visibility retries', t => {
+  for (const failure of [
+    { result: { status: 1, stderr: 'npm error code ENOTFOUND registry offline' }, message: /ENOTFOUND/ },
+    { result: { status: 1, stderr: 'npm error code E401 authentication required' }, message: /E401/ },
+    { result: { status: 1, stderr: 'npm error code E404 not found' }, message: /E404/ },
+    { result: { error: new Error('spawn npm ENOENT'), status: null }, message: /ENOENT/ },
+    { result: { error: new Error('ETIMEDOUT'), status: null, stderr: invisibleRelease.stderr }, message: /ETIMEDOUT/ },
+    { result: { status: 0 }, identity: ['0.15.0'], message: /identity/ },
+    { result: { status: 0 }, identity: ['0.15.1', 'other-package'], message: /identity/ },
+  ]) {
+    const f = downloadFixture(t);
+    assert.throws(() => installRelease('0.15.1', f.data, f.runner(({ prefix }) => {
+      if (failure.identity) f.packageAt(prefix, ...failure.identity);
+      else writeFileSync(join(prefix, 'partial'), 'partial download');
+      return failure.result;
+    }), f.timing), failure.message);
+    assert.equal(f.timeouts.length, 1); assert.deepEqual(f.waits, []); f.preserved();
+  }
+});
