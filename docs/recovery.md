@@ -8,7 +8,7 @@ Use `status --state PATH` and the private supervisor.log to identify the active 
 - `retry JOB_ID` verifies retained objects and reconciles the previous process group and containers. A missing/corrupt retained source, live writer or unknown process blocks retry. For a new build/defence attempt, the prior checkout is retained as previous-checkout-*.
 - A forced host/controller stop can leave the selected inference env file in the private attempt directory. Normal executor cleanup removes it only after a Docker listing confirms the named container is absent. Retry/reconciliation removes a leftover copy only after the prior process group is confirmed stopped and a Docker listing confirms the labelled containers are absent; a `docker rm` or `docker stop` exit alone does not prove shutdown. If identity, a Docker probe or shutdown is uncertain, the recovery fence and file remain; do not clean it manually while a worker may still be active. After shutdown is confirmed, recovery also redacts the fixed phase reports and log using the selected environment values before removing the env file.
 - Retry repeats the stopped phase. A failed verification may retry the same candidate when its policy is unchanged and the check can now pass. If the check or execution policy changed after build, retrying verify/review cannot reuse the earlier build for handoff; handoff remains blocked. Preserve that failed attempt, then use an eligible requested revision or submit a replacement task to build under the current policy. Do not edit SQLite or acceptance evidence to bypass the guard.
-- A requested revision keeps the recorded source by default, retains previous evidence and starts a new build with accumulated feedback. Supplying a deliberate new `--source-ref` resolves and retains that base before the action; prior source metadata stays in history, and the new build gets fresh checks and review.
+- A requested revision starts fresh from the recorded source by default, retains previous evidence and starts a new build with accumulated feedback. It never silently reuses candidate code. Supplying a deliberate new `--source-ref` resolves and retains that base before the action; prior source metadata stays in history, and the new build gets fresh checks and review. See the explicit continuation choice below.
 - Removing a stopped task from the dashboard hides its queue record. Private artifacts and its deleted_at record remain on disk; this is not secure erasure.
 
 Do not remove active.json merely to unblock a job. Establish that its PID, process group and labelled containers are stopped. PID reuse or missing process identity requires operator investigation. Preserve logs and work before cleanup.
@@ -331,3 +331,69 @@ candidate or policy change requires fresh applicable checks, review and
 approval; do not edit SQLite or acceptance evidence to bypass the guard. A stale
 target after branch creation leaves that unique branch for inspection and does
 not open a PR. A PR does not imply integration or deployment.
+
+## Continue a reviewed candidate (first #42 slice)
+
+Use one explicit starting point for a current software review with a returned
+`changes`/`blocked` verdict, or a passed review awaiting approval:
+
+```sh
+# Existing default: restore admitted source, discarding candidate code from the next Build.
+software-defence-factory revise JOB_ID --file feedback.md --state PATH
+# Keep this job’s current immutable reviewed tree; keep its source/delivery baseline.
+software-defence-factory revise JOB_ID --file feedback.md --from reviewed-candidate --state PATH
+# Existing source replacement: resolve and retain a deliberately different baseline.
+software-defence-factory revise JOB_ID --file feedback.md --source-ref REF --state PATH
+```
+
+`--from admitted-source` names the default explicitly. `--from` and
+`--source-ref` cannot be combined. In the dashboard, Request changes exposes
+these same three starting points, the original source SHA, selected checkpoint
+head/tree and review attempt. Opening the form defaults to fresh source; a
+background refresh does not silently replace a checkpoint already selected.
+Errors stay next to the revision action and preserve feedback.
+
+The shared `request_changes` action accepts `run_id`, `feedback`, and
+`revision_mode`: `fresh_source`, `continue_candidate` or `replace_source`.
+Continuation additionally requires `candidate_head` and `candidate_tree` from
+this job’s `continuation_status` in `GET /api/v1/status`. They are stale-action
+guards, not selectors for arbitrary refs, host paths or other jobs. Replacement
+requires `source_ref`. Omitting mode preserves the existing default and
+`source_ref` behavior. Status includes `revision_mode`, public `continuation`
+provenance, and `continuation_status.available` or an actionable refusal reason.
+Availability describes protected evidence; the action also probes live workers
+and validates the Git objects before changing the checkout.
+
+Continuation confirms the executor/process group and job containers are idle;
+it refuses active or unknown work instead of stopping it implicitly. Under the
+existing queue action lock it validates the current review cycle, exact
+protected profiles and artifacts, original retained source, effective policy
+and any required browser evidence. It copies the clean reviewed Git objects
+into a private, job-bound checkpoint store with a pinned ref and manifest,
+checks head/tree/single parent and object integrity, and only then archives the
+writable checkout through ordinary reconciliation. Missing, dirty, tampered,
+foreign or incompatible candidates are refused without deleting prior work.
+
+The next Build validates the retained checkpoint and current policy again,
+restores the retained source as HEAD, and stages the checkpoint tree on that
+base. The ordinary Build commit is a single-parent aggregate: Review sees the
+entire original-base-to-new-candidate diff, including earlier changes. The
+original source admission is unchanged; continuation provenance has separate
+names and records on the revision, job, candidate and acceptance. Prior failed
+reviews stay failed, with their usage and artifacts retained. A stopped Build
+can retry the same selected immutable checkpoint after validation; it cannot
+reuse unfinished Build output. A restart never grants acceptance or triggers
+an automatic retry.
+
+Every revision requires new full Verify, independent Review and operator
+approval. Browser and profile gates still apply. Delivery requires the original
+accepted base to equal the configured, unchanged remote target. Continuation
+does not refresh that target (#72), rewrite history, merge or publish anything.
+Changed execution policy requires an explicit fresh start or source replacement,
+not reuse of an incompatible checkpoint. Restore missing private retention from
+backup before retrying; never edit checkpoint manifests or acceptance records.
+
+Unfinished/uncommitted Build checkpoints, exit-cause classification, live pending
+feedback and harness deadline hints remain deferred within #42. Opt-in desktop/VM
+observation and browser recordings belong to later #82. This slice does not close
+#42 or qualify those capabilities.

@@ -160,7 +160,7 @@ function App() {
     }
   }
 
-  async function workflowAction(job, action, stopped = false, feedback = "", sourceRef = "") {
+  async function workflowAction(job, action, stopped = false, feedback = "", sourceRef = "", revision = {}) {
     const deliveryAction = ["publish", "abandon-delivery"].includes(action);
     if (deliveryAction) setDeliveryActionError("");
     else setTaskActionError("");
@@ -169,7 +169,7 @@ function App() {
         ? { run_id: job.runs.at(-1)?.id }
         : action === "abandon-delivery"
           ? { run_id: job.runs.at(-1)?.id, delivery_identity: job.delivery_status?.identity, branch_sha: job.delivery_status?.remote_collision?.sha }
-          : { run_id: job.runs.at(-1)?.id, previous_process_stopped: stopped, feedback, ...(sourceRef.trim()?{source_ref:sourceRef.trim()}:{}) };
+          : { run_id: job.runs.at(-1)?.id, ...revision, previous_process_stopped: stopped, feedback, ...(sourceRef.trim()?{source_ref:sourceRef.trim()}:{}) };
       const response = await fetch(`/api/v1/jobs/${encodeURIComponent(job.id)}/${action}`, {
         method: "POST", headers: { "Content-Type": "application/json", "X-Factory-Session": status.csrf_token },
         body: JSON.stringify(body),

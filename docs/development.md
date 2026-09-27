@@ -99,6 +99,8 @@ revision feedback through **Request changes**, or:
 
 ```sh
 software-defence-factory revise JOB_ID --file /private/revision.md --state /private/state/factory-development
+# To deliberately keep the current reviewed tree on the original source baseline:
+software-defence-factory revise JOB_ID --file /private/revision.md --from reviewed-candidate --state /private/state/factory-development
 ```
 
 This preserves the failed review, candidate and evidence and begins a new build,

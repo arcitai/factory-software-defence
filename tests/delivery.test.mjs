@@ -486,7 +486,7 @@ test('saved delivery intent rechecks workflow evidence after its earlier qualifi
 });
 
 // These are controlled retained-record/provider fixtures, not production or model proof.
-for (const runtimeVersion of ['0.8.0', '0.9.0']) {
+for (const runtimeVersion of ['0.8.0', '0.9.0', '0.9.1']) {
   test(`retained ${runtimeVersion} evidence is recognized without rewriting its provenance`, async t => {
     const f = testFixture(t, { runtimeVersion }), gh = fakeGitHub(f), manager = service(f, gh.provider);
     const jobBefore = structuredClone(f.queue.get(jobID));
@@ -1268,7 +1268,7 @@ test('concurrent publish requests serialize on the accepted job', async t => {
   assert.equal(gh.state.writes.pulls, 1);
 });
 
-for (const runtimeVersion of [undefined, '0.8.0', '0.9.0']) {
+for (const runtimeVersion of [undefined, '0.8.0', '0.9.0', '0.9.1']) {
 test(`CLI and authenticated dashboard action share the ${runtimeVersion || 'native'} delivery receipt`, async t => {
   const reservation = createNetServer();
   await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));

@@ -1,8 +1,8 @@
+import { readPrivateJson, assertPrivateDirectory, trustedExecutionProfile } from './execution-evidence.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { isDeepStrictEqual } from 'node:util';
 import { configAt, digest } from './lib.mjs';
 import { effectiveExecutionConfig, isSupportedExecutionProfile } from './execution-profile.mjs';
 import { publicSourceAdmission } from './source-admission.mjs';
@@ -15,7 +15,6 @@ const MAX_PATCH_BYTES = 8 * 1024 * 1024;
 const MAX_CHANGED_FILES = 500;
 const MAX_TREE_BYTES = 8 * 1024 * 1024;
 const SHA1 = /^[a-f0-9]{40}$/;
-const PRIVATE_JSON_BYTES = 1024 * 1024;
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 const KNOWN_DELIVERY_STATES = new Set(['intent', 'publishing', 'uncertain', 'blocked', 'conflict', 'published', 'abandoned']);
 const RESUMABLE_DELIVERY_STATES = new Set(['intent', 'publishing', 'uncertain', 'blocked']);
@@ -55,22 +54,11 @@ function commitObjectSha({ tree, parents, message, author, committer }) {
   const raw = Buffer.from(`tree ${tree}\nparent ${parents[0]}\nauthor ${author.name} <${author.email}> ${date.epoch} +0000\ncommitter ${committer.name} <${committer.email}> ${date.epoch} +0000\n\n${message}`, 'utf8');
   return createHash('sha1').update(`commit ${raw.length}\0`).update(raw).digest('hex');
 }
-function readPrivateJson(path) {
-  const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || stat.size > PRIVATE_JSON_BYTES)
-    throw new Error('Protected delivery evidence is missing or unsafe.');
-  return JSON.parse(readFileSync(path, 'utf8'));
-}
 function readPrivateFile(path, limit) {
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || stat.size > limit)
     throw new Error('Protected candidate patch is missing, unsafe or too large.');
   return readFileSync(path);
-}
-function assertPrivateDirectory(path) {
-  const stat = lstatSync(path);
-  if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0)
-    throw new Error('Protected delivery directory is missing or unsafe.');
 }
 function runGitCommand(args) {
   const env = {
@@ -205,25 +193,6 @@ function remotePullReceipt(pull, repository, target, branch) {
     base_sha: SHA1.test(pull.base.sha || '') ? pull.base.sha : null,
     head_sha: SHA1.test(pull.head.sha || '') ? pull.head.sha : null, tree: null,
   };
-}
-
-function trustedExecutionProfile(state, job, run, phase, expectedPolicy) {
-  if (!run || !/^run_[a-z0-9]+$/.test(run.id || '')) return false;
-  try {
-    const folder = join(state, 'jobs', job.id);
-    for (const path of [join(state, 'jobs'), folder, join(folder, 'artifacts'), join(folder, 'artifacts', run.id)])
-      assertPrivateDirectory(path);
-    const profile = readPrivateJson(join(folder, 'artifacts', run.id, 'execution.json'));
-    const agentPhase = phase === 'build' || phase === 'review';
-    const executorMatches = agentPhase
-      ? ['codex', 'pi'].includes(profile.executor)
-        && ['explicit', 'provider_default'].includes(profile.modelSelection)
-        && (profile.modelSelection === 'explicit' ? typeof profile.requestedModel === 'string' : profile.requestedModel === null)
-      : profile.executor === 'deterministic' && profile.modelSelection === 'not_applicable' && profile.requestedModel === null;
-    return isSupportedExecutionProfile(profile) && profile.phase === phase && executorMatches
-      && profile.policyHash === expectedPolicy
-      && isDeepStrictEqual(run.execution, profile);
-  } catch { return false; }
 }
 
 function trustedPhaseEvidence(state, job, expectedPolicy, runs, candidate, checks, review) {

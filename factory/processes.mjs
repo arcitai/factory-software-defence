@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, closeSync, readFileSync, renameSync, rmSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { ROOT, configAt, run, json, save, stopContainers, sleep } from './lib.mjs';
+import { ROOT, configAt, run, json, save, stopContainers, containers, sleep } from './lib.mjs';
+import { assertRetainedCheckpoint } from './source-admission.mjs';
 import { effectiveExecutionConfig, executionProfile } from './execution-profile.mjs';
 import { parseCodexJsonl, emptyUsage, usageFields } from './usage.mjs';
 import { removeScratch } from './scratch.mjs';
@@ -98,6 +99,7 @@ export function executors(state, recovery = {}) {
   const recoveryStopContainers = recovery.stopContainers || stopContainers;
   const recoveryRun = recovery.run || run;
   const recoveryAlive = recovery.alive || alive;
+  const recoveryContainers = recovery.containers || containers;
   const usageCache = new Map();
   let usageReadWindow = -1, usageReads = 0;
   function presentedUsage(job, attempt) {
@@ -123,7 +125,10 @@ export function executors(state, recovery = {}) {
     // Resolve tags before admission so the recorded image is the one actually run.
     config.image = run('docker', ['image', 'inspect', '--format', '{{.Id}}', config.image]);
     if (!/^sha256:[a-f0-9]{64}$/.test(config.image)) throw new Error('Expected an immutable Docker image ID');
-    const profile = executionProfile(config, attempt.command), folder = join(state, 'jobs', job.id);
+    const profile = executionProfile(config, attempt.command);
+    if (attempt.command === 'build' && job.continuation)
+      assertRetainedCheckpoint(state, job.id, job.source_admission, job.continuation, profile.policyHash);
+    const folder = join(state, 'jobs', job.id);
     save(join(folder, attempt.id, 'execution-config.json'), config);
     save(join(folder, 'artifacts', attempt.id, 'execution.json'), profile);
     return profile;
@@ -141,17 +146,21 @@ export function executors(state, recovery = {}) {
     recoveryStopContainers(state, jobId);
     if (running && !processAlive(-running.child.pid)) clearStoppedFence(state, jobId, running.child.pid);
   }
-  async function reconcile(jobId, phase) {
+  async function reconcile(jobId, phase, { requireIdle = false, beforeArchive } = {}) {
     if (children.has(jobId)) throw new Error('Previous executor is still finishing');
-    recoveryStopContainers(state, jobId);
+    if (requireIdle && recoveryContainers(state).some(item => item.Config?.Labels?.['sdf.job'] === jobId && item.State?.Running !== false))
+      throw new Error('Previous job container is still active; stop it explicitly before continuing.');
+    if (!requireIdle) recoveryStopContainers(state, jobId);
     const folder = join(state, 'jobs', jobId), lock = join(folder, 'active.json');
     if (existsSync(lock)) {
       const previous = json(lock);
       if (!Number.isSafeInteger(previous.pid) || recoveryAlive(previous.pid)) throw new Error('Previous executor is still present or unknown');
       if (!Number.isSafeInteger(previous.pgid) || recoveryRun('ps', ['-axo', 'pgid=']).split('\n').map(Number).includes(previous.pgid))
         throw new Error('Previous process group is still present or unknown');
+      if (requireIdle) recoveryStopContainers(state, jobId);
       clearStoppedFence(state, jobId);
-    }
+    } else if (requireIdle) recoveryStopContainers(state, jobId);
+    beforeArchive?.();
     if (['build', 'defence'].includes(phase) && existsSync(join(folder, 'checkout')))
       renameSync(join(folder, 'checkout'), join(folder, `previous-checkout-${Date.now()}`));
   }
@@ -161,7 +170,7 @@ export function executors(state, recovery = {}) {
     const resultPath = join(output, 'result.json'), fd = openSync(join(output, 'executor.log'), 'a', 0o600);
     const child = spawnChild(process.execPath, [join(ROOT, 'factory/executor.mjs'), state, attempt.command], {
       detached: true, stdio: ['pipe', fd, fd], env: { ...process.env, SDF_JOB_ID: job.id, SDF_RUN_ID: attempt.id, SDF_OUTPUT_DIR: output, SDF_STEP_RESULT_PATH: resultPath,
-        SDF_SOURCE_ADMISSION: JSON.stringify(job.source_admission || null) },
+        SDF_SOURCE_ADMISSION: JSON.stringify(job.source_admission || null), SDF_CONTINUATION: JSON.stringify(job.continuation || null) },
     }); closeSync(fd);
     let finish;
     const done = new Promise(resolve => { finish = resolve; });
