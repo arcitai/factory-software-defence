@@ -2,34 +2,56 @@ import { randomBytes } from 'node:crypto';
 import { instanceLabel, run } from './lib.mjs';
 import { PLAYWRIGHT_VERSION } from './web-verification.mjs';
 
-export function readinessDockerArgs(config, state, name = `sdf-${instanceLabel(state)}-web-probe-${process.pid}-${randomBytes(3).toString('hex')}`) {
+const DEADLINE_MS = 30_000;
+const CLEANUP_TIMEOUT_MS = 5_000;
+
+export function readinessDockerArgs(config, state,
+  name = `sdf-${instanceLabel(state)}-web-probe-${process.pid}-${randomBytes(3).toString('hex')}`,
+  deadlineAt = Date.now() + DEADLINE_MS) {
   const web = config.webVerification;
+  const uid = process.getuid(), gid = process.getgid();
   return {
     name,
     args: ['run', '--name', name, '--init', '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
-      '--network=none', '--memory=1024m', '--cpus=2', '--pids-limit=128', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=256m',
-      '--user=0:0', '--label', `sdf.factory=${instanceLabel(state)}`, '--label', 'sdf.probe=web',
-      '--label', `sdf.deadline=${Date.now() + 30_000}`, '--entrypoint', '/usr/bin/timeout', web.image,
-      '--signal=KILL', '30s', '/usr/bin/env', '-i', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-      'HOME=/tmp/runner-home', 'node', '/opt/factory-web/readiness.mjs'],
+      '--network=none', '--memory=1024m', '--cpus=2', '--pids-limit=128', '--tmpfs',
+      '/tmp:rw,nosuid,nodev,noexec,size=256m', '--user', `${uid}:${gid}`,
+      '--label', `sdf.factory=${instanceLabel(state)}`, '--label', 'sdf.probe=web',
+      '--label', `sdf.deadline=${deadlineAt}`, '--entrypoint', '/usr/bin/timeout', web.image,
+      '--signal=KILL', '30s', '/usr/bin/env', '-i',
+      'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+      'HOME=/tmp/browser-home', 'XDG_CACHE_HOME=/tmp/browser-home/cache', 'node', '/opt/factory-web/readiness.mjs'],
   };
 }
 
-function removeAndConfirm(name, dockerRun) {
-  const bounded = { timeout: 5_000, killSignal: 'SIGKILL' };
-  try { dockerRun('docker', ['rm', '-f', name], bounded); } catch { /* The exact-name listing decides whether cleanup completed. */ }
-  let remaining;
-  try { remaining = dockerRun('docker', ['ps', '-aq', '--filter', `name=^/${name}$`], bounded); }
-  catch { throw new Error('Browser readiness probe cleanup is unconfirmed; inspect the labelled probe container before retrying'); }
-  if (remaining) throw new Error('Browser readiness probe container remains after cleanup');
+function exactNames(name, dockerRun) {
+  return dockerRun('docker', ['ps', '-aq', '--filter', `name=^/${name}$`], {
+    timeout: CLEANUP_TIMEOUT_MS, killSignal: 'SIGKILL',
+  }).split('\n').filter(Boolean);
 }
 
-function assertStopped(name, state, dockerRun) {
-  const record = JSON.parse(dockerRun('docker', ['inspect', name], { timeout: 5_000, killSignal: 'SIGKILL' }))[0];
+function assertIdentity(name, state, web, deadlineAt, dockerRun) {
+  const records = JSON.parse(dockerRun('docker', ['inspect', name], {
+    timeout: CLEANUP_TIMEOUT_MS, killSignal: 'SIGKILL',
+  }));
+  const record = Array.isArray(records) ? records[0] : null;
   const labels = record?.Config?.Labels || {};
-  if (!record || record.Name !== `/${name}` || record.State?.Running !== false
-    || labels['sdf.factory'] !== instanceLabel(state) || labels['sdf.probe'] !== 'web')
-    throw new Error('Browser readiness container identity or stopped state could not be confirmed');
+  if (!record || record.Name !== `/${name}` || record.Image !== web.image
+    || labels['sdf.factory'] !== instanceLabel(state) || labels['sdf.probe'] !== 'web'
+    || labels['sdf.deadline'] !== String(deadlineAt))
+    throw new Error('Browser readiness container identity could not be confirmed');
+  return record;
+}
+
+function removeAndConfirm(name, state, web, deadlineAt, dockerRun) {
+  const matches = exactNames(name, dockerRun);
+  if (matches.length > 1) throw new Error('Multiple browser readiness containers match the exact probe name');
+  if (matches.length === 1) {
+    assertIdentity(name, state, web, deadlineAt, dockerRun);
+    try { dockerRun('docker', ['rm', '-f', name], { timeout: CLEANUP_TIMEOUT_MS, killSignal: 'SIGKILL' }); }
+    catch { /* The exact-name absence check decides whether cleanup completed. */ }
+  }
+  if (exactNames(name, dockerRun).length)
+    throw new Error('Browser readiness probe container remains after cleanup');
 }
 
 export function probeWebBrowser(config, state, { dockerRun = run } = {}) {
@@ -46,19 +68,23 @@ export function probeWebBrowser(config, state, { dockerRun = run } = {}) {
   }
   if (image !== web.image) return { enabled: true, ready: false, status: 'unavailable', adapter: web.adapter,
     version: web.version, image: web.image, reason: 'The configured browser image did not resolve to its pinned image ID.' };
-  const { args, name } = readinessDockerArgs(config, state);
+
+  const deadlineAt = Date.now() + DEADLINE_MS;
+  const { args, name } = readinessDockerArgs(config, state, undefined, deadlineAt);
   let response, failure;
   try {
-    const output = dockerRun('docker', args, { timeout: 35_000, killSignal: 'SIGKILL' });
+    const output = dockerRun('docker', args, {
+      timeout: Math.max(1, deadlineAt - Date.now()), killSignal: 'SIGKILL',
+    });
     try { response = JSON.parse(output.trim().split('\n').at(-1)); }
     catch { throw new Error('The browser image did not return a valid execution readiness record'); }
     if (response.adapter !== 'playwright' || response.version !== web.version || response.browser !== 'chromium'
       || response.platform !== 'linux-container' || response.interaction !== 'passed' || typeof response.browserVersion !== 'string')
       throw new Error('The configured browser image failed the actual Chromium interaction probe');
-    assertStopped(name, state, dockerRun);
+    const record = assertIdentity(name, state, web, deadlineAt, dockerRun);
+    if (record.State?.Running !== false) throw new Error('Browser readiness container did not stop before the readiness deadline');
   } catch (error) { failure = error; }
-  try { removeAndConfirm(name, dockerRun); }
-  catch (error) { throw error; }
+  removeAndConfirm(name, state, web, deadlineAt, dockerRun);
   if (failure) return { enabled: true, ready: false, status: 'unavailable', adapter: web.adapter,
     version: web.version, image: web.image, reason: failure.message.slice(0, 1000) };
   return { enabled: true, ready: true, status: 'ready', adapter: web.adapter, version: web.version,

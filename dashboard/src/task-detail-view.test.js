@@ -194,6 +194,15 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   assert.match(document.body.textContent,/legacy job has no admission-time source record and cannot be retried or revised/);
   assert(![...document.querySelectorAll('button')].some(b=>b.textContent.trim().startsWith('Retry ')));
   assert(!button('Request changes'));
+  runs.push({id:'run_web',command:'verify',state:'failed',outcome:'blocked',summary:'Required browser verification failed',
+    web_verification:{status:'failed',adapter:'playwright',version:'1.63.0',browser:'chromium',browser_version:'153.0.0',platform:'linux-container',coverage:'web',
+      candidate:'c'.repeat(40),attempt:'run_web',policyHash:'d'.repeat(64),stories:[{id:'result',contentHash:'e'.repeat(64),status:'failed',screenshot:{file:'web-story-result.png'},
+        trace:[{index:0,op:'expect-text',role:'status',name:'Save status',expectedText:'Saved',status:'failed',durationMs:500,message:'Configured result was absent'}]}]}});
+  await render();
+  assert.match(document.querySelector('[role="tabpanel"]:not([hidden])')?.textContent || document.body.textContent,/Browser verification/);
+  assert.match(document.body.textContent,/Screenshot retained: web-story-result\.png/);
+  assert.match(document.body.textContent,/Action trace \(1\)/);
+  assert.match(document.body.textContent,/Configured result was absent/);
   job.workflow.name='defence';job.state='succeeded';job.delivery_status={state:'patch_only',can_publish:false};await render();
   assert.equal(document.querySelector('[aria-label="Delivery status"]'),null,'PR handoff status is not presented for Defence investigations');
 });

@@ -28,6 +28,7 @@ function clearStoppedFence(state, jobId, expectedPid) {
     if (!/^run_[a-z0-9]+$/.test(previous.attempt || ''))
       throw new Error('Stopped verification attempt does not match the retained recovery fence');
     removeScratch(join(folder, previous.attempt, 'check-workspace'));
+    removeScratch(join(folder, previous.attempt, 'web-output'));
     rmSync(join(folder, previous.attempt, 'web-policy.json'), { force: true });
   }
   if (/^run_[a-z0-9]+$/.test(previous.attempt || '') && credentialedPhases.has(previous.phase))

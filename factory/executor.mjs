@@ -1,7 +1,6 @@
 import { harnessOf } from './lib.mjs';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { ROOT, run, save, json, digest, instanceLabel, stopContainers } from './lib.mjs';
 import { incidentFor, validateReport } from './incident.mjs';
@@ -13,7 +12,10 @@ import { selectedInferenceSecrets, writeSelectedModelEnvironment } from './model
 import { redactInferenceText, redactRetainedPhaseOutputs } from './inference-redaction.mjs';
 import { assertCurrentHandoffEvidence } from './execution-evidence.mjs';
 import { removeScratch } from './scratch.mjs';
-import { assertCurrentWebEvidence, expectedWebStories, makeUnavailableWebEvidence, webEvidenceSummary, webPolicyHash, webStoryHash, WEB_STORY_STATUSES, PLAYWRIGHT_VERSION } from './web-verification.mjs';
+import { assertCurrentWebEvidence, assertCurrentWebArtifacts, expectedWebStories, makeUnavailableWebEvidence,
+  assertWebStoryTrace, webEvidenceSummary, webPolicyHash, webStoryHash, WEB_STORY_STATUSES, PLAYWRIGHT_VERSION,
+  MAX_WEB_SCREENSHOT_BYTES, MAX_WEB_SCREENSHOT_TOTAL_BYTES } from './web-verification.mjs';
+import { runWebContainers } from './web/containers.mjs';
 
 const [state, phase] = process.argv.slice(2);
 if(process.getuid()===0)throw new Error('Agent jobs require a non-root controller account');
@@ -65,50 +67,35 @@ function removeContainerAndConfirmAbsence(name, bounded = false) {
   catch { throw new Error('Could not confirm worker container shutdown; recovery is required'); }
   if (remaining) throw new Error('Worker container shutdown is unconfirmed; recovery is required');
 }
-function assertStoppedWebContainer(name) {
-  const raw = run('docker', ['inspect', name], { timeout: 5_000, killSignal: 'SIGKILL' });
-  const records = JSON.parse(raw), record = Array.isArray(records) ? records[0] : null;
-  const labels = record?.Config?.Labels || {};
-  if (!record || record.Name !== `/${name}` || record.State?.Running !== false
-    || labels['sdf.factory'] !== instanceLabel(state) || labels['sdf.job'] !== job || labels['sdf.run'] !== attempt)
-    throw new Error('Browser runner container identity or stopped state could not be confirmed');
-}
 async function container(mode, input, command, options = {}) {
   const { writable = false, network = config.network, image = config.image,
-    timeoutSeconds = config.timeoutSeconds, webOutputToken, keepScratch = false } = options;
+    timeoutSeconds = config.timeoutSeconds, keepScratch = false } = options;
   const name = `sdf-${instanceLabel(state)}-${attempt}-${mode}`;
   const reportDir = join(folder, attempt, mode);
   mkdirSync(reportDir, { recursive: true, mode: 0o700 });
   const modelEnvironmentPath = join(folder, attempt, `.model-${mode}.env`);
   // Native builds need disk-backed scratch space, not the small temporary RAM disk.
   // Only this attempt can write here; the candidate and its Git metadata stay read-only.
-  const scratch = ['verify', 'web'].includes(mode) ? join(folder, attempt, 'check-workspace') : null;
+  const scratch = mode === 'verify' ? join(folder, attempt, 'check-workspace') : null;
   if (scratch) mkdirSync(scratch, { recursive: true, mode: 0o700 });
   const uid = process.getuid(), gid = process.getgid();
   const args = ['run','--name',name,'--init','--read-only','--cap-drop=ALL','--security-opt=no-new-privileges',
     '--pids-limit',String(config.pidsLimit ?? 256),'--memory',`${config.memoryMiB}m`,'--cpus',String(config.cpus ?? 2),
-    '--user',mode === 'web' ? '0:0' : `${uid}:${gid}`,
-    '--network',mode === 'web' ? 'none' : network,'--label',`sdf.factory=${instanceLabel(state)}`,'--label',`sdf.job=${job}`,
+    '--user',`${uid}:${gid}`,
+    '--network',network,'--label',`sdf.factory=${instanceLabel(state)}`,'--label',`sdf.job=${job}`,
     '--label',`sdf.run=${attempt}`,'--label',`sdf.deadline=${Date.now() + timeoutSeconds * 1000}`,
-    '--tmpfs',mode === 'web' ? '/tmp:rw,nosuid,nodev,noexec,size=1024m' : '/tmp:rw,nosuid,size=1024m',
+    '--tmpfs','/tmp:rw,nosuid,size=1024m',
     '--env',`HOME=${scratch ? '/scratch/home' : '/tmp/home'}`,'--env',`FACTORY_PHASE=${mode}`,
     '--mount',`type=bind,source=${workspace},target=/workspace${writable ? '' : ',readonly'}`,
     '--mount',`type=bind,source=${join(workspace,'.git')},target=/workspace/.git,readonly`];
-  if (mode === 'web') {
-    // Trusted policy arrives on runner stdin, never through a candidate-visible
-    // mount. The runner and browser use separate UIDs; only the runner owns its
-    // bounded result in container tmpfs.
-    args.push('--cap-add=SETUID','--cap-add=SETGID');
-  } else {
-    args.push('--mount',`type=bind,source=${reportDir},target=/output`,
-      '--mount',`type=bind,source=${join(ROOT,'kit')},target=/factory-policy,readonly`,
-      '--mount',`type=bind,source=${join(ROOT,'.agents/skills')},target=/factory-skills,readonly`);
-  }
+  args.push('--mount',`type=bind,source=${reportDir},target=/output`,
+    '--mount',`type=bind,source=${join(ROOT,'kit')},target=/factory-policy,readonly`,
+    '--mount',`type=bind,source=${join(ROOT,'.agents/skills')},target=/factory-skills,readonly`);
   if (scratch) args.push('--mount',`type=bind,source=${scratch},target=/scratch`);
   if (mode === 'verify') args.push('--env',`FACTORY_BASE_REVISION=${git('rev-parse',`${metadata().base}^{commit}`)}`);
   const logPath = join(folder, attempt, `${mode}.log`);
-  const log = new BoundedLog(), usageParser = mode !== 'web' && execution.executor === 'codex' ? new CodexUsageParser() : null;
-  let exitSignal, selectedModelEnvironment = false, inferenceSecrets = [], code, cleanupError, reportError, copyError;
+  const log = new BoundedLog(), usageParser = execution.executor === 'codex' ? new CodexUsageParser() : null;
+  let exitSignal, selectedModelEnvironment = false, inferenceSecrets = [], code, cleanupError, reportError;
   try {
     selectedModelEnvironment = writeSelectedModelEnvironment(join(state, 'model.env'), modelEnvironmentPath, {
       phase: mode, executor: execution.executor, inferenceProvider: config.inferenceProvider,
@@ -117,11 +104,8 @@ async function container(mode, input, command, options = {}) {
       inferenceSecrets = selectedInferenceSecrets(modelEnvironmentPath);
       args.push('--env-file', modelEnvironmentPath);
     }
-    if (mode === 'web') args.push('--entrypoint','/usr/bin/timeout');
     args.push('-i',image);
-    if (mode === 'web') args.push('--signal=KILL',`${timeoutSeconds}s`,'/usr/bin/env','-i',
-      'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin','HOME=/tmp/runner-home','FACTORY_PHASE=web',...command);
-    else args.push('timeout','--signal=KILL',`${timeoutSeconds}s`,'sh','-c','mkdir -p "$HOME" && exec "$@"','factory',...command);
+    args.push('timeout','--signal=KILL',`${timeoutSeconds}s`,'sh','-c','mkdir -p "$HOME" && exec "$@"','factory',...command);
     console.log(JSON.stringify({ phase: mode, event: 'started', synthetic: harnessOf(config) === 'mock' }));
     code = await new Promise((ok, fail) => {
       const child = spawn('docker', args, { stdio: ['pipe','pipe','pipe'] });
@@ -137,14 +121,7 @@ async function container(mode, input, command, options = {}) {
     // A launch error can occur after Docker created the container. Keep the
     // selected inference file and mounted scratch until a host-side listing
     // proves the container is absent. A client exit alone is not that proof.
-    if (mode === 'web' && code !== undefined && code !== null) {
-      try {
-        assertStoppedWebContainer(name);
-        run('docker', ['cp', `${name}:/tmp/factory-web-result-${webOutputToken}.json`, join(reportDir, 'runner-result.json')], { timeout: 10_000, killSignal: 'SIGKILL' });
-      }
-      catch (error) { copyError = error; }
-    }
-    removeContainerAndConfirmAbsence(name, mode === 'web');
+    removeContainerAndConfirmAbsence(name, mode === 'verify');
     try { redactRetainedPhaseOutputs(join(folder, attempt), mode, inferenceSecrets); }
     catch (error) { reportError = error; }
     try { if (scratch && mode === 'verify' && !keepScratch) removeScratch(scratch); } catch (error) { cleanupError = error; }
@@ -152,7 +129,6 @@ async function container(mode, input, command, options = {}) {
     // if a fixed worker report could not be safely filtered.
     if (selectedModelEnvironment && !reportError) rmSync(modelEnvironmentPath, { force: true });
   }
-  if (mode === 'web') return { reportDir, code, logPath, copyError: copyError?.message || null };
   if (code !== 0) throw new Error(`${mode} exited ${code}; private log: ${logPath}${cleanupError ? `; scratch cleanup requires recovery: ${cleanupError.message}` : ''}${reportError ? `; worker report retention failed: ${reportError.message}` : ''}`);
   if (reportError) throw reportError;
   if (cleanupError) throw cleanupError;
@@ -184,37 +160,60 @@ function normalizedWebEvidence(meta, report, containerResult) {
     || report.head !== meta.head || report.tree !== meta.tree || report.policyHash !== policyHash
     || report.webPolicyHash !== webPolicyHash(web) || !Array.isArray(report.stories)
     || report.stories.length !== expectedStories.length)
-    return inconclusive(containerResult?.copyError || 'Browser runner did not return complete identity-bound evidence.');
+    return inconclusive(containerResult?.error || 'Browser runner did not return complete identity-bound evidence.');
   if (report.tool?.adapter !== web.adapter || report.tool?.version !== web.version || report.tool?.browser !== 'chromium'
-    || report.tool?.image !== web.image || report.tool?.platform !== 'linux-container' || report.tool?.coverage !== 'web'
-    || typeof report.tool.browserVersion !== 'string' || !report.tool.browserVersion.trim())
+    || report.tool?.image !== web.image || report.tool?.platform !== 'linux-container' || report.tool?.coverage !== 'web')
     return inconclusive('Browser runner returned a different tool or platform identity.');
+  const browserVersion = typeof report.tool.browserVersion === 'string' ? report.tool.browserVersion.trim() : '';
   const stories = [];
   for (let index = 0; index < expectedStories.length; index++) {
     const expected = expectedStories[index], actual = report.stories[index];
     if (actual?.id !== expected.id || actual?.contentHash !== expected.contentHash
-      || !WEB_STORY_STATUSES.includes(actual.status) || !Number.isFinite(actual.durationMs) || actual.durationMs < 0)
+      || !WEB_STORY_STATUSES.includes(actual.status) || !Number.isFinite(actual.durationMs) || actual.durationMs < 0
+      || (actual.message !== undefined && (typeof actual.message !== 'string' || actual.message.length > 1000)))
       return inconclusive('Browser runner returned missing, malformed or stale story evidence.');
+    try { assertWebStoryTrace(web, actual); }
+    catch { return inconclusive('Browser runner returned a missing, malformed or stale action trace or screenshot record.'); }
     stories.push({ id: expected.id, contentHash: expected.contentHash, status: actual.status,
       durationMs: Math.min(actual.durationMs, web.timeoutSeconds * 1000),
+      trace: actual.trace.map(event => ({ ...event, durationMs: Math.min(event.durationMs, web.timeoutSeconds * 1000),
+        ...(typeof event.message === 'string' ? { message: event.message.slice(0, 1000) } : {}) })),
+      ...(actual.screenshot ? { screenshot: { ...actual.screenshot } } : {}),
       ...(typeof actual.message === 'string' ? { message: actual.message.slice(0, 1000) } : {}) });
   }
   let status = report.status;
-  if (containerResult?.code !== 0 || containerResult.copyError) status = 'inconclusive';
+  if (containerResult?.code !== 0 || containerResult?.timedOut || containerResult?.error) status = 'inconclusive';
   else if (!WEB_STORY_STATUSES.includes(status)) status = 'inconclusive';
   else if (status === 'passed' && stories.some(story => story.status !== 'passed')) status = 'inconclusive';
   else if (status === 'failed' && !stories.some(story => story.status === 'failed')) status = 'inconclusive';
   else if (status === 'unavailable' && !stories.some(story => story.status === 'unavailable')) status = 'inconclusive';
   else if (status === 'inconclusive' && !stories.some(story => story.status === 'inconclusive')) status = 'inconclusive';
-  if (status === 'inconclusive' && stories.every(story => story.status === 'passed'))
-    for (const story of stories) story.status = 'inconclusive';
+  if (status === 'passed' && !browserVersion) status = 'inconclusive';
   return {
     version: 1, status, job, attempt, head: meta.head, tree: meta.tree, policyHash,
     webPolicyHash: webPolicyHash(web), tool: { adapter: web.adapter, version: web.version, browser: 'chromium',
       image: web.image, platform: 'linux-container', coverage: 'web',
-      ...(typeof report.tool.browserVersion === 'string' ? { browserVersion: report.tool.browserVersion.slice(0, 128) } : {}) },
+      ...(browserVersion ? { browserVersion: browserVersion.slice(0, 128) } : {}) },
     stories,
   };
+}
+
+function promoteBrowserScreenshots(evidence, browserOutput, artifactDirectory) {
+  const pending = [];
+  let totalBytes = 0;
+  for (const story of evidence.stories) {
+    if (!story.screenshot) continue;
+    const source = join(browserOutput, story.screenshot.file), stat = lstatSync(source);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== story.screenshot.bytes
+      || stat.size > MAX_WEB_SCREENSHOT_BYTES) throw new Error(`Screenshot for ${story.id} is missing or unsafe`);
+    const bytes = readFileSync(source);
+    if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+      || digest(bytes) !== story.screenshot.sha256) throw new Error(`Screenshot for ${story.id} does not match its result hash`);
+    pending.push({ path: join(artifactDirectory, story.screenshot.file), bytes });
+    totalBytes += bytes.length;
+    if (totalBytes > MAX_WEB_SCREENSHOT_TOTAL_BYTES) throw new Error('Browser screenshots exceed their retained size bound');
+  }
+  for (const item of pending) writeFileSync(item.path, item.bytes, { mode: 0o600, flag: 'wx' });
 }
 
 async function executeWebVerification(meta) {
@@ -233,30 +232,32 @@ async function executeWebVerification(meta) {
   } catch { return unavailable('Docker or the configured Playwright image is unavailable; install and qualify the tool before retrying.'); }
 
   const webPolicyPath = join(folder, attempt, 'web-policy.json');
+  const deadlineAt = Date.now() + web.timeoutSeconds * 1000;
   const webInput = {
     job, attempt, head: meta.head, tree: meta.tree, policyHash, webPolicyHash: webPolicyHash(web),
     adapter: web.adapter, version: web.version, image: web.image, port: web.port,
-    previewCommand: web.previewCommand, timeoutSeconds: web.timeoutSeconds, outputToken: randomBytes(16).toString('hex'),
+    deadlineAt, timeoutSeconds: web.timeoutSeconds,
     stories: web.stories.map(story => ({ ...story, contentHash: webStoryHash(story) })),
   };
   writeFileSync(webPolicyPath, `${JSON.stringify(webInput)}\n`, { mode: 0o600, flag: 'wx' });
   let containerResult;
   try {
-    containerResult = await container('web', JSON.stringify(webInput), ['node', '/opt/factory-web/runner.mjs'], {
-      image: web.image, network: 'none', timeoutSeconds: web.timeoutSeconds,
-      webOutputToken: webInput.outputToken,
+    containerResult = await runWebContainers({ state, job, attempt, config, web, workspace,
+      scratch: join(folder, attempt, 'check-workspace'), attemptDir: join(folder, attempt),
+      input: JSON.stringify(webInput), deadlineAt,
     });
   } catch (error) {
     return inconclusiveWebEvidence(meta, `Browser container could not complete or be reconciled: ${error.message}`);
-  } finally {
-    // container() returns only after exact-name absence is confirmed. If that
-    // confirmation fails, retain the protected policy input with the recovery fence.
-    if (containerResult) rmSync(webPolicyPath, { force: true });
   }
   let report;
-  try { report = JSON.parse(safeRead(join(containerResult.reportDir, 'runner-result.json'))); }
-  catch { return inconclusiveWebEvidence(meta, containerResult.copyError || 'Browser runner result was missing, malformed or unsafe.'); }
-  return normalizedWebEvidence(meta, report, containerResult);
+  try { report = JSON.parse(safeRead(join(containerResult.outputDir, 'result.json'))); }
+  catch { return inconclusiveWebEvidence(meta, containerResult.error || 'Browser runner result was missing, malformed or unsafe.'); }
+  const evidence = normalizedWebEvidence(meta, report, containerResult);
+  try { promoteBrowserScreenshots(evidence, containerResult.outputDir, output); }
+  catch (error) {
+    return inconclusiveWebEvidence(meta, `Browser screenshot artifacts could not be safely retained: ${error.message}`);
+  }
+  return evidence;
 }
 
 function brief(instruction) {
@@ -319,8 +320,12 @@ try {
   } else if (phase === 'review') {
     const meta = candidate(), checks = json(join(folder,'checks.json'));
     if (!checks.passed || checks.head !== meta.head || checks.policyHash!==policyHash) throw new Error('Missing checks for candidate revision and current policy');
-    if (config.webVerification?.enabled) assertCurrentWebEvidence(config.webVerification, checks.web_verification,
-      { job, attempt: checks.run_id, meta, policyHash });
+    if (config.webVerification?.enabled) {
+      const context = { job, attempt: checks.run_id, meta, policyHash };
+      assertCurrentWebEvidence(config.webVerification, checks.web_verification, context);
+      assertCurrentWebArtifacts(config.webVerification, checks.web_verification,
+        join(folder, 'artifacts', checks.run_id));
+    }
     const instruction = `Independently review the candidate at ${meta.head}. Consider this app's actual risk, regression, access and data consequences. Checks: ${JSON.stringify(checks)}. Read the diff with git diff ${meta.base} ${meta.head}. Do not change code. Write /output/review.json: {"verdict":"pass|changes|blocked","summary":"reason","findings":[]}. Write /output/agent-report.md. A process exit alone is not evidence of quality.`;
     const reports = await container('review',brief(instruction),config.command);
     const review = JSON.parse(safeRead(join(reports,'review.json')));
@@ -333,6 +338,8 @@ try {
     if (review.verdict !== 'pass') throw new Error(`Review requires attention: ${review.summary}`);
   } else if (phase === 'handoff') {
     const meta = candidate(), review = json(join(folder,'review.json')), checks = json(join(folder,'checks.json'));
+    if (config.webVerification?.enabled) assertCurrentWebArtifacts(config.webVerification, checks.web_verification,
+      join(folder, 'artifacts', checks.run_id));
     assertCurrentHandoffEvidence(meta, checks, review, policyHash, config, job);
     const patchText = git('--no-pager', 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', meta.base, meta.head);
     const patch = patchText ? `${patchText}\n` : '';
@@ -380,6 +387,7 @@ try {
   }
   if (phase === 'verify') {
     removeScratch(join(folder, attempt, 'check-workspace'));
+    removeScratch(join(folder, attempt, 'web-output'));
     rmSync(join(folder, attempt, 'web-policy.json'), { force: true });
   }
   // Failed filtering is recoverable state: keep its exact secret source and

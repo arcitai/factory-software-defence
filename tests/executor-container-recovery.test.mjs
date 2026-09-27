@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
@@ -94,11 +94,12 @@ function fixture(t, mode, phase = 'review', harness = 'codex', hostFallback = nu
     recoveryAllowed: false, launchSawSelectedEnvironment: false, launchAttempted: false,
     firstRmScratchExists: null, firstRmMarkerExists: null, firstRmRunning: null,
     webImage: webVerification?.image || null, webImagePresent: mode !== 'web-unavailable', webInput: null, webReport: null,
-    webRunArgs: null, webOutputToken: null, webPolicyPath: join(attemptFolder, 'web-policy.json'), webRmObservations: [],
+    webContainerRuns: [], webContainers: {}, webPolicyPath: join(attemptFolder, 'web-policy.json'), webRmObservations: [],
   }));
 
   const docker = join(bin, 'docker');
 const dockerProgram = `#!/usr/bin/env node
+import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 const statePath = process.env.SDF_DOCKER_STATE;
 const state = JSON.parse(readFileSync(statePath, 'utf8'));
@@ -109,6 +110,8 @@ const delay = milliseconds => new Promise(resolve => setTimeout(resolve, millise
 const save = () => writeFileSync(statePath, JSON.stringify(state));
 const fail = (message) => { process.stderr.write(message + '\\n'); process.exit(1); };
 const output = value => process.stdout.write(value ? value + '\\n' : '');
+const webByName = key => Object.values(state.webContainers || {}).find(item => item.name === key || item.id === key);
+const labelPairs = argv => { const result = {}; for (let i = 0; i < argv.length - 1; i++) if (argv[i] === '--label') { const [key, ...rest] = argv[i + 1].split('='); result[key] = rest.join('='); } return result; };
 if (command === 'run') {
   state.launchAttempted = true;
   const envIndex = args.indexOf('--env-file');
@@ -123,16 +126,51 @@ if (command === 'run') {
   const nameIndex = args.indexOf('--name');
   state.name = nameIndex >= 0 ? args[nameIndex + 1] : null;
   state.labels = Object.fromEntries(args.filter(value => value.startsWith('sdf.')).map(value => value.split('=')));
-  if (args.includes('FACTORY_PHASE=web')) {
+  const roleLabel = args.find(value => value.startsWith('sdf.role='));
+  const webRole = roleLabel?.slice('sdf.role='.length);
+  if (['web-preview', 'web-browser'].includes(webRole)) {
+    const labels = labelPairs(args), entrypoint = args.indexOf('--entrypoint'), image = args[entrypoint + 2];
+    const id = webRole === 'web-preview' ? 'fixture-web-preview-id' : 'fixture-web-browser-id';
+    const item = { name: state.name, id, role: webRole, image, labels, running: true, present: true };
+    state.webContainers[state.name] = item;
+    state.webContainerRuns.push({ role: webRole, args });
+    if (webRole === 'web-preview') { save(); output(id); process.exit(0); }
+    const outputMountIndex = args.findIndex((value, index) => value === '--mount' && args[index + 1]?.includes('target=/browser-output'));
+    const outputSource = outputMountIndex >= 0
+      ? args[outputMountIndex + 1].split(',').find(value => value.startsWith('source='))
+      : null;
+    state.webOutputPath = outputSource?.slice('source='.length) || null;
+    if (!state.webOutputPath) fail('Missing private browser output mount ' + JSON.stringify(args));
+    if (state.mode === 'web-cancel') { save(); await new Promise(() => {}); }
     const web = JSON.parse(stdin);
     state.webInput = web;
-    state.webOutputToken = web.outputToken;
-    state.webRunArgs = args;
-    state.webReport = { version: 1, status: 'passed', job: web.job, attempt: web.attempt, head: web.head,
+    const stories = web.stories.map(story => {
+      const failAt = state.mode === 'web-broken' && story.id === 'busy-disabled'
+        ? story.steps.findIndex(step => step.op === 'expect-disabled')
+        : state.mode === 'web-result-broken' && story.id === 'result'
+          ? story.steps.findIndex(step => step.op === 'expect-text') : -1;
+      const trace = [];
+      for (let index = 0; index < story.steps.length; index++) {
+        const step = story.steps[index], status = index === failAt ? 'failed' : 'passed';
+        trace.push({ index, op: step.op, ...(step.op === 'press' ? { key: step.key } : { role: step.role, name: step.name }),
+          ...(step.op === 'expect-text' ? { expectedText: step.text } : {}), status, durationMs: 12,
+          ...(status === 'failed' ? { message: story.id === 'result' ? 'Controlled broken result text' : 'Controlled broken busy state' } : {}) });
+        if (status === 'failed') break;
+      }
+      const screenshot = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+      const file = 'web-story-' + story.id + '.png';
+      writeFileSync(state.webOutputPath + '/' + file, screenshot, { mode: 0o600 });
+      return { id: story.id, contentHash: story.contentHash, status: failAt >= 0 ? 'failed' : 'passed', durationMs: 12,
+        trace, screenshot: { file, sha256: createHash('sha256').update(screenshot).digest('hex'), bytes: screenshot.length },
+        ...(failAt >= 0 ? { message: story.id === 'result' ? 'Controlled broken result text' : 'Controlled broken busy state' } : {}) };
+    });
+    state.webReport = { version: 1, status: stories.some(story => story.status === 'failed') ? 'failed' : 'passed', job: web.job, attempt: web.attempt, head: web.head,
       tree: web.tree, policyHash: web.policyHash, webPolicyHash: web.webPolicyHash,
       tool: { adapter: web.adapter, version: web.version, browser: 'chromium', image: web.image,
         platform: 'linux-container', coverage: 'web', browserVersion: '153.0.8010.12' },
-      stories: web.stories.map(story => ({ id: story.id, contentHash: story.contentHash, status: 'passed', durationMs: 12 })) };
+      stories };
+    writeFileSync(state.webOutputPath + '/result.json', JSON.stringify(state.webReport));
+    item.running = false; save(); process.exit(0);
   }
   const mountArgs = [];
   for (let i = 0; i < args.length - 1; i++) if (args[i] === '--mount') mountArgs.push(args[i + 1]);
@@ -193,23 +231,28 @@ if (command === 'image' && args[0] === 'inspect') {
   if (!state.webImagePresent || !state.webImage || args.at(-1) !== state.webImage) fail('No such image');
   output(state.webImage); process.exit(0);
 }
-if (command === 'cp') {
-  if (!state.present || !state.webReport || !args[0].includes('factory-web-result-' + state.webOutputToken + '.json')) fail('No browser result');
-  writeFileSync(args[1], JSON.stringify(state.webReport)); process.exit(0);
-}
 if (command === 'ps') {
   if (state.listingUnknown) fail('simulated Docker listing failure');
   const filter = args[args.indexOf('--filter') + 1] || '';
-  const matches = state.present && (
+  const legacyMatch = state.present && (
     filter === 'label=sdf.factory=' + state.labels['sdf.factory'] ||
     filter === 'name=^/' + state.name + '$'
   );
-  output(matches ? state.id : '');
+  const webMatches = Object.values(state.webContainers || {}).filter(item => item.present && (
+    filter === 'label=sdf.factory=' + item.labels['sdf.factory'] || filter === 'name=^/' + item.name + '$'
+  ));
+  output([...(legacyMatch ? [state.id] : []), ...webMatches.map(item => item.id)].join('\\n'));
   process.exit(0);
 }
 if (command === 'inspect') {
+  const webItem = webByName(args[0]);
+  if (webItem?.present) {
+    output(JSON.stringify([{ Id: webItem.id, Name: '/' + webItem.name, Image: webItem.image,
+      Config: { Labels: webItem.labels }, State: { Running: webItem.running } }]));
+    process.exit(0);
+  }
   if (args[0] === state.name) {
-    output(JSON.stringify([{ Name: '/' + state.name, Config: { Labels: state.labels }, State: { Running: state.running } }]));
+    output(JSON.stringify([{ Id: state.id, Name: '/' + state.name, Image: 'fixture/image:latest', Config: { Labels: state.labels }, State: { Running: state.running } }]));
     process.exit(0);
   }
   if (!state.present || args[0] !== state.id) fail('No such object');
@@ -217,11 +260,23 @@ if (command === 'inspect') {
   process.exit(0);
 }
 if (command === 'stop') {
+  const webItem = webByName(args.at(-1));
+  if (webItem?.present) { webItem.running = false; save(); output(webItem.id); process.exit(0); }
   if (!state.present) fail('No such container');
   state.running = false; save(); output(state.id); process.exit(0);
 }
 if (command === 'rm') {
   const force = args.includes('-f');
+  const webItem = webByName(args.at(-1));
+  if (webItem?.present) {
+    state.webRmObservations.push({ role: webItem.role, force, policyExists: existsSync(state.webPolicyPath),
+      scratchExists: Boolean(state.scratchPath && existsSync(state.scratchPath)),
+      outputExists: existsSync(state.webOutputPath || '') });
+    save();
+    if (state.mode === 'web-uncertain' && webItem.role === 'web-browser' && !state.recoveryAllowed)
+      fail('simulated browser container remove failure');
+    webItem.present = false; webItem.running = false; save(); output(webItem.id); process.exit(0);
+  }
   if (state.name?.endsWith('-web')) {
     state.webRmObservations.push({ force, policyExists: existsSync(state.webPolicyPath), scratchExists: Boolean(state.scratchPath && existsSync(state.scratchPath)) });
     save();
@@ -473,33 +528,61 @@ test('verify spawn failure retains scratch until ordinary recovery confirms abse
   }, 'verify');
 });
 
-test('trusted web Verify records story proof only after the stopped container and gates unavailable browser capability', async t => {
+test('trusted web Verify records bound traces and screenshots after both containers stop, and blocks broken or unavailable capability', async t => {
   const browserImage = `sha256:${'a'.repeat(64)}`;
   const web = qualificationWebConfig(browserImage);
   const f = fixture(t, 'web-pass', 'verify', 'mock', null, web);
   const execution = runExecutor(f);
-  assert.equal(execution.status, 0, execution.stderr || execution.stdout);
+  assert.equal(execution.status, 0, JSON.stringify({ stderr: execution.stderr, stdout: execution.stdout,
+    docker: stateOf(f), webLog: existsSync(join(f.attemptFolder, 'web.log')) ? readFileSync(join(f.attemptFolder, 'web.log'), 'utf8') : null,
+    checks: existsSync(join(f.folder, 'checks.json')) ? JSON.parse(readFileSync(join(f.folder, 'checks.json'), 'utf8')) : null }));
   const docker = stateOf(f), checks = JSON.parse(readFileSync(join(f.folder, 'checks.json'), 'utf8'));
   assert.equal(checks.passed, true);
   assert.equal(checks.web_verification.status, 'passed');
   assert.deepEqual(checks.web_verification.stories.map(story => story.contentHash), expectedWebStories(web).map(story => story.contentHash));
   assert.equal(checks.web_verification.webPolicyHash, webPolicyHash(web));
-  assert.equal(docker.webRmObservations[0].policyExists, true, 'the private attempt input survives through exact container removal');
-  assert.equal(docker.webRmObservations[0].scratchExists, true, 'disposable preview scratch survives through exact container removal');
-  assert.equal(docker.webRunArgs.includes('--privileged'), false);
-  assert.equal(docker.webRunArgs[docker.webRunArgs.indexOf('--network') + 1], 'none');
-  assert.equal(docker.webRunArgs.some(value => value.includes('docker.sock')), false);
-  assert.equal(docker.webRunArgs.includes('--env-file'), false, 'the browser never receives selected inference credentials');
-  assert.equal(docker.webRunArgs.some(value => value.includes('target=/output')), false);
-  assert.equal(docker.webRunArgs.some(value => value.includes('target=/run/factory/web-policy.json')), false,
-    'trusted story input arrives on runner stdin instead of a candidate-visible mount');
+  assert.deepEqual(docker.webRmObservations.slice(0, 2).map(item => item.role), ['web-browser', 'web-preview']);
+  assert(docker.webRmObservations.slice(0, 2).every(item => item.policyExists && item.scratchExists),
+    'policy and preview scratch survive each exact container removal');
+  assert(docker.webRmObservations[0].outputExists, 'browser output remains mounted through browser-container removal');
+  const preview = docker.webContainerRuns.find(item => item.role === 'web-preview').args;
+  const browser = docker.webContainerRuns.find(item => item.role === 'web-browser').args;
+  for (const args of [preview, browser]) {
+    assert.equal(args.includes('--privileged'), false);
+    assert.equal(args.includes('--cap-drop=ALL'), true);
+    assert.equal(args.some(value => value.startsWith('--cap-add')), false);
+    assert.equal(args[args.indexOf('--user') + 1], `${process.getuid()}:${process.getgid()}`);
+    assert.equal(args.some(value => value.includes('docker.sock')), false);
+    assert.equal(args.includes('--env-file'), false, 'neither container receives model credentials');
+  }
+  assert(preview.includes('--network=none'));
+  assert(preview.some(value => value.includes('target=/workspace,readonly')));
+  assert(preview.some(value => value.includes('target=/scratch')));
+  assert.equal(preview.some(value => value.includes('target=/browser-output')), false);
+  assert.equal(browser[browser.indexOf('--network') + 1], `container:${docker.webContainerRuns.find(item => item.role === 'web-preview').args[docker.webContainerRuns.find(item => item.role === 'web-preview').args.indexOf('--name') + 1]}`);
+  assert.equal(browser.some(value => value.includes('target=/workspace') || value.includes('target=/scratch') || value.includes('target=/output')), false);
+  assert(browser.some(value => value.includes('target=/browser-output')));
+  assert.equal(typeof docker.webInput.deadlineAt, 'number');
+  assert.equal(Object.hasOwn(docker.webInput, 'outputToken'), false);
   assert.equal(existsSync(f.verifyScratch), false, 'confirmed browser shutdown releases its writable scratch');
+  assert.equal(existsSync(join(f.attemptFolder, 'web-output')), false, 'confirmed browser shutdown releases the separate result mount');
   assert.equal(existsSync(f.webPolicyPath), false, 'confirmed browser shutdown releases its private runner input');
   assert.equal(existsSync(f.lock), false, 'confirmed browser shutdown releases the recovery fence');
   const artifact = JSON.parse(readFileSync(join(f.output, 'web-verification.json'), 'utf8'));
   assert.equal(artifact.attempt, attempt);
   assert.equal(artifact.head, checks.head);
   assert.equal(artifact.policyHash, checks.policyHash);
+  assert(artifact.stories.every(story => story.trace.length > 0 && story.screenshot?.file));
+  assert(existsSync(join(f.output, artifact.stories[0].screenshot.file)), 'controller-promoted screenshot is retained as a private artifact');
+
+  const broken = fixture(t, 'web-broken', 'verify', 'mock', null, web);
+  const brokenRun = runExecutor(broken);
+  assert.notEqual(brokenRun.status, 0, 'a failed frozen busy-state story blocks Verify');
+  const brokenEvidence = JSON.parse(readFileSync(join(broken.folder, 'checks.json'), 'utf8')).web_verification;
+  assert.equal(brokenEvidence.status, 'failed');
+  assert.equal(brokenEvidence.stories.find(story => story.id === 'busy-disabled').status, 'failed');
+  assert(brokenEvidence.stories.find(story => story.id === 'busy-disabled').screenshot?.file);
+  assert.equal(existsSync(join(broken.folder, 'accepted.json')), false);
 
   const unavailable = fixture(t, 'web-unavailable', 'verify', 'mock', null, web);
   const unavailableRun = runExecutor(unavailable);
@@ -508,8 +591,17 @@ test('trusted web Verify records story proof only after the stopped container an
   assert.equal(unavailableChecks.passed, false);
   assert.equal(unavailableChecks.web_verification.status, 'unavailable');
   assert(unavailableChecks.web_verification.stories.every(story => story.status === 'unavailable'));
-  assert.equal(stateOf(unavailable).webRunArgs, null, 'missing capability is never replaced with another tool');
+  assert.equal(stateOf(unavailable).webContainerRuns.length, 0, 'missing capability is never replaced with another tool');
   assert.equal(existsSync(join(unavailable.folder, 'accepted.json')), false);
+
+  const brokenResult = fixture(t, 'web-result-broken', 'verify', 'mock', null, web);
+  const brokenResultRun = runExecutor(brokenResult);
+  assert.notEqual(brokenResultRun.status, 0, 'a failed frozen result story blocks Verify');
+  const resultEvidence = JSON.parse(readFileSync(join(brokenResult.folder, 'checks.json'), 'utf8')).web_verification;
+  assert.equal(resultEvidence.stories.find(story => story.id === 'result').status, 'failed');
+  assert(resultEvidence.stories.find(story => story.id === 'result').trace.some(event => event.status === 'failed'));
+  assert(resultEvidence.stories.find(story => story.id === 'result').screenshot?.file);
+  assert.equal(existsSync(join(brokenResult.folder, 'accepted.json')), false);
 });
 
 test('uncertain browser-container cleanup retains story input, scratch and the Verify fence for recovery', t => {
@@ -519,13 +611,17 @@ test('uncertain browser-container cleanup retains story input, scratch and the V
   const execution = runExecutor(f);
   assert.notEqual(execution.status, 0, 'the Verify process cannot release state while Docker cleanup is uncertain');
   const docker = stateOf(f);
-  assert.equal(docker.present, true, 'the controlled browser container remains for recovery');
-  assert(docker.webRmObservations.some(item => item.force && item.policyExists && item.scratchExists),
+  const browserContainer = Object.values(docker.webContainers).find(item => item.role === 'web-browser');
+  assert.equal(browserContainer.present, true, 'the controlled browser container remains for recovery');
+  assert(docker.webRmObservations.some(item => item.role === 'web-browser' && item.force && item.policyExists && item.scratchExists),
     `initial exact-name cleanup sees the retained input and scratch: ${JSON.stringify({ observations: docker.webRmObservations, result: execution.stderr })}`);
-  assert(docker.webRmObservations.some(item => !item.force && item.policyExists && item.scratchExists),
-    'outer cleanup also retains both mounts while removal is uncertain');
+  assert(docker.webRmObservations.some(item => item.role === 'web-preview' && item.force && item.policyExists && item.scratchExists),
+    'the preview is also reconciled before scratch release');
+  assert(docker.webRmObservations.some(item => item.role === 'web-browser' && !item.force && item.policyExists && item.scratchExists),
+    'outer recovery also retains both mounts while browser removal is uncertain');
   assert.equal(existsSync(f.webPolicyPath), true, JSON.stringify({ path: f.webPolicyPath, observations: docker.webRmObservations, stderr: execution.stderr }));
   assert.equal(existsSync(f.verifyScratch), true);
+  assert.equal(existsSync(join(f.attemptFolder, 'web-output')), true);
   assert.equal(existsSync(f.lock), true);
 
   enableRecovery(f);
@@ -533,7 +629,64 @@ test('uncertain browser-container cleanup retains story input, scratch and the V
   assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
   assert.equal(existsSync(f.webPolicyPath), false, 'normal reconciliation removes the protected input only after Docker confirms absence');
   assert.equal(existsSync(f.verifyScratch), false, 'normal reconciliation removes scratch only after Docker confirms absence');
+  assert.equal(existsSync(join(f.attemptFolder, 'web-output')), false, 'normal recovery removes browser output after both containers stop');
   assert.equal(existsSync(f.lock), false, 'normal reconciliation releases the matching attempt fence');
+});
+
+test('cancelling a live browser run and restarting reconciles both exact containers before releasing state', async t => {
+  const browserImage = `sha256:${'c'.repeat(64)}`;
+  const web = qualificationWebConfig(browserImage);
+  const f = fixture(t, 'web-cancel', 'verify', 'mock', null, web);
+  const child = spawn(process.execPath, [join(root, 'factory/executor.mjs'), f.state, f.phase], {
+    detached: true, stdio: ['pipe', 'ignore', 'ignore'], env: f.executorEnv,
+  });
+  child.stdin.end('bounded executor cancellation fixture');
+  let settled = false;
+  t.after(() => { if (!settled) { try { process.kill(-child.pid, 'SIGKILL'); } catch {} } });
+  const closed = new Promise(resolve => child.once('close', (code, signal) => { settled = true; resolve({ code, signal }); }));
+  const deadline = Date.now() + 10_000;
+  let browserStarted = false;
+  while (Date.now() < deadline) {
+    const state = stateOf(f);
+    if (Object.values(state.webContainers).some(item => item.role === 'web-browser' && item.present)) {
+      browserStarted = true;
+      break;
+    }
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.equal(browserStarted, true, 'both isolated containers start before cancellation');
+  const beforeCancel = stateOf(f);
+  assert.deepEqual(Object.values(beforeCancel.webContainers).map(item => item.role).sort(), ['web-browser', 'web-preview']);
+  assert(Object.values(beforeCancel.webContainers).every(item => item.present && item.running));
+  assert.equal(existsSync(f.webPolicyPath), true);
+  assert.equal(existsSync(f.verifyScratch), true);
+  assert.equal(existsSync(join(f.attemptFolder, 'web-output')), true);
+  assert.equal(existsSync(f.lock), true);
+
+  process.kill(-child.pid, 'SIGTERM');
+  let closeTimer;
+  const stopped = await Promise.race([closed, new Promise((_, reject) => {
+    closeTimer = setTimeout(() => reject(new Error('cancelled executor did not stop')), 10_000);
+  })]);
+  clearTimeout(closeTimer);
+  assert.equal(stopped.signal, 'SIGTERM');
+  assert.equal(settled, true);
+  assert.equal(existsSync(f.webPolicyPath), true, 'cancellation leaves private story input for restart reconciliation');
+  assert.equal(existsSync(f.verifyScratch), true, 'cancellation does not release preview scratch early');
+  assert.equal(existsSync(join(f.attemptFolder, 'web-output')), true, 'cancellation does not release browser output early');
+  assert.equal(existsSync(f.lock), true, 'cancellation preserves the execution fence until restart reconciliation');
+
+  const recovered = runOrdinaryRecovery(f);
+  assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
+  const afterRecovery = stateOf(f);
+  assert.deepEqual(afterRecovery.webRmObservations.map(item => item.role).sort(), ['web-browser', 'web-preview']);
+  assert(afterRecovery.webRmObservations.every(item => item.policyExists && item.scratchExists && item.outputExists),
+    'restart stops both exact browser and preview containers while their mounts and fence remain private');
+  assert(Object.values(afterRecovery.webContainers).every(item => !item.present && !item.running));
+  assert.equal(existsSync(f.webPolicyPath), false);
+  assert.equal(existsSync(f.verifyScratch), false);
+  assert.equal(existsSync(join(f.attemptFolder, 'web-output')), false);
+  assert.equal(existsSync(f.lock), false);
 });
 
 test('selected inference credentials are redacted from retained logs and reports after recovery confirms shutdown', t => {

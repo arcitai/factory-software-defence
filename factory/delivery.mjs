@@ -10,7 +10,7 @@ import { publicSourceAdmission } from './source-admission.mjs';
 import { QueueError } from './queue.mjs';
 import { readProjectLinks } from './project-links.mjs';
 import { qualifyGitHubActions } from './workflow-qualification.mjs';
-import { assertCurrentWebEvidence } from './web-verification.mjs';
+import { assertCurrentWebEvidence, assertCurrentWebArtifacts } from './web-verification.mjs';
 
 const MAX_PATCH_BYTES = 8 * 1024 * 1024;
 const MAX_CHANGED_FILES = 500;
@@ -272,8 +272,12 @@ function acceptanceSummary(job, state, config, sourceAdmission) {
   const handoffRun = byID(accepted.handoff_run_id);
   let browserEvidenceCurrent = true;
   if (config.webVerification?.enabled) {
-    try { assertCurrentWebEvidence(config.webVerification, checks.web_verification,
-      { job: job.id, attempt: checkRun?.id, meta: candidate, policyHash: expectedPolicy }); }
+    try {
+      assertCurrentWebEvidence(config.webVerification, checks.web_verification,
+        { job: job.id, attempt: checkRun?.id, meta: candidate, policyHash: expectedPolicy });
+      assertCurrentWebArtifacts(config.webVerification, checks.web_verification,
+        join(state, 'jobs', job.id, 'artifacts', checks.web_verification.attempt));
+    }
     catch { browserEvidenceCurrent = false; }
   }
   const phaseEvidence = trustedPhaseEvidence(state, job, expectedPolicy,
@@ -523,8 +527,12 @@ export class DeliveryService {
       || review.policyHash !== expectedPolicy || reviewRun.review_verdict !== 'pass')
       throw new QueueError('Current successful checks and independent review for this candidate are required.');
     if (config.webVerification?.enabled) {
-      try { assertCurrentWebEvidence(config.webVerification, checks.web_verification,
-        { job: job.id, attempt: checkRun.id, meta: candidate, policyHash: expectedPolicy }); }
+      try {
+        assertCurrentWebEvidence(config.webVerification, checks.web_verification,
+          { job: job.id, attempt: checkRun.id, meta: candidate, policyHash: expectedPolicy });
+        assertCurrentWebArtifacts(config.webVerification, checks.web_verification,
+          join(this.state, 'jobs', job.id, 'artifacts', checks.web_verification.attempt));
+      }
       catch { throw new QueueError('Required browser evidence is missing, stale or non-passing; publication is blocked.'); }
     }
     if (!SHA1.test(accepted.base || '') || !SHA1.test(accepted.head || '') || !SHA1.test(accepted.tree || '')

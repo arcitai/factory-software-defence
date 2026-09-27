@@ -157,6 +157,7 @@ export function TaskDetail({
                     {result.error}
                   </p>
                 )}
+                <BrowserVerification evidence={result?.web_verification} />
                 {showDelivery && <DeliveryDetails delivery={job.delivery_status} />}
                 {result && job.task && (
                   <Artifacts
@@ -394,9 +395,25 @@ function BrowserVerification({ evidence }) {
         Candidate {String(evidence.candidate || "unknown").slice(0, 12)} · attempt {evidence.attempt || "unknown"} · policy {String(evidence.policyHash || "unknown").slice(0, 12)}
       </p>
       {evidence.stories?.length > 0 && <ul className="space-y-1 text-xs">
-        {evidence.stories.map(story => <li key={story.id} className="flex flex-wrap items-center justify-between gap-2">
-          <span title={story.contentHash || ""}>{story.id} <span className="font-mono text-muted-foreground">{String(story.contentHash || "").slice(0, 12)}</span></span>
-          <State value={story.status === "passed" ? "succeeded" : story.status === "failed" ? "failed" : story.status === "unavailable" ? "blocked" : "interrupted"} />
+        {evidence.stories.map(story => <li key={story.id} className="space-y-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span title={story.contentHash || ""}>{story.id} <span className="font-mono text-muted-foreground">{String(story.contentHash || "").slice(0, 12)}</span></span>
+            <State value={story.status === "passed" ? "succeeded" : story.status === "failed" ? "failed" : story.status === "unavailable" ? "blocked" : "interrupted"} />
+          </div>
+          {story.screenshot?.file && <p className="text-xs text-muted-foreground">Screenshot retained: {story.screenshot.file}</p>}
+          {story.trace?.length > 0 && <details className="rounded-md bg-muted/30 px-2 py-1">
+            <summary className="cursor-pointer">Action trace ({story.trace.length})</summary>
+            <ol className="mt-1 space-y-1 pl-5">
+              {story.trace.map(event => <li key={`${story.id}:${event.index}`} className="break-words">
+                <span className="font-mono">{event.op}</span>
+                {event.role && <> · {event.role} “{event.name}”</>}
+                {event.key && <> · {event.key}</>}
+                {event.expectedText && <> · expected “{event.expectedText}”</>}
+                <span className="text-muted-foreground"> · {event.status}{event.message ? ` · ${event.message}` : ""}</span>
+              </li>)}
+            </ol>
+          </details>}
+          {story.message && <p className="break-words text-xs text-muted-foreground">{story.message}</p>}
         </li>)}
       </ul>}
     </section>

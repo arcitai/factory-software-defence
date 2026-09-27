@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
@@ -10,9 +10,10 @@ if (packageVersion !== '1.63.0') throw new Error(`Unexpected Playwright package 
 
 let browser;
 try {
-  process.env.FACTORY_CHROMIUM_EXECUTABLE = chromium.executablePath();
-  browser = await chromium.launch({ headless: true, executablePath: '/opt/factory-web/launch-chromium.sh',
-    env: { ...process.env, HOME: '/tmp/browser-home', FACTORY_BROWSER_UID: '65533', FACTORY_BROWSER_GID: '65533' },
+  mkdirSync('/tmp/browser-home', { recursive: true, mode: 0o700 });
+  mkdirSync('/tmp/browser-home/cache', { recursive: true, mode: 0o700 });
+  browser = await chromium.launch({ headless: true, executablePath: chromium.executablePath(),
+    env: { ...process.env, HOME: '/tmp/browser-home', XDG_CACHE_HOME: '/tmp/browser-home/cache' },
     args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   const page = await browser.newPage({ viewport: { width: 800, height: 600 } });
   await page.setContent('<button type="button">Run probe</button><output></output>');

@@ -41,10 +41,11 @@ software-defence-factory doctor --state /private/state/project
 ```
 
 The probe runs a real headless Chromium click and result assertion in a bounded,
-read-only, `network none` Docker container. `doctor` reports `ready` only after
-that interaction passes. A missing image, unsupported adapter/version or
-browser launch failure reports unavailable. The probe never downloads or
-builds an image.
+read-only, `network none` Docker container as the controller UID. Its real
+wall-clock deadline stops the exact labelled probe, and readiness is reported
+only after that container is confirmed removed. A missing image, unsupported
+adapter/version or browser launch failure reports unavailable. The probe never
+downloads or builds an image.
 
 ## Configure trusted stories
 
@@ -99,8 +100,8 @@ story-set hash and each story's content hash. Any changed tree, tool, story or
 policy makes prior evidence stale. Missing, failed, unavailable, inconclusive
 or malformed required evidence blocks Review, handoff and trusted PR delivery.
 The run summary and `web-verification.json` artifact are shared through CLI,
-API and dashboard; the dashboard renders the evidence as text and does not
-execute candidate HTML in the controller origin.
+API and dashboard; the dashboard renders traces as text and retained PNGs as
+images. It does not execute candidate HTML in the controller origin.
 
 ## Package and preview guidance
 
@@ -109,23 +110,32 @@ For Node projects, install from the committed lockfile with the project's
 frozen install command (for example `npm ci --ignore-scripts`), run the build,
 then configure `previewCommand` to start the already-prepared local preview
 from the project root in the disposable check copy.
-The browser phase reuses that check's disposable scratch copy. It does not run
-another install or contact a package registry. The first image has Node; a
-project needing another preview runtime can use a reviewed derived image that
-keeps the Playwright version and browser pair pinned. Do not add secrets to the
-preview environment or image.
+The preview phase reuses that check's disposable scratch copy. It does not run
+another install or contact a package registry. The qualified project job image
+provides the preview runtime. Do not add secrets to the preview environment or
+image.
 
-The preview and browser run together in a fresh Docker container with
-`network none`, a read-only candidate mount, disposable writable scratch,
-bounded memory/CPU/processes and an attempt deadline. The preview runs under a
-separate unprivileged UID, and Chromium runs under a second unprivileged UID.
-The controller sends trusted policy only to the runner over stdin; it is not a
-candidate-visible mount. The runner writes a bounded result into container
-tmpfs, which the controller copies only after Docker confirms the exact labelled
-container has stopped. No controller, forge,
-inference or Docker credentials, host profile, Docker socket, host network or
-privileged container mode is available to it. Chromium is headless and uses
-the outer Docker boundary; this is not a hosted browser service.
+Verify starts two containers with separate mount and PID namespaces. The
+preview uses the configured project job image, the candidate at `/workspace`
+read-only, and the writable `/scratch` copy. It runs as the controller UID with
+`network none`, dropped capabilities, a read-only root and bounded resources.
+The browser uses the pinned Playwright image as the same UID, with its own
+read-only root, writable temporary profile and a separate private output mount.
+It receives the frozen trusted stories on stdin and does not mount the
+candidate, project scratch or controller results. The browser shares only the
+exact preview container's `network none` namespace to reach its loopback port;
+each container retains its own PID namespace. Neither container gets host
+networking, published ports, extra capabilities, a Docker socket, controller,
+forge or inference credentials, or a user profile.
+
+The controller enforces a real wall-clock deadline, stops and reconciles both
+exact labelled containers, then reads the bounded result and PNG screenshots
+from the browser-only mount. The private result contains candidate/tree,
+attempt, policy, pinned tool/image and story hashes, bounded action traces and
+screenshot hashes. CLI, API and dashboard expose the same evidence; screenshots
+can be viewed as images, and no candidate HTML is served on the controller
+origin. Chromium is headless and uses the outer Docker boundary; this is not a
+hosted browser service.
 
 This adapter proves only Linux Chromium interaction with a local web preview.
 It does not qualify Android/iOS, desktop-native applications, Safari, Firefox,

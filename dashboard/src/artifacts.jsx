@@ -22,6 +22,7 @@ export function useTaskArtifacts(job, csrfToken) {
 
 export function Artifacts({ artifacts, runID, csrfToken }) {
   const previewRequest = useRef(null);
+  const previewObjectURL = useRef(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState("");
   const [error, setError] = useState("");
@@ -29,20 +30,35 @@ export function Artifacts({ artifacts, runID, csrfToken }) {
   const files = artifacts.byRun[runID] || [];
   useEffect(() => {
     setPreview(null); setLoading(""); setError("");
-    return () => previewRequest.current?.abort();
+    return () => {
+      previewRequest.current?.abort();
+      if (previewObjectURL.current) URL.revokeObjectURL(previewObjectURL.current);
+      previewObjectURL.current = null;
+    };
   }, [runID]);
-  function canPreview(file) { return file.size <= 1024*1024 && (file.content_type?.startsWith("text/") || /\.(md|txt|json|csv|log|ya?ml|toml|py|js|ts|go|sh|html|xml|css)$/i.test(file.path)); }
+  function canPreview(file) { return file.content_type === "image/png" ? file.size <= 2*1024*1024 : file.size <= 1024*1024 && (file.content_type?.startsWith("text/") || /\.(md|txt|json|csv|log|ya?ml|toml|py|js|ts|go|sh|html|xml|css)$/i.test(file.path)); }
+  function clearPreview() {
+    if (previewObjectURL.current) URL.revokeObjectURL(previewObjectURL.current);
+    previewObjectURL.current = null;
+    setPreview(null);
+  }
   async function view(file) {
     previewRequest.current?.abort();
     const controller = new AbortController();
     previewRequest.current = controller;
-    setPreview(null); setLoading(file.id); setError("");
+    clearPreview(); setLoading(file.id); setError("");
     try {
       const response = await fetch(`/api/v1/artifacts/${encodeURIComponent(file.id)}/content`, {headers:{"X-Factory-Session":csrfToken}, signal: controller.signal});
       if (!response.ok) throw new Error(response.status === 410 ? "This file has expired." : "Could not open file");
-      const body = await response.text();
-      if (body.includes("\0")) throw new Error("This file is binary. Download it to view it.");
-      if (!controller.signal.aborted) setPreview({file,body});
+      if (file.content_type === "image/png") {
+        const url = URL.createObjectURL(await response.blob());
+        if (!controller.signal.aborted) { previewObjectURL.current = url; setPreview({file,imageUrl:url}); }
+        else URL.revokeObjectURL(url);
+      } else {
+        const body = await response.text();
+        if (body.includes("\0")) throw new Error("This file is binary. Download it to view it.");
+        if (!controller.signal.aborted) setPreview({file,body});
+      }
     } catch(e) { if (!controller.signal.aborted) setError(e.message); }
     finally { if (!controller.signal.aborted) setLoading(""); }
   }
@@ -68,8 +84,8 @@ export function Artifacts({ artifacts, runID, csrfToken }) {
       {!file.expired_at && <button type="button" className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring" aria-label={`Download ${file.path}`} disabled={Boolean(downloading)} onClick={()=>download(file)}><Download className="size-4" /></button>}
     </li>)}</ul>
     {preview && <section aria-label={`Preview ${preview.file.path}`} className="overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-4 py-2"><h3 className="min-w-0 break-all text-sm font-medium">{preview.file.path} <span className="text-muted-foreground">· Raw</span></h3><button type="button" className="rounded-md p-2 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring" aria-label="Close file preview" onClick={()=>setPreview(null)}><X className="size-4" /></button></div>
-      <pre tabIndex={0} className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-6">{preview.body}</pre>
+      <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-4 py-2"><h3 className="min-w-0 break-all text-sm font-medium">{preview.file.path} <span className="text-muted-foreground">· Preview</span></h3><button type="button" className="rounded-md p-2 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring" aria-label="Close file preview" onClick={clearPreview}><X className="size-4" /></button></div>
+      {preview.imageUrl ? <img src={preview.imageUrl} alt={`Browser verification screenshot ${preview.file.path}`} className="h-auto max-h-[70vh] max-w-full object-contain" /> : <pre tabIndex={0} className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-6">{preview.body}</pre>}
     </section>}
   </section>;
 }

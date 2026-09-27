@@ -1,13 +1,19 @@
 import { createHash } from 'node:crypto';
+import { lstatSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 export const PLAYWRIGHT_VERSION = '1.63.0';
 export const WEB_STORY_STATUSES = Object.freeze(['passed', 'failed', 'unavailable', 'inconclusive']);
+export const MAX_WEB_SCREENSHOT_BYTES = 2 * 1024 * 1024;
+export const MAX_WEB_SCREENSHOT_TOTAL_BYTES = 8 * 1024 * 1024;
 const SHA256_IMAGE = /^sha256:[a-f0-9]{64}$/;
 const REQUIRED_STORIES = Object.freeze(['busy-disabled', 'result', 'failure-retry', 'keyboard-focus']);
 const ROLES = new Set(['alert', 'button', 'checkbox', 'heading', 'link', 'option', 'radio', 'status', 'tab', 'textbox']);
 const KEYS = new Set(['Tab', 'Enter', 'Space', 'Escape', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End']);
 const OPS = new Set(['click', 'expect-visible', 'expect-enabled', 'expect-disabled', 'expect-text', 'press', 'expect-focused']);
 const digest = value => createHash('sha256').update(value).digest('hex');
+const screenshotName = id => `web-story-${id}.png`;
+const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 function text(value, where, max = 500) {
   if (typeof value !== 'string' || !value.trim() || value.length > max || /[\u0000-\u001f\u007f]/.test(value))
@@ -136,8 +142,70 @@ export function makeUnavailableWebEvidence({ job, attempt, meta, policyHash, web
     webPolicyHash: webPolicyHash(webVerification), tool: {
       adapter: webVerification.adapter, version: webVerification.version, browser: 'chromium',
       image: webVerification.image, platform: 'linux-container', coverage: 'web',
-    }, stories: expected.map(story => ({ ...story, status, message: String(reason).slice(0, 1000) })),
+    }, stories: expected.map(story => ({ ...story, status, trace: [], message: String(reason).slice(0, 1000) })),
   };
+}
+
+export function assertWebStoryTrace(configuration, actual) {
+  const story = configuration.stories.find(item => item.id === actual.id);
+  if (!story || !Array.isArray(actual.trace) || actual.trace.length > story.steps.length)
+    throw new Error('Required browser action trace is missing or malformed');
+  for (let index = 0; index < actual.trace.length; index++) {
+    const event = actual.trace[index], expected = story.steps[index];
+    const allowed = ['index', 'op', 'role', 'name', 'key', 'expectedText', 'status', 'durationMs', 'message'];
+    if (!event || typeof event !== 'object' || Array.isArray(event) || Object.keys(event).some(key => !allowed.includes(key))
+      || event.index !== index || event.op !== expected.op || !['passed', 'failed', 'inconclusive'].includes(event.status)
+      || !Number.isFinite(event.durationMs) || event.durationMs < 0)
+      throw new Error('Required browser action trace is missing or malformed');
+    if (expected.op === 'press') {
+      if (event.key !== expected.key || event.role !== undefined || event.name !== undefined || event.expectedText !== undefined)
+        throw new Error('Browser action trace does not match its frozen story');
+    } else if (event.role !== expected.role || event.name !== expected.name || event.key !== undefined
+      || (expected.op === 'expect-text' ? event.expectedText !== expected.text : event.expectedText !== undefined))
+      throw new Error('Browser action trace does not match its frozen story');
+    if (event.message !== undefined && (typeof event.message !== 'string' || event.message.length > 1000))
+      throw new Error('Browser action trace message is malformed');
+  }
+  if (actual.status === 'passed' && (actual.trace.length !== story.steps.length
+    || actual.trace.some(event => event.status !== 'passed')))
+    throw new Error('Passing browser evidence does not contain every successful configured action');
+  if (actual.status === 'failed' && actual.trace.length
+    && (actual.trace.at(-1).status !== 'failed' || actual.trace.slice(0, -1).some(event => event.status !== 'passed')))
+    throw new Error('Failed browser evidence does not match its action trace');
+  if (actual.status === 'unavailable' && actual.trace.length)
+    throw new Error('Unavailable browser evidence cannot contain executed actions');
+  const requiresScreenshot = actual.status === 'passed' || actual.trace.length > 0;
+  if (actual.screenshot === undefined) {
+    if (requiresScreenshot) throw new Error('Browser screenshot evidence is missing');
+    return;
+  }
+  const screenshot = actual.screenshot;
+  if (!screenshot || typeof screenshot !== 'object' || Array.isArray(screenshot)
+    || Object.keys(screenshot).some(key => !['file', 'sha256', 'bytes'].includes(key))
+    || screenshot.file !== screenshotName(actual.id) || !/^[a-f0-9]{64}$/.test(screenshot.sha256 || '')
+    || !Number.isSafeInteger(screenshot.bytes) || screenshot.bytes < pngSignature.length
+    || screenshot.bytes > MAX_WEB_SCREENSHOT_BYTES)
+    throw new Error('Browser screenshot evidence is missing or malformed');
+}
+
+export function assertCurrentWebArtifacts(webVerification, evidence, artifactDirectory) {
+  if (!webVerification?.enabled) return;
+  assertCurrentWebEvidence(webVerification, evidence, { job: evidence?.job, attempt: evidence?.attempt,
+    meta: { head: evidence?.head, tree: evidence?.tree }, policyHash: evidence?.policyHash });
+  const directory = lstatSync(artifactDirectory);
+  if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error('Browser artifact directory is missing or unsafe');
+  let totalBytes = 0;
+  for (const story of evidence.stories) {
+    if (!story.screenshot) continue;
+    const path = join(artifactDirectory, story.screenshot.file), stat = lstatSync(path);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== story.screenshot.bytes
+      || stat.size > MAX_WEB_SCREENSHOT_BYTES) throw new Error('Browser screenshot artifact is missing or unsafe');
+    const bytes = readFileSync(path);
+    if (!bytes.subarray(0, pngSignature.length).equals(pngSignature) || digest(bytes) !== story.screenshot.sha256)
+      throw new Error('Browser screenshot artifact does not match its retained evidence hash');
+    totalBytes += bytes.length;
+    if (totalBytes > MAX_WEB_SCREENSHOT_TOTAL_BYTES) throw new Error('Browser screenshot evidence exceeds its retained size bound');
+  }
 }
 
 export function assertCurrentWebEvidence(webVerification, evidence, { job, attempt, meta, policyHash }) {
@@ -160,6 +228,7 @@ export function assertCurrentWebEvidence(webVerification, evidence, { job, attem
     if (actual?.id !== required.id || actual?.contentHash !== required.contentHash || actual?.status !== 'passed'
       || !Number.isFinite(actual.durationMs) || actual.durationMs < 0)
       throw new Error('Required browser story evidence is missing, stale or non-passing');
+    assertWebStoryTrace(webVerification, actual);
   }
 }
 
@@ -173,6 +242,9 @@ export function webEvidenceSummary(evidence) {
     coverage: evidence.tool?.coverage || null,
     stories: Array.isArray(evidence.stories) ? evidence.stories.map(story => ({
       id: story.id, contentHash: story.contentHash, status: WEB_STORY_STATUSES.includes(story.status) ? story.status : 'inconclusive',
+      ...(Array.isArray(story.trace) ? { trace: story.trace.map(event => ({ ...event })) } : {}),
+      ...(story.screenshot ? { screenshot: { ...story.screenshot } } : {}),
+      ...(typeof story.message === 'string' ? { message: story.message.slice(0, 1000) } : {}),
     })) : [],
   };
 }
