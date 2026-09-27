@@ -111,7 +111,7 @@ function environment() {
 }
 export function serviceDefinition(state) {
   configAt(state);
-  return systemdUnit({ description: 'Software & Defence Factory', argv: [process.execPath, join(ROOT, 'bin/software-defence-factory.mjs'), 'serve', '--state', state], directory: homedir(), environment: environment() });
+  return systemdUnit({ description: 'Factory', argv: [process.execPath, join(ROOT, 'bin/software-defence-factory.mjs'), 'serve', '--state', state], directory: homedir(), environment: environment() });
 }
 async function install(kind, state, flags) {
   userOnly();
@@ -145,7 +145,7 @@ async function install(kind, state, flags) {
   record.unit = `${id}.service`;
   record.file = process.platform === 'linux' ? join(userUnits, record.unit) : join(homedir(), 'Library/LaunchAgents', `${id}.plist`);
   record.log = join(records, `${id}.log`);
-  const definition = process.platform === 'linux' ? systemdUnit({ description: `Software & Defence Factory ${kind}`, argv, directory: homedir(), environment: record.environment })
+  const definition = process.platform === 'linux' ? systemdUnit({ description: `Factory ${kind}`, argv, directory: homedir(), environment: record.environment })
     : launchAgent({ id, argv, directory: homedir(), log: record.log, environment: record.environment });
   if (existsSync(record.file)) throw new Error(`Refusing to overwrite an unregistered service: ${record.file}`);
   mkdirSync(dirname(record.file), { recursive: true, mode: 0o700 }); mkdirSync(records, { recursive: true, mode: 0o700 });
@@ -235,7 +235,7 @@ async function performUpdate(latest, download) {
       priorVersions.set(record.id, value); return value;
     }));
     if (runningVersions.some(value => !/^\d+\.\d+\.\d+$/.test(value || ''))) throw new Error('Cannot verify the runtime version of a managed controller');
-    if (!newer(version, current) && runningVersions.every(value => !newer(version, value))) { console.log(`software-defence-factory ${current} is up to date.`); return; }
+    if (!newer(version, current) && runningVersions.every(value => !newer(version, value))) { console.log(`Factory ${current} is up to date.`); return; }
     const unowned = busyInstallations().filter(state => !live.some(record => record.state === state));
     if (unowned.length) throw new Error('Unmanaged controllers or executor fences block the update: ' + unowned.join(', '));
     // Reserve idle controllers before downloads. All mutating API actions are
@@ -289,7 +289,7 @@ function automaticUpdates(mode) {
   }
   if (existsSync(record)) { console.log('Scheduled updates are already installed.'); return; }
   if (existsSync(timer) || existsSync(service)) throw new Error('Refusing to overwrite an unregistered update unit');
-  const serviceText = systemdUnit({ description: 'Software & Defence Factory idle update', argv: [process.execPath, launcher(), 'service', 'update'], directory: homedir(), environment: environment(), oneshot: true });
+  const serviceText = systemdUnit({ description: 'Factory idle update', argv: [process.execPath, launcher(), 'service', 'update'], directory: homedir(), environment: environment(), oneshot: true });
   const timerText = `[Unit]\nDescription=Check Factory updates daily when idle\n\n[Timer]\nOnCalendar=daily\nRandomizedDelaySec=1h\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n`;
   mkdirSync(userUnits, { recursive: true, mode: 0o700 });
   writeFileSync(service, serviceText, { mode: 0o600 }); writeFileSync(timer, timerText, { mode: 0o600 });

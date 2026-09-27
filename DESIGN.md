@@ -1,5 +1,5 @@
 ---
-name: Software & Defence Factory
+name: Factory
 version: 1
 ---
 

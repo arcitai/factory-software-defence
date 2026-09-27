@@ -1,6 +1,6 @@
 ---
 name: factory-foundation
-description: Prepare or assess a repository and its execution host for Software & Defence Factory, including CI, access, harness configuration, services and a bounded qualification.
+description: Prepare or assess a repository and its execution host for Factory, including CI, access, harness configuration, services and a bounded qualification.
 ---
 
 # Factory Foundation

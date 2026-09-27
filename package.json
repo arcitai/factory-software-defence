@@ -1,13 +1,14 @@
 {
   "name": "software-defence-factory",
-  "version": "0.11.0",
-  "description": "Scoped software delivery and defence investigations with isolated jobs, evidence and review",
+  "version": "0.11.1",
+  "description": "Factory: scoped software delivery and defence investigations with isolated jobs, evidence and review",
   "type": "module",
   "license": "MIT",
   "engines": {
     "node": ">=22.13.0"
   },
   "bin": {
+    "factory": "bin/software-defence-factory.mjs",
     "software-defence-factory": "bin/software-defence-factory.mjs"
   },
   "repository": {

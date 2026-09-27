@@ -1,6 +1,6 @@
 # Adopt the factory method
 
-Software & Defence Factory gives an existing app a shared method for development, security and review. Keep the app's architecture, code, CI, hosting and established instructions.
+Factory gives an existing app a shared method for development, security and review. Keep the app's architecture, code, CI, hosting and established instructions.
 
 ## With the local runtime
 
@@ -8,7 +8,7 @@ Use the CLI's `init` and installation workflow. Jobs receive policy and the six 
 
 ## With your existing agent
 
-Export a new staging directory with `software-defence-factory kit --output NEW_DIRECTORY`. Give that directory to the app's agent and ask it to adopt the relevant method on a branch:
+Export a new staging directory with `factory kit --output NEW_DIRECTORY`. Give that directory to the app's agent and ask it to adopt the relevant method on a branch:
 
 > Read the app's instructions, architecture, tests and CI first. Apply the supplied factory method within its existing authority. Fill the installation record from the repository and known choices, merge intentionally, preserve existing files and report what was connected, tested or still missing. Start manually. Accounts, publishing and deployment follow my existing mandate.
 

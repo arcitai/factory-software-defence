@@ -1,13 +1,13 @@
 # Factory Foundation: repository and execution setup
 
-The operator skill is available through `software-defence-factory foundation`.
+The operator skill is available through `factory foundation`.
 See [Factory concepts](concepts.md) for host, worker, harness and agent roles.
 
-Use this plan for a new installation or when moving an existing Factory to a
+Use this plan for a new installation or when moving an existing Factory to an
 execution host. Complete the applicable checkpoints in order and record the
 result in a **private** copy of the checklist below. The plan applies to any
-operator/worker names and any suitable private network; it requires no personal
-context system, particular VPN provider or Factory source checkout.
+operator/worker names and any suitable private network. Install the npm package
+on the execution host; a source checkout is unnecessary.
 
 The operator owns access and infrastructure choices. Factory maintainers own
 this plan and the linked command guides and update them with behavior changes.
@@ -32,9 +32,9 @@ installed package.
 One installation owns one repository and port. A synthetic qualification
 installation can provide a running dashboard while product controllers remain
 stopped. There is no multi-project controller or second scheduler hidden in
-this plan. Keep unrelated personal agent configuration on its existing host.
+this plan.
 
-For method-only adoption, run `software-defence-factory kit --output NEW_DIRECTORY`
+For method-only adoption, run `factory kit --output NEW_DIRECTORY`
 and follow [the adoption guide](../kit/README.md). The remaining host/runtime
 steps apply only when using Factory's optional controller.
 
@@ -75,9 +75,9 @@ work, and required host dependencies have a documented startup/recovery owner.
 ## 3. Install the package and qualify the runtime
 
 ```sh
-npm install --global software-defence-factory
-software-defence-factory --version
-software-defence-factory help
+npm install --global software-defence-factory@latest
+factory --version
+factory help
 ```
 
 Use a user-writable npm prefix or the existing Node manager; do not turn the
@@ -90,9 +90,9 @@ Node executable available. See [installation and updates](npm.md).
 Use a **separate synthetic state and unused port** to exercise the runtime:
 
 ```sh
-software-defence-factory demo --state /private/state/runtime-proof --port 7345
+factory demo --state /private/state/runtime-proof --port 7345
 # Inspect and finish the sample handoff before qualification.
-software-defence-factory qualify --state /private/state/runtime-proof
+factory qualify --state /private/state/runtime-proof
 ```
 
 These commands deliberately create synthetic jobs, including failed/interrupted
@@ -124,9 +124,9 @@ Before admitting development work, establish:
 Configure a new installation using [the quickstart](quickstart.md):
 
 ```sh
-software-defence-factory init --repo /absolute/path/to/app --harness pi --check "npm ci && npm test" --state /private/state/my-app --port 7331
-software-defence-factory install --state /private/state/my-app
-software-defence-factory doctor --state /private/state/my-app
+factory init --repo /absolute/path/to/app --harness pi --check "npm ci && npm test" --state /private/state/my-app --port 7331
+factory install --state /private/state/my-app
+factory doctor --state /private/state/my-app
 ```
 
 Replace the harness/check/paths with the accepted application profile. Plain
@@ -134,7 +134,7 @@ Replace the harness/check/paths with the accepted application profile. Plain
 it on the worker first and select its existing local tag instead:
 
 ```sh
-software-defence-factory install --image LOCAL_IMAGE_REF --state /private/state/my-app
+factory install --image LOCAL_IMAGE_REF --state /private/state/my-app
 ```
 
 This command checks the local Docker daemon, records and retains the exact image
@@ -184,7 +184,7 @@ delivery for this installation, configure the exact canonical repository and
 target while initializing it, for example:
 
 ```sh
-software-defence-factory init --repo /absolute/path/to/app --harness pi \
+factory init --repo /absolute/path/to/app --harness pi \
   --check "npm ci && npm test" --source-ref main \
   --delivery-provider github \
   --delivery-repository https://github.com/OWNER/REPO \
@@ -245,11 +245,11 @@ If queue ownership/state is uncertain, reconcile it before enabling autostart.
 On the Linux worker, select the state that should stay available:
 
 ```sh
-software-defence-factory stop --state /private/state/runtime-proof
-software-defence-factory service install --state /private/state/runtime-proof
-software-defence-factory service status --state /private/state/runtime-proof
-software-defence-factory service updates --auto on
-software-defence-factory service updates --auto status
+factory stop --state /private/state/runtime-proof
+factory service install --state /private/state/runtime-proof
+factory service status --state /private/state/runtime-proof
+factory service updates --auto on
+factory service updates --auto status
 ```
 
 Follow [services](services.md) for user lingering, existing Docker group
@@ -261,8 +261,8 @@ for the intended account through the host's administrator.
 On the operator machine, stop any old manual tunnel, then:
 
 ```sh
-software-defence-factory tunnel install --host factory-worker --port 7345
-software-defence-factory tunnel status --host factory-worker --port 7345
+factory tunnel install --host factory-worker --port 7345
+factory tunnel status --host factory-worker --port 7345
 ```
 
 Use the actual selected dashboard port on both sides. macOS tunnels start at

@@ -1,4 +1,4 @@
-# Contributing to Software & Defence Factory
+# Contributing to Factory
 
 Start with [AGENTS.md](AGENTS.md), the relevant [documentation](docs/README.md)
 and an accepted issue with observable acceptance criteria. The ordered

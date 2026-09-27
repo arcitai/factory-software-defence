@@ -51,7 +51,7 @@ verdict is `changes` or `blocked`, or at the normal approval gate. The CLI
 provides the same action:
 
 ```sh
-software-defence-factory revise JOB_ID --file /private/revision.md --state /private/state/project
+factory revise JOB_ID --file /private/revision.md --state /private/state/project
 ```
 
 Feedback must be nonempty and at most 4,000 characters. It is accumulated in the
@@ -193,8 +193,8 @@ separately from integration or deployment.
 Inspect the same installation before recovery:
 
 ```sh
-software-defence-factory status --state /private/state/project
-software-defence-factory publish JOB_ID --state /private/state/project
+factory status --state /private/state/project
+factory publish JOB_ID --state /private/state/project
 ```
 
 After a lost response or controller restart, repeat `publish`. The controller
@@ -300,8 +300,8 @@ provider writes. Inspect the exact branch in GitHub, then use the task action
 the CLI:
 
 ```sh
-software-defence-factory status --state /private/state/project
-software-defence-factory abandon-delivery JOB_ID --branch-sha INSPECTED_SHA --state /private/state/project
+factory status --state /private/state/project
+factory abandon-delivery JOB_ID --branch-sha INSPECTED_SHA --state /private/state/project
 ```
 
 The controller checks the latest run, saved delivery identity, current branch
@@ -339,11 +339,11 @@ Use one explicit starting point for a current software review with a returned
 
 ```sh
 # Existing default: restore admitted source, discarding candidate code from the next Build.
-software-defence-factory revise JOB_ID --file feedback.md --state PATH
+factory revise JOB_ID --file feedback.md --state PATH
 # Keep this job’s current immutable reviewed tree; keep its source/delivery baseline.
-software-defence-factory revise JOB_ID --file feedback.md --from reviewed-candidate --state PATH
+factory revise JOB_ID --file feedback.md --from reviewed-candidate --state PATH
 # Existing source replacement: resolve and retain a deliberately different baseline.
-software-defence-factory revise JOB_ID --file feedback.md --source-ref REF --state PATH
+factory revise JOB_ID --file feedback.md --source-ref REF --state PATH
 ```
 
 `--from admitted-source` names the default explicitly. `--from` and

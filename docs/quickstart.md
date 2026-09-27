@@ -2,18 +2,18 @@
 
 For a new execution host or remote operator, start with the [setup plan](setup.md).
 
-Install Node 22.13+, Git and Docker Engine/Desktop. Use an unprivileged account with Docker access. Install `software-defence-factory` through npm, or invoke the same package with npx. No factory source checkout is required.
+Install Node 22.13+, Git and Docker Engine/Desktop. Use an unprivileged account with Docker access. Install `software-defence-factory` through npm, or use `npm exec --package=software-defence-factory@latest -- factory help`. No factory source checkout is required.
 
 ## Qualify a synthetic installation
 
 ```sh
-software-defence-factory demo
+factory demo
 ```
 
 Open the printed localhost URL, inspect the sample task and its files, then approve the handoff. This changes only an isolated synthetic repository and makes no inference calls. Once the sample finishes:
 
 ```sh
-software-defence-factory qualify --state /absolute/path/printed/by/demo
+factory qualify --state /absolute/path/printed/by/demo
 ```
 
 The qualification intentionally creates failed, cancelled and interrupted tasks. They are expected evidence of failure handling. Never point qualification at an application installation.
@@ -23,9 +23,9 @@ The qualification intentionally creates failed, cancelled and interrupted tasks.
 Commit an intentional, reviewed starting point in the application first. Jobs clone committed code only; uncommitted work stays in the source checkout.
 
 ```sh
-software-defence-factory init --repo /absolute/path/to/app --harness codex --check "npm ci && npm test" --source-ref main --state /private/state/my-app --port 7331
-software-defence-factory install --state /private/state/my-app
-software-defence-factory doctor --state /private/state/my-app
+factory init --repo /absolute/path/to/app --harness codex --check "npm ci && npm test" --source-ref main --state /private/state/my-app --port 7331
+factory install --state /private/state/my-app
+factory doctor --state /private/state/my-app
 ```
 
 `init --source-ref` selects the configured default ref (`HEAD` when omitted). Each job resolves that ref, or an explicit `--source-ref` on `run`/`issue start`, in the configured repository and durably retains its commit before acknowledging admission. It records the canonical GitHub origin identity when available; the CLI and dashboard show the requested ref and resolved SHA. Task text and reference links do not select a repository, source ref or PR target.
@@ -71,8 +71,8 @@ container. Host loopback addresses do not automatically refer to the host from
 Docker. The package does not automatically expose Ollama or import models.
 
 ```sh
-software-defence-factory up --state /private/state/my-app
-software-defence-factory run --file task.md --source-ref main --state /private/state/my-app
+factory up --state /private/state/my-app
+factory run --file task.md --source-ref main --state /private/state/my-app
 ```
 
 A task should describe the accepted outcome, allowed scope and observable checks. The CLI also accepts `--issue https://github.com/owner/repo/issues/123` for an issue belonging to the configured origin; it uses the operator's existing gh access outside the job. The dashboard supports the same task workflow. Source text and links do not grant additional authority.
@@ -90,7 +90,7 @@ canonical GitHub origin and an explicit target while initializing the private
 installation:
 
 ```sh
-software-defence-factory init --repo /absolute/path/to/app --harness codex \
+factory init --repo /absolute/path/to/app --harness codex \
   --check "npm ci && npm test" --source-ref main \
   --delivery-provider github \
   --delivery-repository https://github.com/OWNER/REPO \
@@ -109,7 +109,7 @@ After the ordinary check, independent review and operator approval complete,
 use **Publish accepted candidate as draft PR** in task details or run:
 
 ```sh
-software-defence-factory publish JOB_ID --state /private/state/my-app
+factory publish JOB_ID --state /private/state/my-app
 ```
 
 Trusted publication requires protected per-run execution records for native
@@ -179,8 +179,8 @@ Build a compatible application image on the execution host, then select its exis
 local tag through the CLI:
 
 ```sh
-software-defence-factory install --image LOCAL_IMAGE_REF --state /private/state/my-app
-software-defence-factory doctor --state /private/state/my-app
+factory install --image LOCAL_IMAGE_REF --state /private/state/my-app
+factory doctor --state /private/state/my-app
 ```
 
 Selection resolves and retains the immutable image ID. It does not pull or build
@@ -228,5 +228,5 @@ is unnecessary for this CLI. Optional
 process settings are `SDF_AUTO_UPDATE=0` (skip automatic CLI update checks),
 `XDG_STATE_HOME`, `XDG_DATA_HOME` and `XDG_CONFIG_HOME` (user-owned state, release
 and service locations). They must be exported in the process environment.
-Legacy prototype names such as `FACTORY_WORKER_CONFIG`, `FACTORY_MODEL`, `PORT`
+Unsupported environment variables such as `FACTORY_WORKER_CONFIG`, `FACTORY_MODEL`, `PORT`
 and `FACTORY_DEMO` are not supported. See [concepts](concepts.md).

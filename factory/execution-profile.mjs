@@ -7,11 +7,12 @@ import { effectiveInferenceProvider } from './model-environment.mjs';
 import { expectedWebStories, webPolicyHash } from './web-verification.mjs';
 
 // Audited v1 protected evidence writers: 0.8.0 (380f749), 0.9.0 (cdaadef),
-// 0.9.1, 0.10.0 and 0.11.0 (unchanged protected evidence writers). Deliberately independent of VERSION: a release bump is not
+// 0.9.1, 0.10.0, 0.11.0 and 0.11.1 (unchanged protected evidence writers).
+// Deliberately independent of VERSION: a release bump is not
 // evidence compatibility. Re-audit this list for every trust-relevant writer,
 // isolation or validation change; remove versions whose guarantees no longer
 // satisfy current policy. See docs/npm.md. This predicate alone grants no trust.
-const SUPPORTED_EXECUTION_RUNTIMES_V1 = new Set(['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0']);
+const SUPPORTED_EXECUTION_RUNTIMES_V1 = new Set(['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1']);
 
 export function isSupportedExecutionProfile(profile) {
   return profile?.version === 1 && SUPPORTED_EXECUTION_RUNTIMES_V1.has(profile.runtimeVersion);

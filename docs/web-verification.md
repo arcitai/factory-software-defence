@@ -36,8 +36,8 @@ browser_image="$(docker image inspect --format '{{.Id}}' software-defence-factor
 Run the readiness check from the selected installation:
 
 ```sh
-software-defence-factory web probe --state /private/state/project
-software-defence-factory doctor --state /private/state/project
+factory web probe --state /private/state/project
+factory doctor --state /private/state/project
 ```
 
 The probe runs a real headless Chromium click and result assertion in a bounded,
@@ -150,11 +150,11 @@ normal sample handoff, stop that controller, then run the exact qualification
 command with the already-built browser image ID:
 
 ```sh
-software-defence-factory demo --state /private/state/sdf-web-proof --port 7348
+factory demo --state /private/state/sdf-web-proof --port 7348
 # Review and approve the synthetic demo task in its dashboard.
-software-defence-factory stop --state /private/state/sdf-web-proof
+factory stop --state /private/state/sdf-web-proof
 browser_image="$(docker image inspect --format '{{.Id}}' software-defence-factory-playwright:1.63.0)"
-software-defence-factory qualify-web --state /private/state/sdf-web-proof --image "$browser_image"
+factory qualify-web --state /private/state/sdf-web-proof --image "$browser_image"
 ```
 
 The installed command probes actual Chromium interaction, then runs a
