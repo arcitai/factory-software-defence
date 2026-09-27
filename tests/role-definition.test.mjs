@@ -515,6 +515,62 @@ test('local v3 protected evidence requires exact frozen bindings and cannot be d
   assert.equal(trustedExecutionProfile(state, job, run, 'review', profile.policyHash), true);
 });
 
+for (const kind of ['inherited', 'roles', 'hybrid', 'local']) {
+  test(`0.15.1 reads unchanged 0.15.0 ${kind} evidence with identity, phase and policy guards intact`, t => {
+    const { state, config } = installation(t);
+    const local = ['hybrid', 'local'].includes(kind);
+    if (kind !== 'inherited') changeDefinition(state, idle(), {
+      expected_revision: inspectDefinition(state).revision,
+      definition: local ? { version: 1, roles: {
+        implement: { harness: 'pi', localBinding: 'worker' },
+        review: kind === 'local' ? { harness: 'pi', localBinding: 'worker' } : { harness: 'codex', model: 'cloud-review' },
+      } } : definition,
+      ...(local ? { local_bindings: { worker: { endpoint: 'http://fixture.invalid/v1', model: 'fixture:small', contextWindow: 65536, maxTokens: 4096 } } } : {}),
+    });
+    const common = effectiveExecutionConfig(kind === 'inherited' ? config : configAt(state));
+    const job = { id: 'job_patch' }, folder = join(state, 'jobs', job.id);
+    for (const phase of ['build', 'verify', 'review', 'handoff']) {
+      const emitted = executionProfile(common, phase);
+      assert.equal(emitted.version, local ? 3 : kind === 'roles' ? 2 : 1);
+      for (const runtimeVersion of ['0.15.0', '0.15.1']) {
+        const profile = { ...emitted, runtimeVersion }, run = { id: 'run_patch', execution: profile };
+        const artifact = join(folder, 'artifacts', run.id, 'execution.json');
+        const frozen = join(folder, run.id, 'execution-config.json');
+        save(artifact, profile); save(frozen, common);
+        const original = readFileSync(artifact), originalConfig = readFileSync(frozen);
+        assert.equal(isSupportedExecutionProfile(profile), true);
+        assert.doesNotThrow(() => assertFrozenExecution(common, profile, phase));
+        assert.equal(trustedExecutionProfile(state, job, run, phase, profile.policyHash), true);
+        assert.equal(trustedExecutionProfile(state, job, run, phase, '0'.repeat(64)), false);
+        assert.equal(trustedExecutionProfile(state, job, run, phase === 'build' ? 'review' : 'build', profile.policyHash), false);
+        const mutations = [
+          { runtimeVersion: '0.15.2' }, { runtimeVersion: '0.15.1-dev' },
+          { version: 4 }, { policyHash: '0'.repeat(64) }, { phase: 'unknown' },
+          ...(kind === 'inherited' ? [] : [{ selectionHash: '0'.repeat(64) }, { requestedModel: 'tampered-model' }]),
+          ...(local ? [{ localBinding: { id: 'other' } }, { version: 2 }] : [{ localBinding: null }]),
+        ];
+        for (const mutation of mutations) {
+          const altered = { ...profile, ...mutation };
+          assert.throws(() => assertFrozenExecution(common, altered, phase), /does not match/);
+          save(artifact, altered); run.execution = altered;
+          assert.equal(trustedExecutionProfile(state, job, run, phase, profile.policyHash), false);
+        }
+        save(artifact, profile); run.execution = profile;
+        assert.equal(trustedExecutionProfile(state, job, { ...run, execution: { ...profile, hostName: 'other' } }, phase, profile.policyHash), false);
+        if (kind !== 'inherited') {
+          const changed = structuredClone(common); changed.image = 'sha256:' + 'b'.repeat(64);
+          save(frozen, changed);
+          assert.equal(trustedExecutionProfile(state, job, run, phase, profile.policyHash), false);
+          save(frozen, common);
+        }
+        assert.equal(trustedExecutionProfile(state, job, run, phase, profile.policyHash), true);
+        assert.deepEqual(readFileSync(artifact), original);
+        assert.deepEqual(readFileSync(frozen), originalConfig);
+      }
+    }
+  });
+}
+
 for (const route of ['store', 'CLI', 'API']) for (const selected of [false, true]) {
   test(`${route} rejects ${selected ? 'selected' : 'unused'} non-roundtrippable endpoint without changing state/history`, async t => {
     const { state, config } = installation(t);

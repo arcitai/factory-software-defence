@@ -94,6 +94,18 @@ jobs and history are preserved. Existing processes keep their original code.
 Set `SDF_AUTO_UPDATE=0` to skip automatic network checks for a command.
 Source checkouts remain managed by Git and do not update themselves.
 
+The exact selected release is downloaded with npm's `--prefer-online` metadata
+refresh and `--prefer-offline=false`; this does not change account settings.
+An `ETARGET` visibility failure
+gets at most three attempts, separated by one second, within the same total
+120-second download budget (including waits). Offline, authentication and package
+identity errors are not retried by Factory. A successful download must match the
+requested package name, version and CLI entry before immutable adoption. Exhaustion
+cleans only that download's staging directory and retains the selected runtime,
+configuration and job history. Managed updates release their idle reservations on
+download failure; normal reservation/recovery rules in [services](services.md)
+still apply. The retries add no extra download maintenance budget.
+
 CLI updates do not rebuild or update Docker images automatically. Stop the
 installation and run `install --state PATH` when intentionally adopting a new
 runtime image; repeat the relevant qualification before resuming jobs. Install retains the old and new
@@ -104,8 +116,8 @@ installation or retained attempt needs them.
 
 ## Protected evidence compatibility
 
-Factory 0.15.0 recognizes version-1 execution profiles emitted by native
-**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2, 0.12.0, 0.13.0, 0.13.1, 0.14.0 and 0.15.0**. This is an exact allowlist in
+Factory 0.15.1 recognizes version-1 execution profiles emitted by native
+**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2, 0.12.0, 0.13.0, 0.13.1, 0.14.0, 0.15.0 and 0.15.1**. This is an exact allowlist in
 `factory/execution-profile.mjs`, independent of the installed package version;
 it is not a semver range or an automatic promise for later releases. Unknown
 runtime strings, unknown profile formats and incomplete legacy acceptance
@@ -172,7 +184,7 @@ Verify evidence and cannot authorize acceptance or publication.
 
 Version 0.14.0 preserves the v1 writer only for unchanged inherited installations:
 policy bytes, candidate/check/review/acceptance bindings, mounts and credential
-rules stay compatible. Adopted role overrides use **v2 from 0.14.0 and 0.15.0**, recording
+rules stay compatible. Adopted role overrides use **v2 from 0.14.0, 0.15.0 and 0.15.1**, recording
 role/provider/effort and an exact selection digest. The executor verifies the
 frozen common configuration before phase selection; continuation and both delivery
 validation paths require matching protected v2 evidence and private frozen config.
@@ -198,6 +210,15 @@ including installation from the actual npm tarball. A successful `main` push
 publishes an increased `package.json` version. Existing versions are skipped;
 registry errors fail the release instead of masquerading as a missing version.
 The workflow can also be started manually from `main`.
+
+An accepted npm publication may still be processing. It is not yet a verified,
+downloadable release: exact-version and `latest` metadata can appear at different
+times, and an npm install can briefly report `ETARGET` even after both appear.
+Verify an exact package download and compare its contents with the reviewed
+artifact before reporting release availability. If the bounded updater reports
+that the release is not yet downloadable, retain the prior runtime and retry the
+update later. This does not establish whether a particular delay came from a
+local cache or registry propagation.
 
 For a release, update both manifests with `npm version patch --no-git-tag-version`,
 review the change, and push through the project's normal review flow. A code
@@ -233,7 +254,7 @@ The 0.15.0 compatibility audit preserves unchanged v1/v2 policy construction,
 protected checks, candidate reconstruction, read-only review and acceptance guards.
 Historical 0.14.0 v2 validation compares its actual writer version rather than
 relabeling it as the installed version. Local registry selection is a new execution
-contract: every phase of a local/hybrid attempt requires **v3 from 0.15.0** and its
+contract: every phase of a local/hybrid attempt requires **v3 from 0.15.0 or 0.15.1** and its
 exact protected frozen configuration. v1/v2 cannot attest local binding fields,
 providers or a common policy containing a selected local role. A selected endpoint,
 model, limit or compatibility change invalidates the current policy; explicit
@@ -241,3 +262,9 @@ rollback can restore it without editing historical evidence. Controlled regressi
 exercise legacy v2 readback and local v3 rejection/tamper cases. Installed-package
 Docker and independent Review remain delivery qualification, not inferred from this
 compatibility audit.
+
+The 0.15.1 patch changes release downloads and preserves the 0.15.0 v1/v2/v3
+writers, frozen configuration and policy bytes. The explicit allowlists include
+both patch versions; supported v3 readback retains the original writer version
+while still comparing every execution selection, phase and policy field. It does
+not rewrite historical evidence or allow v1/v2 to attest local bindings.
