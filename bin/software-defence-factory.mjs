@@ -113,15 +113,22 @@ async function jobAction(action) {
   const current=job.runs.at(-1);
   if(action==='approve'&&job.state!=='awaiting_approval')throw new Error('Job is not awaiting approval');
   if(action==='retry'&&!['interrupted','failed','blocked','cancelled'].includes(job.state))throw new Error('Only a stopped attempt can be retried');
-  let feedback;
+  let feedback, revision = {};
   if(action==='request_changes') {
     if(!flags.file)throw new Error('revise requires --file feedback.md');
+    if (flags.from !== undefined && !['admitted-source', 'reviewed-candidate'].includes(flags.from)) throw new Error('revise --from must be admitted-source or reviewed-candidate');
+    if (flags.from !== undefined && flags['source-ref'] !== undefined) throw new Error('Choose --from or --source-ref, not both');
+    if (flags.from === 'reviewed-candidate') {
+      const checkpoint = job.continuation_status;
+      if (!checkpoint?.available) throw new Error(checkpoint?.reason || 'No current reviewed checkpoint is available; inspect status');
+      revision = { revision_mode: 'continue_candidate', candidate_head: checkpoint.head, candidate_tree: checkpoint.tree };
+    } else revision = { revision_mode: flags['source-ref'] === undefined ? 'fresh_source' : 'replace_source' };
     feedback=readFileSync(resolve(flags.file),'utf8');
     if(!feedback.trim()||feedback.length>4000)throw new Error('Provide revision feedback under 4000 characters');
   }
   // The controller validates the current run and owns reconciliation atomically.
   // A CLI-side stop after a stale snapshot could terminate a newer attempt.
-  await api(state,`/api/v1/jobs/${id}/${action}`,{run_id:current?.id,...(feedback===undefined?{}:{feedback}),...(flags['source-ref']===undefined?{}:{source_ref:flags['source-ref']})});
+  await api(state,`/api/v1/jobs/${id}/${action}`,{run_id:current?.id,...revision,...(feedback===undefined?{}:{feedback}),...(flags['source-ref']===undefined?{}:{source_ref:flags['source-ref']})});
   console.log(`${action}: ${id}`);
 }
 
@@ -331,7 +338,7 @@ try {
   publish JOB_ID                          Publish/reconcile the accepted candidate as one draft PR
   abandon-delivery JOB_ID --branch-sha SHA Resolve an inspected pre-write collision; keep the remote branch
   retry JOB_ID                            Prove stop; retain old checkout and retry
-  revise JOB_ID --file feedback.md [--source-ref REF]
+  revise JOB_ID --file feedback.md [--from admitted-source|reviewed-candidate | --source-ref REF]
                                           New build/check/review; source stays pinned unless a new ref is explicit
   version                                 Show the active CLI version
   update | update --check                 Update the npm CLI / inspect the latest release

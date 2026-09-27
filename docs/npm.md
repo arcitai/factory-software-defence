@@ -73,8 +73,8 @@ installation or retained attempt needs them.
 
 ## Protected evidence compatibility
 
-0.9.1 recognizes version-1 execution profiles emitted by native **0.8.0,
-0.9.0 and 0.9.1**. This is an exact allowlist in
+0.10.0 recognizes version-1 execution profiles emitted by native **0.8.0,
+0.9.0, 0.9.1 and 0.10.0**. This is an exact allowlist in
 `factory/execution-profile.mjs`, independent of the installed package version;
 it is not a semver range or an automatic promise for later releases. Unknown
 runtime strings, unknown profile formats and incomplete legacy acceptance
@@ -101,12 +101,25 @@ neither a reason to discard evidence nor proof of compatibility. Retain
 unsupported records unchanged and obtain fresh applicable evidence through the
 normal workflow; never repair them by editing private records or hashes.
 
-After native Verify/Review, the lead must qualify the installed patch read-only
-against actual retained production evidence. This source change and its
-controlled fixtures do not supply that proof. An already delivered PR keeps
-read-only receipt reconciliation. New publication still requires the current
-remote target to equal the original accepted base; checkpoint continuation and
-target mismatch remain the separate #42 limit.
+The 0.10.0 writer retains the same profile format and original-base, aggregate
+single-parent candidate/check/review/approval guarantees. Continuation adds
+separate provenance; it is not acceptance evidence. The audited 0.8.0, 0.9.0 and
+0.9.1 writers remain supported only when their old records meet all current
+checks. For continuation specifically, the current completed review, successful
+Build/Verify, protected per-attempt artifacts, current policy and clean candidate
+objects must also be present and agree. An old runtime string alone never makes
+a checkpoint usable. Browser-disabled 0.8.0 records cannot satisfy a newly
+enabled browser policy. Missing or unsupported records stay unchanged and
+unavailable; no schema migration, profile relabeling or policy repair occurs.
+
+#71 shipped 0.9.0 through PR #81 and #84 shipped 0.9.1 through PR #85; both
+passed installed qualification, as reported by the lead. For this 0.10.0 slice,
+native Verify/Review remain required. The lead owns installed continuation,
+disposable protected PR/CI and desktop/narrow light/dark browser qualification
+on Z13. Controlled source fixtures do not supply that proof. New publication
+still requires the current remote target to equal the original accepted base;
+reviewed-candidate continuation preserves that baseline, while target refresh
+remains #72.
 
 ## Release flow
 

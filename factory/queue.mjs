@@ -1,3 +1,5 @@
+import { currentReviewedCandidate, currentExecutionPolicy } from './execution-evidence.mjs';
+import { publicContinuation } from './source-admission.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
@@ -13,6 +15,7 @@ export class QueueError extends Error { constructor(message, status = 409) { sup
 // is committed before execution starts; a restart never assumes a result.
 export class JobQueue {
   constructor(state, { execute, stop, reconcile, prepare, reviewVerdict = () => undefined, sourceAdmission }) {
+    this.state = state;
     this.db = new DatabaseSync(join(state, 'jobs.sqlite'));
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, data TEXT NOT NULL);');
     this.execute = execute; this.stop = stop; this.reconcile = reconcile; this.prepare = prepare; this.reviewVerdict = reviewVerdict; this.sourceAdmission = sourceAdmission;
@@ -124,6 +127,12 @@ export class JobQueue {
     return job.state === 'failed' && attempt?.state === 'failed' && attempt.command === 'review'
       && ['changes', 'blocked'].includes(attempt.review_verdict ?? this.reviewVerdict(job, attempt));
   }
+  continuationStatus(job) {
+    const originalBase = job.source_admission?.resolved_sha || null;
+    if (!this.canRequestChanges(job)) return { available: false, original_base: originalBase, reason: 'A current completed software review is required.' };
+    try { return { available: true, ...currentReviewedCandidate(this.state, job) }; }
+    catch (error) { return { available: false, original_base: originalBase, reason: error.code ? 'Protected reviewed checkpoint evidence is missing or unreadable; restore it or start fresh explicitly.' : error.message }; }
+  }
   async applyAction(jobId, action, input) {
     if (this.closing) throw new QueueError('Controller is stopping');
     let job = this.get(jobId), attempt = job.runs.at(-1);
@@ -138,7 +147,21 @@ export class JobQueue {
       if (typeof input.feedback !== 'string' || !input.feedback.trim() || input.feedback.length > 4000) throw new QueueError('Provide revision feedback under 4000 characters', 400);
       const revisedPrompt = job.prompt + `\n\nRequested revision: ${input.feedback}`;
       if (Buffer.byteLength(revisedPrompt) > 240000) throw new QueueError('Accumulated revision instructions exceed 240 KB; create a bounded continuation task', 400);
+      if (this.active?.jobId === jobId) throw new QueueError('Previous executor is still finishing; reload before acting');
       const explicitSource = input.source_ref !== undefined;
+      const mode = input.revision_mode ?? (explicitSource ? 'replace_source' : 'fresh_source');
+      if (!['fresh_source', 'replace_source', 'continue_candidate'].includes(mode)
+        || (explicitSource !== (mode === 'replace_source')))
+        throw new QueueError('Choose fresh_source, continue_candidate, or replace_source with source_ref; choices cannot be combined.', 400);
+      let continuation = null;
+      if (mode === 'continue_candidate') {
+        const selected = this.continuationStatus(job);
+        if (!selected.available) throw new QueueError(selected.reason);
+        if (input.candidate_head !== selected.head || input.candidate_tree !== selected.tree)
+          throw new QueueError('Reviewed candidate changed; reload and select the current checkpoint before continuing.');
+        if (typeof this.sourceAdmission?.retainCheckpoint !== 'function')
+          throw new QueueError('Reviewed checkpoint retention is unavailable.', 503);
+      }
       if (typeof this.sourceAdmission?.validate !== 'function') throw new QueueError('Retained source validation is unavailable; this job was not revised.', 503);
       const admittedSource = explicitSource
         ? this.sourceAdmission.admit(job.id, input.source_ref, job.source_admission.repository_identity)
@@ -152,19 +175,34 @@ export class JobQueue {
       }
       const replaceSourceRecord = changedBase || repairRetainedSource;
       const nextSource = replaceSourceRecord ? admittedSource : job.source_admission;
-      try { await this.reconcile(jobId, 'build'); }
+      try {
+        await this.reconcile(jobId, 'build', mode === 'continue_candidate' ? {
+          requireIdle: true,
+          beforeArchive: () => {
+            const selected = currentReviewedCandidate(this.state, job);
+            if (input.candidate_head !== selected.head || input.candidate_tree !== selected.tree)
+              throw new QueueError('Reviewed candidate changed; reload before continuing.');
+            continuation = this.sourceAdmission.retainCheckpoint(job, selected);
+          },
+        } : undefined);
+        if (mode === 'continue_candidate' && !continuation)
+          throw new QueueError('Executor reconciliation did not retain the selected checkpoint; revision was not queued.', 503);
+      }
       catch (error) {
         if (explicitSource) this.sourceAdmission.release?.(job.id, admittedSource);
+        if (mode === 'continue_candidate') throw new QueueError(error.code ? 'Cannot continue: protected checkpoint storage is unreadable; prior work is preserved.' : error.message, error.status || 409);
         throw error;
       }
       if (explicitSource && !replaceSourceRecord) this.sourceAdmission.release?.(job.id, admittedSource);
       // A failed review stays failed. Revision feedback must not rewrite its result.
-      attempt.revision = { feedback: input.feedback, requested_at: now(), ...(explicitSource ? { requested_source_ref: admittedSource.requested_ref, resolved_source_sha: admittedSource.resolved_sha } : {}), ...(changedBase ? { previous_source_sha: job.source_admission.resolved_sha, new_source_sha: nextSource.resolved_sha } : {}) };
+      attempt.revision = { feedback: input.feedback, requested_at: now(), mode, original_base: nextSource.resolved_sha, continuation: publicContinuation(continuation), ...(explicitSource ? { requested_source_ref: admittedSource.requested_ref, resolved_source_sha: admittedSource.resolved_sha } : {}), ...(changedBase ? { previous_source_sha: job.source_admission.resolved_sha, new_source_sha: nextSource.resolved_sha } : {}) };
       if (job.state === 'awaiting_approval') Object.assign(attempt, { state: 'succeeded', outcome: 'changes_requested', summary: input.feedback, completed_at: now(), duration_millis: 0 });
       if (replaceSourceRecord) {
         job.source_history = [...(job.source_history || []), job.source_admission];
         job.source_admission = nextSource;
       }
+      job.continuation = continuation;
+      job.revision_mode = mode;
       job.prompt = revisedPrompt;
       job.workflow.current_step = 0; job.state = 'queued';
       try { this.save(job); }
@@ -184,6 +222,8 @@ export class JobQueue {
       if (!['failed', 'interrupted', 'cancelled'].includes(job.state)) throw new QueueError('Only a stopped attempt can be retried');
       if (typeof this.sourceAdmission?.validate !== 'function') throw new QueueError('Retained source validation is unavailable; this job was not retried.', 503);
       this.sourceAdmission.validate(job.id, job.source_admission);
+      if (attempt?.command === 'build' && job.continuation)
+        this.sourceAdmission.validateCheckpoint(job.id, job.source_admission, job.continuation, currentExecutionPolicy(this.state, job).policyHash);
       await this.reconcile(jobId, attempt?.command);
       job.state = 'queued'; this.save(job); this.schedule();
     } else throw new QueueError('Unknown action', 404);

@@ -24,7 +24,7 @@ test('native profiles record the actual runtime while protected compatibility is
     });
     assert.equal(isSupportedExecutionProfile(profile), true, 'native writer must be explicitly qualified');
   }
-  for (const runtimeVersion of ['0.8.0', '0.9.0', '0.9.1'])
+  for (const runtimeVersion of ['0.8.0', '0.9.0', '0.9.1', '0.10.0'])
     assert.equal(isSupportedExecutionProfile({ version: 1, runtimeVersion }), true);
   for (const runtimeVersion of ['0.7.0', '0.8.1', '0.9.2', '1.0.0', '0.9.1-dev', 'v0.8.0', '', null, undefined])
     assert.equal(isSupportedExecutionProfile({ version: 1, runtimeVersion }), false);

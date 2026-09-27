@@ -173,6 +173,7 @@ export function TaskDetail({
                     job={job}
                     result={result}
                     deliveryActionError={deliveryActionError}
+                    revisionActionError={error}
                     onAction={onWorkflowAction}
                   />
                 )}
@@ -324,6 +325,8 @@ export function TaskDetail({
           <div className="task-source-revision"><dt>Source ref</dt><dd>{sourceAdmission.status === "retained" ? sourceAdmission.requested_ref : "Not recorded (legacy/unknown)"}</dd></div>
           <div className="task-source-revision"><dt>Resolved source commit</dt><dd>{sourceAdmission.status === "retained" ? <code className="source-revision-sha" title={sourceAdmission.resolved_sha}>{sourceAdmission.resolved_sha}</code> : sourceAdmission.note}</dd></div>
           {sourceAdmission.status === "retained" && <div className="task-source-revision"><dt>Repository identity</dt><dd><code className="source-revision-sha" title={sourceAdmission.repository_identity}>{sourceAdmission.repository_identity}</code></dd></div>}
+          {job.revision_mode && <div><dt>Revision starting point</dt><dd>{{ fresh_source: "Fresh admitted source", replace_source: "Explicit source replacement", continue_candidate: "Reviewed candidate continuation" }[job.revision_mode]}</dd></div>}
+          {job.continuation && <div><dt>Selected reviewed checkpoint</dt><dd><code className="source-revision-sha">{job.continuation.head}</code>Review <code className="source-revision-sha">{job.continuation.review_run_id}</code>Original baseline <code className="source-revision-sha">{job.continuation.original_base}</code></dd></div>}
           {(job.source_history || []).length > 0 && <div><dt>Previous source commits</dt><dd>{job.source_history.map((source, index) => <code className="source-revision-sha" key={`${source.resolved_sha}-${index}`} title={source.resolved_sha}>{source.resolved_sha}</code>)}</dd></div>}
           {links?.repository && <div><dt>Repository</dt><dd><a className="metadata-link" href={links.repository} target="_blank" rel="noreferrer"><GitBranch size={13} />View repo</a></dd></div>}
           {job.task?.source_url && /^https?:\/\//.test(job.task.source_url) && <div><dt>Source</dt><dd><a className="metadata-link" href={job.task.source_url} target="_blank" rel="noreferrer"><Link2 size={13} />Open source</a></dd></div>}
@@ -434,11 +437,13 @@ function RunMetric({ label, value, mono = false }) {
   );
 }
 
-function TaskActions({ job, result, deliveryActionError = "", onAction }) {
+function TaskActions({ job, result, deliveryActionError = "", revisionActionError = "", onAction }) {
   const [stopped, setStopped] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [revisionSourceRef, setRevisionSourceRef] = useState("");
+  const [revisionMode, setRevisionMode] = useState("fresh_source");
+  const [checkpoint, setCheckpoint] = useState(null);
   const [busy, setBusy] = useState(false);
   const latest = job.runs.at(-1);
   const action = async (name) => {
@@ -449,7 +454,9 @@ function TaskActions({ job, result, deliveryActionError = "", onAction }) {
         name,
         stopped,
         name === "request_changes" ? feedback : "",
-        name === "request_changes" ? revisionSourceRef : "",
+        name === "request_changes" && revisionMode === "replace_source" ? revisionSourceRef : "",
+        name === "request_changes" ? { revision_mode: revisionMode,
+          ...(revisionMode === "continue_candidate" ? { run_id: checkpoint?.run_id, candidate_head: checkpoint?.head, candidate_tree: checkpoint?.tree } : {}) } : {},
       );
     } finally {
       setBusy(false);
@@ -475,7 +482,7 @@ function TaskActions({ job, result, deliveryActionError = "", onAction }) {
               <Button
                 variant="outline"
                 disabled={busy}
-                onClick={() => setRequesting(true)}
+                onClick={() => { setRevisionMode("fresh_source"); setCheckpoint({ ...job.continuation_status, run_id: latest?.id }); setRequesting(true); }}
               >
                 Request changes
               </Button>
@@ -494,15 +501,33 @@ function TaskActions({ job, result, deliveryActionError = "", onAction }) {
                 />
               </label>
               <label className="block">
-                <span className="field-label">New base ref · optional</span>
-                <input className="field-control" value={revisionSourceRef} onChange={(event) => setRevisionSourceRef(event.target.value)} maxLength={256} placeholder={`Keep ${job.source_admission?.resolved_sha || "the pinned source"}`} />
+                <span className="field-label">Revision starting point</span>
+                <select className="field-control" value={revisionMode} onChange={(event) => setRevisionMode(event.target.value)} aria-describedby={`revision-context-${job.id}`}>
+                  <option value="fresh_source">Start fresh from admitted source</option>
+                  <option value="continue_candidate" disabled={!checkpoint?.available}>Continue current reviewed candidate</option>
+                  <option value="replace_source">Replace source with an explicit ref</option>
+                </select>
               </label>
-              <p className="text-xs text-muted-foreground">
-                Blank keeps the recorded source commit. A ref here is resolved and retained as a deliberate new base; it starts a fresh build, checks and review. Previous evidence stays in history.
-              </p>
+              <div id={`revision-context-${job.id}`} className="text-xs text-muted-foreground space-y-2">
+                <p>Original source / delivery baseline <code className="source-revision-sha">{job.source_admission?.resolved_sha || "Unknown"}</code></p>
+                {revisionMode === "continue_candidate" ? <>
+                  <p>Selected reviewed checkpoint <code className="source-revision-sha">{checkpoint?.head}</code></p>
+                  <p>Tree <code className="source-revision-sha">{checkpoint?.tree}</code></p>
+                  <p>Review attempt <code className="source-revision-sha">{checkpoint?.review_run_id}</code></p>
+                  <p>Keeps the reviewed tree and the original baseline. The next review covers the whole combined change.</p>
+                </> : revisionMode === "fresh_source" ? <p>Discards the candidate from the next build and restores the admitted source. Prior code and evidence stay in history.</p> : <p>Resolves and retains a new source baseline, then starts fresh. Protected delivery still requires that base to equal the unchanged remote target.</p>}
+                {!checkpoint?.available && <p>Continuation unavailable: {checkpoint?.reason || "No current reviewed checkpoint is recorded."}</p>}
+                <p>Every choice requires a new Build, full checks, independent Review and approval.</p>
+              </div>
+              {revisionMode === "replace_source" && <label className="block">
+                <span className="field-label">New base ref</span>
+                <input className="field-control" value={revisionSourceRef} onChange={(event) => setRevisionSourceRef(event.target.value)} maxLength={256} placeholder="Branch, tag or full commit ID" />
+              </label>}
+              {revisionActionError && <p id={`revision-error-${job.id}`} role="alert" aria-live="assertive" className="revision-error text-sm text-danger">{revisionActionError}</p>}
               <div className="flex flex-wrap gap-2">
                 <Button
-                  disabled={busy || !feedback.trim()}
+                  disabled={busy || !feedback.trim() || (revisionMode === "replace_source" && !revisionSourceRef.trim()) || (revisionMode === "continue_candidate" && !checkpoint?.available)}
+                  aria-describedby={revisionActionError ? `revision-error-${job.id}` : `revision-context-${job.id}`}
                   onClick={() => action("request_changes")}
                 >
                   {busy ? "Submitting…" : "Send feedback and revise"}

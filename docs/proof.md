@@ -995,6 +995,10 @@ Native Verify and independent aggregate-diff Review remain pending.
 
 ## #71 browser integration boundary repair — 27 September 2026
 
+Delivery reconciliation: #71 shipped **0.9.0 via PR #81** and passed installed
+qualification, as reported by the lead. The evidence below records the earlier
+Build state; its pending delivery notes are historical.
+
 This uncommitted repair starts at `7d5fb6a767ff62a2645d4a7386e649e3028946eb`
 and keeps `0.9.0`. The initial required preparation and full check passed
 (197 runtime/package and 53 dashboard tests), but new regressions reproduced
@@ -1031,6 +1035,10 @@ Native Verify and independent Review must cover the **entire aggregate** from
 this manual continuation does not deliver #42 or claim acceptance/publication.
 
 ## #84 protected evidence compatibility — 27 September 2026
+
+Delivery reconciliation: #84 shipped **0.9.1 via PR #85** and passed installed
+qualification, as reported by the lead. The evidence below records the earlier
+Build state; its pending delivery notes are historical.
 
 This bounded 0.9.1 patch starts at admitted main
 `cdaadef1baa0992059032d80e356e0f2600654f3`. Git history inspection compared the
@@ -1085,3 +1093,70 @@ commit, push or release. The reported job already shipped via PR #81; this
 compatibility change neither republishes it nor resolves the separate #42
 checkpoint/original-base versus current-target limit. See the compatibility
 and removal contract in [npm guidance](npm.md#protected-evidence-compatibility).
+
+
+## #42 reviewed-candidate continuation, first slice — 27 September 2026
+
+Uncommitted 0.10.0 implementation from admitted main
+`1e20d8d1b1329acd59936bf947887c07205bc6ab`. CLI `revise --from
+reviewed-candidate`, the shared `request_changes` revision mode and dashboard
+starting-point selector deliberately keep this job’s current reviewed tree and
+original source/delivery baseline. Fresh source remains the default; explicit
+`--source-ref` still replaces the baseline. The queue retains private,
+job-bound checkpoint objects and validates current protected evidence before
+ordinary checkout reconciliation. Build stages that tree on the original
+retained source and produces a single-parent aggregate; full Verify, independent
+Review and approval remain mandatory. Prior failed attempts and usage remain
+unchanged. No target refresh, history rewrite or delivery guard relaxation.
+
+The #84 audit compared the available 0.8.0 (`380f749`), 0.9.0 (`cdaadef`) and
+0.9.1 (`1e20d8d`) writers with the new code. V1 profile fields, role isolation,
+policy and candidate/check/review/approval meanings remain compatible; new
+continuation provenance is additive and grants no acceptance. The explicit
+allowlist retains those versions and adds 0.10.0. Old records need complete
+current guarantees, including matching protected files/run records and browser
+proof when enabled. Continuation further requires the current review cycle’s
+full protected artifacts and clean Git objects. Unknown versions, incomplete
+records or changed policy remain unavailable without migrating evidence.
+
+Controlled regressions in `tests/continuation.test.mjs` cover reviewed A plus
+repair B, exact aggregate parent/tree/patch, the entire diff sent to Review,
+new checks/review/approval, unchanged failed review and per-attempt token counts;
+restart before Build dispatch and after failure; explicit fresh/source-ref
+behavior; stale run/head/tree, foreign evidence, unknown profiles, missing
+browser proof, missing original source/checkpoint, tampered manifest/Git objects,
+changed policy/target and active/unknown worker refusal. The real executor code
+is exercised with an isolated **controlled Docker client**, inert model settings
+and generated reports: no container or provider is involved. Delivery validation
+reconstructs the combined patch and refuses a moved target before any controlled
+provider write. CLI and authenticated API use the same action/status. JSDOM
+covers explicit choices, focusable labelled controls, fixed selected identities,
+associated inline errors and preserved feedback; it does not prove rendering or
+real keyboard/narrow-browser behavior.
+
+Validation on Node 22.23.3 / npm 10.9.9: `npm ci --ignore-scripts`,
+`npm run build:dashboard`, `npm run check` and `git diff --check` passed (exit 0).
+The full check passed **273 runtime/package tests and 54 dashboard tests**,
+including local tarball installation. An early targeted controller run failed
+because dashboard assets had not yet been built; the prepared full check passed.
+The new fixture’s initial client-path/model-environment setup failures were fixed;
+no product before-change red/green result is claimed. Private final logs are
+`/output/continuation-build.log`, `/output/continuation-check.log` and
+`/output/continuation-tests.log`. The final dashboard assets for lead inspection:
+
+- `index-C9gpwCUM.js`: SHA-256 `6de94b3206dc692ad8be876ae43ebe51eeb17cd557149a519bb84ea1e4548fbc`
+- `index-CasRG9Ge.css`: SHA-256 `ba230bfbdd58eb8488db5b430d086abebe02a2a81431dcf4d333e4855ef4e095`
+
+This is Build evidence, not acceptance. Native Factory Verify and independent
+Review remain required. The lead owns real installed continuation, a disposable
+protected PR/CI run and desktop/narrow light/dark browser qualification on Z13,
+including keyboard selection, long identities and stale/busy error recovery.
+No real Docker, browser or provider qualification ran in this job. No source
+commit, push, deployment, release, policy change or `.github` change was made.
+Direct cost and human time are unknown (`null`).
+
+#42 remains open: unfinished/uncommitted Build checkpoints, exit-cause
+classification, live pending feedback and harness deadline hints are deferred.
+Target refresh remains #72; opt-in desktop/VM observation and browser recordings
+are later #82. The shipped #71/#84 installed qualification above does not qualify
+this new continuation path.

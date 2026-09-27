@@ -1,7 +1,9 @@
 import { randomBytes, createHash } from 'node:crypto';
-import { chmodSync, lstatSync, mkdirSync, realpathSync, renameSync, rmSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { runCandidateGit, runHostGit } from './git-environment.mjs';
+import { isDeepStrictEqual } from 'node:util';
+import { readPrivateJson, assertPrivateDirectory } from './execution-evidence.mjs';
 import { readProjectLinks } from './project-links.mjs';
 
 const REF_NAME = 'refs/heads/factory-source';
@@ -179,6 +181,41 @@ export class SourceAdmissionStore {
 
   validate(jobId, record) { return assertRetainedSource(this.state, jobId, record); }
 
+  retainCheckpoint(job, selected) {
+    assertRetainedSource(this.state, job.id, job.source_admission);
+    const folder = join(this.state, 'jobs', job.id), workspace = join(folder, 'checkout');
+    const record = { version: 1, job_id: job.id, ...selected,
+      object_format: job.source_admission.object_format, retained_ref: 'refs/heads/factory-checkpoint',
+      retained_repo: `checkpoints/retained_${randomBytes(12).toString('hex')}.git`,
+      retained_at: new Date().toISOString() };
+    if (![record.head, record.tree, record.original_base].every(value => objectId(value, record.object_format)))
+      throw new SourceAdmissionError('Reviewed checkpoint has invalid object identities.');
+    assertCheckpointTree(workspace, record);
+    if (git(workspace, 'rev-parse', 'HEAD') !== record.head || git(workspace, 'status', '--porcelain'))
+      throw new SourceAdmissionError('Reviewed checkout changed; preserve the work and reload before continuing.');
+    privateDirectory(join(folder, 'checkpoints'));
+    const path = join(folder, record.retained_repo), temporary = path + '.pending';
+    try {
+      runHostGit(['init', '--quiet', '--bare', `--object-format=${record.object_format}`, temporary]);
+      chmodSync(temporary, 0o700);
+      git(temporary, 'config', 'gc.auto', '0');
+      git(temporary, 'fetch', '--no-tags', '--', workspace, `${record.head}:${record.retained_ref}`);
+      assertCheckpointTree(temporary, record);
+      writeFileSync(join(temporary, 'checkpoint.json'), JSON.stringify(record), { flag: 'wx', mode: 0o600 });
+      renameSync(temporary, path);
+      assertRetainedCheckpoint(this.state, job.id, job.source_admission, record, record.policy_hash);
+      return record;
+    } catch (error) {
+      rmSync(temporary, { recursive: true, force: true });
+      // Retained objects are never removed on a failed transition.
+      throw new SourceAdmissionError(`Could not retain reviewed checkpoint; prior work is preserved. ${error.message}`);
+    }
+  }
+
+  validateCheckpoint(jobId, source, record, policyHash) {
+    return assertRetainedCheckpoint(this.state, jobId, source, record, policyHash);
+  }
+
   release(jobId, record) {
     if (!record?.retained_repo || !/^sources\/retained_[a-f0-9]{24}\.git$/.test(record.retained_repo || '')) return;
     const folder = join(this.state, 'jobs', jobId), path = join(folder, record.retained_repo);
@@ -213,4 +250,59 @@ export function restoreRetainedCheckout(state, jobId, record, workspace) {
     git(workspace, 'remote', 'remove', 'origin');
   } catch { rmSync(workspace, { recursive: true, force: true }); throw new SourceAdmissionError('Could not build the checkout from this job’s retained source commit.', 409); }
   return { path: workspace, sha: retained.sha };
+}
+
+function assertCheckpointTree(path, record) {
+  try {
+    if (git(path, 'rev-parse', '--show-object-format') !== record.object_format
+      || git(path, 'rev-parse', `${record.head}^{tree}`) !== record.tree
+      || (record.head !== record.original_base && git(path, 'rev-list', '--parents', '-n', '1', record.head) !== `${record.head} ${record.original_base}`))
+      throw new Error('head, tree or parent mismatch');
+    git(path, 'fsck', '--strict', '--no-reflogs', '--no-dangling', record.head);
+  } catch { throw new SourceAdmissionError('Reviewed checkpoint objects are missing or tampered; prior code and evidence were preserved.'); }
+}
+
+export function publicContinuation(record) {
+  if (!record) return null;
+  const { version, job_id, head, tree, original_base, build_run_id, checks_run_id, review_run_id,
+    policy_hash, repository_identity, retained_at } = record;
+  return { version, job_id, head, tree, original_base, build_run_id, checks_run_id, review_run_id,
+    policy_hash, repository_identity, retained_at };
+}
+
+export function assertRetainedCheckpoint(state, jobId, source, record, policyHash) {
+  validJobId(jobId);
+  if (!record || record.version !== 1 || record.job_id !== jobId
+    || record.original_base !== source?.resolved_sha || record.repository_identity !== source?.repository_identity
+    || record.object_format !== source?.object_format || record.policy_hash !== policyHash
+    || !/^[a-f0-9]{64}$/.test(record.policy_hash || '')
+    || !['build_run_id', 'checks_run_id', 'review_run_id'].every(key => /^run_[a-z0-9]+$/.test(record[key] || ''))
+    || !objectId(record.head, record.object_format) || !objectId(record.tree, record.object_format)
+    || !objectId(record.original_base, record.object_format)
+    || !/^checkpoints\/retained_[a-f0-9]{24}\.git$/.test(record.retained_repo || '')
+    || record.retained_ref !== 'refs/heads/factory-checkpoint')
+    throw new SourceAdmissionError('Checkpoint is foreign or incompatible with the original source/current policy; start fresh explicitly.');
+  assertRetainedSource(state, jobId, source);
+  const folder = join(state, 'jobs', jobId), path = join(folder, record.retained_repo);
+  try {
+    for (const dir of [join(state, 'jobs'), folder, join(folder, 'checkpoints'), path]) assertPrivateDirectory(dir);
+    if (!isDeepStrictEqual(readPrivateJson(join(path, 'checkpoint.json')), record)
+      || git(path, 'rev-parse', `${record.retained_ref}^{commit}`) !== record.head) throw new Error('record mismatch');
+    assertCheckpointTree(path, record);
+  } catch { throw new SourceAdmissionError('Retained checkpoint is missing, unsafe or tampered; restore its private storage before retrying.'); }
+  return { path, sha: record.head, tree: record.tree };
+}
+
+// HEAD stays at the original base while the selected tree is staged. The normal
+// Build commit therefore aggregates every change into one child of that base.
+export function restoreBuildCheckout(state, jobId, source, workspace, continuation, policyHash) {
+  const checkpoint = continuation ? assertRetainedCheckpoint(state, jobId, source, continuation, policyHash) : null;
+  const retained = restoreRetainedCheckout(state, jobId, source, workspace);
+  if (checkpoint) {
+    git(workspace, 'fetch', '--no-tags', '--', checkpoint.path, checkpoint.sha);
+    git(workspace, 'read-tree', '--reset', '-u', checkpoint.tree);
+    if (git(workspace, 'write-tree') !== checkpoint.tree || git(workspace, 'rev-parse', 'HEAD') !== retained.sha)
+      throw new SourceAdmissionError('Could not seed the reviewed checkpoint on its original base.');
+  }
+  return retained;
 }

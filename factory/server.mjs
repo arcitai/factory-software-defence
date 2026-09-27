@@ -14,7 +14,7 @@ import { configAt, ROOT } from './lib.mjs';
 import { VERSION } from './updates.mjs';
 import { readProjectLinks } from './project-links.mjs';
 import { attemptPresentation } from './execution-profile.mjs';
-import { SourceAdmissionStore, publicSourceAdmission } from './source-admission.mjs';
+import { SourceAdmissionStore, publicSourceAdmission, publicContinuation } from './source-admission.mjs';
 import { deliveryProvider, deliveryProviderInfo } from './delivery-provider.mjs';
 import { DeliveryService } from './delivery.mjs';
 import { MAX_WEB_SCREENSHOT_BYTES } from './web-verification.mjs';
@@ -81,6 +81,7 @@ export function createController(state, adapter = executors(state), integrations
       const authenticated = equal(request.headers.authorization, `Bearer ${token}`) || equal(request.headers['x-factory-session'], csrf);
       if (request.method === 'GET' && url.pathname === '/api/v1/status') {
         const jobs = queue.all().map(job => ({ ...job, source_admission: publicSourceAdmission(job.source_admission),
+          continuation: publicContinuation(job.continuation), continuation_status: queue.continuationStatus(job),
           source_history: (job.source_history || []).map(publicSourceAdmission), can_request_changes: queue.canRequestChanges(job),
           can_remove: queue.canRemove(job), removal_block_reason: queue.removalBlockReason(job),
           delivery_removal_blocked: Boolean(job.delivery && !['published', 'abandoned'].includes(job.delivery.state)),

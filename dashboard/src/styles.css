@@ -555,3 +555,5 @@ body { font-size: 14px; }
 .issue-receipt { padding: 12px; margin: 12px 0; border: 1px solid var(--border); border-radius: 8px; }
 .issue-publish strong, .issue-created a { overflow-wrap: anywhere; }
 @media (max-width: 480px) { .issue-publish-actions { flex-direction: column; } }
+
+.revision-error { overflow-wrap: anywhere; }

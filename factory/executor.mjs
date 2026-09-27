@@ -6,7 +6,7 @@ import { ROOT, run, save, json, digest, instanceLabel, stopContainers } from './
 import { incidentFor, validateReport } from './incident.mjs';
 import { BoundedLog } from './bounded-log.mjs';
 import { CodexUsageParser, emptyUsage, usageFields } from './usage.mjs';
-import { assertRetainedSource, publicSourceAdmission, restoreRetainedCheckout } from './source-admission.mjs';
+import { assertRetainedSource, publicSourceAdmission, publicContinuation, restoreBuildCheckout } from './source-admission.mjs';
 import { runCandidateGit } from './git-environment.mjs';
 import { selectedInferenceSecrets, writeSelectedModelEnvironment } from './model-environment.mjs';
 import { redactInferenceText, redactRetainedPhaseOutputs } from './inference-redaction.mjs';
@@ -25,8 +25,8 @@ if (!['build','verify','review','handoff','defence'].includes(phase)) throw new 
 const folder = join(state, 'jobs', job), workspace = join(folder, 'checkout');
 const config = json(join(folder, attempt, 'execution-config.json'));
 const execution = json(join(folder, 'artifacts', attempt, 'execution.json'));
-let sourceAdmission;
-try { sourceAdmission = JSON.parse(process.env.SDF_SOURCE_ADMISSION || 'null'); }
+let sourceAdmission, continuation;
+try { sourceAdmission = JSON.parse(process.env.SDF_SOURCE_ADMISSION || 'null'); continuation = JSON.parse(process.env.SDF_CONTINUATION || 'null'); }
 catch { throw new Error('Protected source admission metadata is malformed'); }
 const policyHash = digest(JSON.stringify(config));
 if (execution.policyHash !== policyHash || execution.phase !== phase) throw new Error('Admitted execution profile does not match this attempt');
@@ -50,7 +50,7 @@ function candidate() {
   if (sourceAdmission?.status === 'retained' && (meta.base !== sourceAdmission.resolved_sha || meta.source_admission?.resolved_sha !== sourceAdmission.resolved_sha))
     throw new Error('Candidate does not use this job’s retained source revision; previous evidence is invalid for the current base');
   if (git('rev-parse','HEAD^{tree}') !== meta.tree) throw new Error('Candidate tree changed; previous evidence is invalid');
-  if (meta.head !== meta.base && git('rev-parse', `${meta.head}^`) !== meta.base)
+  if (meta.head !== meta.base && git('rev-list', '--parents', '-n', '1', meta.head) !== `${meta.head} ${meta.base}`)
     throw new Error('Candidate parent differs from its admitted base; previous evidence is invalid');
   return meta;
 }
@@ -272,14 +272,16 @@ try {
     if (existsSync(workspace)) throw new Error('Workspace already exists; preserve evidence and create a new task for a fresh build');
     if (sourceAdmission?.status !== 'retained') throw new Error('Legacy job has no admission-time source revision and cannot build from the current checkout. Submit a replacement job to pin its source.');
     const retained = assertRetainedSource(state, job, sourceAdmission);
-    restoreRetainedCheckout(state, job, sourceAdmission, workspace);
+    restoreBuildCheckout(state, job, sourceAdmission, workspace, continuation, policyHash);
     const head = git('rev-parse','HEAD');
     if (head !== retained.sha) throw new Error('Build checkout differs from its admission-time source revision');
     const baseTree = git('rev-parse', `${head}^{tree}`);
-    save(join(folder,'candidate.json'), { base: sourceAdmission.resolved_sha, head, tree: baseTree, source_admission: publicSourceAdmission(sourceAdmission), synthetic: harnessOf(config) === 'mock' });
+    save(join(folder,'candidate.json'), { base: sourceAdmission.resolved_sha, head, tree: baseTree, continuation: publicContinuation(continuation), source_admission: publicSourceAdmission(sourceAdmission), synthetic: harnessOf(config) === 'mock' });
   }
   if (phase === 'build') {
-    const reports = await container('build', brief('Implement the requested bounded change. Save /output/agent-report.md with actual changes and remaining uncertainty.'), config.command, { writable: true });
+    const continuationNote = continuation
+      ? ` The checkout deliberately contains reviewed checkpoint ${continuation.head} (tree ${continuation.tree}, review ${continuation.review_run_id}) staged on original source ${continuation.original_base}. Retain those changes while addressing the requested revision; independent Review will cover the whole combined diff.` : '';
+    const reports = await container('build', brief('Implement the requested bounded change. Save /output/agent-report.md with actual changes and remaining uncertainty.' + continuationNote), config.command, { writable: true });
     git('add','-A');
     if (git('diff','--cached','--stat')) git('-c','user.name=Arcitai Factory','-c','user.email=factory@localhost','commit','--no-verify','-m','Factory candidate');
     // Checks must cover the committed tree, not ignored build products supplied by the agent.
@@ -357,7 +359,7 @@ try {
     writeFileSync(join(output,'handoff.md'), `Accepted candidate ${meta.head} (tree ${meta.tree}), based on source ${sourceSha}.\nPatch handoff remains available. Optional PR delivery is a separate explicit operator action when configured.\nNo integration, merge, release or deployment performed.\nSee docs/quickstart.md for applying the reviewed change.patch to your own branch.\n`);
     save(join(folder,'accepted.json'), { base: meta.base, head: meta.head, tree: meta.tree, patch_sha256: patchHash,
       build_run_id: meta.build_run_id, checks_run_id: checks.run_id, review_run_id: review.run_id,
-      handoff_run_id: attempt, policyHash, source_admission: meta.source_admission || publicSourceAdmission(null), acceptedAt: new Date().toISOString() });
+      handoff_run_id: attempt, policyHash, continuation: meta.continuation || null, source_admission: meta.source_admission || publicSourceAdmission(null), acceptedAt: new Date().toISOString() });
   } else if (phase === 'defence') {
     const reports = await container('defence', brief('Read-only incident triage. Use supplied evidence only; distinguish observations, hypotheses and unknowns. No live production access is configured. A 500 error is not inherently a security incident. Missing or stale telemetry remains unknown. Write /output/incident-report.json with status needs_review or insufficient_evidence, summary, hypotheses array, recommended_actions array, unknowns array and production_action_taken:false. Write /output/agent-report.md. Never claim root cause or recovery without supporting evidence.'), config.command);
     const report = JSON.parse(safeRead(join(reports,'incident-report.json')));
