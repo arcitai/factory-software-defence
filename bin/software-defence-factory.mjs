@@ -4,7 +4,7 @@ import { resolve, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
-import { ROOT, PINS, DEFAULT_STATE, configAt, save, json, run, stream, digest, api, sleep, stopContainers } from '../factory/lib.mjs';
+import { ROOT, PINS, DEFAULT_STATE, configAt, save, json, run, stream, digest, api, sleep, stopContainers, PUBLICATION_API_TIMEOUT_MS } from '../factory/lib.mjs';
 import { assertInstalledJobImage, installCustomJobImage, installStandardJobImage, inspectImageInstallation } from '../factory/image-install.mjs';
 import { listIssues, readIssue } from '../factory/issue-intake.mjs';
 import { recommendWork } from '../factory/intake.mjs';
@@ -34,7 +34,7 @@ let state = resolve(flags.state || DEFAULT_STATE);
 if(existsSync(state))state=realpathSync(state);
 const alive = pid => { try { process.kill(pid,0); return true; } catch(error) { if(error.code === 'ESRCH')return false; throw error; } };
 
-function init(repo, harness='codex', check='', port=7331, sourceRef='HEAD') {
+function init(repo, harness='codex', check='', port=7331, sourceRef='HEAD', delivery, inferenceProvider) {
   repo=realpathSync(resolve(repo));
   if (existsSync(join(state,'factory.json'))) throw new Error('Already configured; edit the private factory.json explicitly or choose another --state');
   if ([repo,state,ROOT].some(p=>/[,\n\r]/.test(p))) throw new Error('Paths cannot contain commas or line breaks');
@@ -45,11 +45,11 @@ function init(repo, harness='codex', check='', port=7331, sourceRef='HEAD') {
   if (!argv) throw new Error('Select codex, pi, mock or custom with --command-json');
   if (flags.model && ['codex','pi'].includes(harness)) argv.splice(harness==='codex'?argv.length-1:argv.length,0,'--model',flags.model);
   mkdirSync(state,{recursive:true,mode:0o700});state=realpathSync(state);chmodSync(state,0o700);
-  save(join(state,'factory.json'),{version:1,repo,sourceRef,harness,command:argv,check,port:Number(port),image:PINS.jobImage,network:harness==='mock'?'none':'bridge',timeoutSeconds:1800,memoryMiB:2048,model:flags.model || null,
+  save(join(state,'factory.json'),{version:1,repo,sourceRef,harness,command:argv,check,port:Number(port),image:PINS.jobImage,network:harness==='mock'?'none':'bridge',timeoutSeconds:1800,memoryMiB:2048,model:flags.model || null,...(inferenceProvider?{inferenceProvider}:{}),...(delivery?{delivery}:{}),
     scope:{project:'pilot',service:'app',environment:'test',owner:'operator'}});
   configAt(state);
   writeFileSync(join(state,'worker.token'),randomBytes(32).toString('hex')+'\n',{mode:0o600});
-  writeFileSync(join(state,'model.env'),'# Only inference credentials belong here. Never add GitHub, deploy or cloud credentials.\n',{mode:0o600});
+  writeFileSync(join(state,'model.env'),'# Supported inference settings only. Never add host, forge, deploy, Docker or cloud identity credentials.\n',{mode:0o600});
   registerInstallation(state);
   console.log(`Configured ${state}\nApp files were not changed. Only committed code is cloned into jobs.`);
 }
@@ -124,8 +124,39 @@ async function jobAction(action) {
   console.log(`${action}: ${id}`);
 }
 
+async function publishJob(jobId) {
+  if (!/^job_[a-f0-9]{24}$/.test(jobId || '')) throw new Error('publish requires a Factory JOB_ID');
+  const snapshot=await api(state,'/api/v1/status'),job=snapshot.jobs.find(item=>item.id===jobId);
+  if(!job)throw new Error('Job not found');
+  const current=job.runs.at(-1);
+  const receipt=await api(state,`/api/v1/jobs/${jobId}/publish`,{run_id:current?.id},undefined,{timeoutMs:PUBLICATION_API_TIMEOUT_MS});
+  console.log(JSON.stringify(receipt,null,2));
+}
+
+async function abandonDeliveryJob(jobId) {
+  if (!/^job_[a-f0-9]{24}$/.test(jobId || '')) throw new Error('abandon-delivery requires a Factory JOB_ID');
+  const branchSha = flags['branch-sha'];
+  if (!/^[a-f0-9]{40}$/.test(branchSha || '')) throw new Error('abandon-delivery requires --branch-sha with the inspected remote SHA');
+  const snapshot=await api(state,'/api/v1/status'),job=snapshot.jobs.find(item=>item.id===jobId);
+  if(!job)throw new Error('Job not found');
+  const delivery=job.delivery_status;
+  if(!delivery?.can_abandon)throw new Error('This job has no resolvable pre-write branch collision; inspect status and reconcile unresolved provider effects.');
+  if(branchSha!==delivery.remote_collision?.sha)throw new Error('The supplied branch SHA differs from current status; inspect the current remote branch before resolving.');
+  const result=await api(state,`/api/v1/jobs/${jobId}/abandon-delivery`,{
+    run_id:job.runs.at(-1)?.id,delivery_identity:delivery.identity,branch_sha:branchSha,
+  },undefined,{timeoutMs:PUBLICATION_API_TIMEOUT_MS});
+  console.log(JSON.stringify(result,null,2));
+}
+
 try {
-  if(command==='init') { if(!flags.repo)throw new Error('init requires --repo /path/to/existing/git/repo');if(flags.harness && flags.agent && flags.harness !== flags.agent)throw new Error('--harness conflicts with legacy --agent');init(flags.repo,flags.harness || flags.agent,flags.check,flags.port,flags['source-ref'] || 'HEAD'); }
+  if(command==='init') {
+    if(!flags.repo)throw new Error('init requires --repo /path/to/existing/git/repo');
+    if(flags.harness && flags.agent && flags.harness !== flags.agent)throw new Error('--harness conflicts with legacy --agent');
+    const deliveryFlags=[flags['delivery-provider'],flags['delivery-repository'],flags['delivery-target']];
+    if(deliveryFlags.some(Boolean)&&deliveryFlags.some(value=>!value))throw new Error('Trusted PR delivery requires --delivery-provider github --delivery-repository URL --delivery-target main|dev');
+    const delivery=deliveryFlags.every(Boolean)?{provider:flags['delivery-provider'],repository:flags['delivery-repository'],target:flags['delivery-target']}:undefined;
+    init(flags.repo,flags.harness || flags.agent,flags.check,flags.port,flags['source-ref'] || 'HEAD',delivery,flags['inference-provider']);
+  }
   else if(command==='install')await withServiceOperation('install',install);
   else if(command==='up') { if(hasService(state))await manageService('controller','start',state);else await withServiceOperation('up',up); }
   else if(command==='stop') { if(hasService(state))await manageService('controller','stop',state);else await withServiceOperation('stop',stop); }
@@ -222,6 +253,8 @@ try {
     if(!flags.file)throw new Error('Use --file incident.json; see factory/examples/incident.json');
     console.log(JSON.stringify(await admitIncident(state,json(resolve(flags.file)),submit)));
   } else if(['approve','cancel','retry'].includes(command))await jobAction(command);
+  else if(command==='publish')await publishJob(positional[0]);
+  else if(command==='abandon-delivery')await abandonDeliveryJob(positional[0]);
   else if(command==='revise')await jobAction('request_changes');
   else if(command==='demo') {
     state=resolve(flags.state || DEFAULT_DEMO_STATE);
@@ -244,6 +277,8 @@ try {
   demo                                    Install and run a synthetic sample (no model key)
   qualify --state PATH                    Exercise recovery and isolation with a stopped demo job
   init --repo PATH --harness codex|pi|custom --check "npm ci && npm test" [--source-ref REF]
+       [--inference-provider PROVIDER]
+       [--delivery-provider github --delivery-repository https://github.com/OWNER/REPO --delivery-target main|dev]
   install [--image LOCAL_REF]             Build the standard image, or select an existing local image
   doctor | up | status | stop              Inspect / operate your private installation
   foundation                              Read the operator setup skill; no installation required
@@ -280,6 +315,8 @@ try {
        [--source-ref REF]                 Pin a configured-repository ref before admission
   incident --file incident.json            Submit a private, read-only incident draft
   approve JOB_ID | cancel JOB_ID           Review gate / stop this attempt
+  publish JOB_ID                          Publish/reconcile the accepted candidate as one draft PR
+  abandon-delivery JOB_ID --branch-sha SHA Resolve an inspected pre-write collision; keep the remote branch
   retry JOB_ID                            Prove stop; retain old checkout and retry
   revise JOB_ID --file feedback.md [--source-ref REF]
                                           New build/check/review; source stays pinned unless a new ref is explicit
@@ -291,7 +328,7 @@ Runtime commands accept --state PATH. Default: ${DEFAULT_STATE}
 Demo default: ${DEFAULT_DEMO_STATE}
 The npm CLI keeps state outside the package; updates wait for stopped installations.
 Dashboard binds only to loopback; use SSH for remote access.
-Setup plan: ${join(ROOT, 'docs/setup.md')}
+  Setup plan: ${join(ROOT, 'docs/setup.md')}
 See docs/quickstart.md for task execution, evidence and recovery.`);
   else throw new Error(`Unknown command: ${command}`);
 } catch(error) {console.error(`Factory: ${error.message}`);process.exitCode=1;}

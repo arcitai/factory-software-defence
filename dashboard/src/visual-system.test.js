@@ -30,3 +30,20 @@ test("narrow navigation and status filters collapse into labelled controls", asy
   assert.match(styles, /\.project-header h1 \{[^}]*font-size: 36px/);
   assert.match(styles, /grid-template-columns: 212px minmax\(0, 1fr\)/);
 });
+
+test("trusted delivery feedback stays with its action and the narrow action can wrap", async () => {
+  const [detail, styles] = await Promise.all([
+    readFile(new URL("./task-detail.jsx", import.meta.url), "utf8"),
+    readFile(new URL("./styles.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(detail, /aria-label="Trusted PR delivery action"/);
+  assert.match(detail, /role="alert" aria-live="assertive"/);
+  assert.match(detail, /aria-describedby=\{\(deliveryActionError \|\| delivery\.error\)/);
+  assert.match(detail, /job\.can_remove === false/);
+  assert.match(detail, /Delivery branch/);
+  assert.match(detail, /Source ref at admission/);
+  assert.match(styles, /\.delivery-action-button \{[^}]*white-space: normal/);
+  assert.match(styles, /\.delivery-action-button \{[^}]*height: auto/);
+  assert.match(styles, /\.delivery-action-button \{[^}]*overflow-wrap: anywhere/);
+});

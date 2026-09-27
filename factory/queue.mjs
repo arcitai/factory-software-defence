@@ -188,9 +188,20 @@ export class JobQueue {
     return { id: jobId, state: job.state };
   }
   remove(jobId) { return this.exclusive(jobId, () => this.removeStopped(jobId)); }
+  removalBlockReason(job) {
+    if (job.delivery && !['published', 'abandoned'].includes(job.delivery.state)) {
+      return 'Trusted PR delivery is unresolved. Reconcile the saved delivery or inspect its remote collision before deleting this issue.';
+    }
+    if (!['succeeded', 'failed', 'cancelled'].includes(job.state) || this.active?.jobId === job.id) {
+      return 'Stop the task before removing it';
+    }
+    return null;
+  }
+  canRemove(job) { return this.removalBlockReason(job) === null; }
   async removeStopped(jobId) {
     const job = this.get(jobId);
-    if (!['succeeded', 'failed', 'cancelled'].includes(job.state) || this.active?.jobId === jobId) throw new QueueError('Stop the task before removing it');
+    const removalBlock = this.removalBlockReason(job);
+    if (removalBlock) throw new QueueError(removalBlock);
     await this.reconcile(jobId);
     job.deleted_at = now(); this.save(job);
     return { id: jobId, deleted: true };

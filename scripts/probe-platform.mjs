@@ -3,7 +3,7 @@ import { harnessOf } from '../factory/lib.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { api, configAt, save, json, containers, sleep, stream, run, ROOT } from '../factory/lib.mjs';
+import { api, configAt, save, json, containers, sleep, stream, run, digest, ROOT } from '../factory/lib.mjs';
 import { admitIncident } from '../factory/incident.mjs';
 import { createController } from '../factory/server.mjs';
 import { advanceAndPruneSourceFixture, createRetainedSourceFixture, sourceFixtureOperatorState } from './retained-source-fixture.mjs';
@@ -131,10 +131,39 @@ try {
 
   setConfig({check:'exit 17'});
   const fail=await work('Synthetic failing check');await waitState(fail.id,'failed');
-  assert.equal((await snapshot(fail.id)).runs.at(-1).command,'verify');
-  assert(!existsSync(join(state,'jobs',fail.id,(await snapshot(fail.id)).runs.at(-1).id,'check-workspace')));
-  setConfig({});await cli('retry',fail.id);await waitState(fail.id,'awaiting_approval');
-  await cli('approve',fail.id);await waitState(fail.id,'succeeded');record('failed app check blocks delivery; controlled retry rechecks same candidate');
+  const failJobFolder=join(state,'jobs',fail.id),failedCheck=(await snapshot(fail.id)).runs.at(-1);
+  assert.equal(failedCheck.command,'verify');
+  assert(!existsSync(join(failJobFolder,failedCheck.id,'check-workspace')));
+  assert(!existsSync(join(failJobFolder,'accepted.json')));
+
+  const failedRuns=(await snapshot(fail.id)).runs.length;
+  await cli('retry',fail.id);const unchangedPolicyFailure=await waitState(fail.id,'failed');
+  assert.equal(unchangedPolicyFailure.runs.length,failedRuns+1);
+  assert.equal(unchangedPolicyFailure.runs.at(-1).command,'verify');
+  assert.match(unchangedPolicyFailure.runs.at(-1).error,/verify exited 17/);
+  assert(!existsSync(join(failJobFolder,'accepted.json')));
+  record('failed check blocks handoff; retry under the unchanged failing policy runs verify again and remains failed');
+
+  setConfig({});
+  await cli('retry',fail.id);const rechecked=await waitState(fail.id,'awaiting_approval');
+  assert.equal(rechecked.runs.at(-1).command,'handoff');
+  await cli('approve',fail.id);const staleBuild=await waitState(fail.id,'failed');
+  assert.equal(staleBuild.runs.at(-1).command,'handoff');
+  assert.match(staleBuild.runs.at(-1).error,/Build\/checks\/review do not cover candidate and current policy/);
+  assert(!existsSync(join(failJobFolder,'accepted.json')));
+  record('changing the check policy cannot reuse a build created under the earlier policy');
+
+  const fresh=await work('Synthetic fresh build under current check policy');await waitState(fresh.id,'awaiting_approval');
+  const freshFolder=join(state,'jobs',fresh.id),freshJob=await snapshot(fresh.id),freshCandidate=json(join(freshFolder,'candidate.json'));
+  const freshBuild=freshJob.runs.find(item=>item.command==='build'),freshVerify=freshJob.runs.find(item=>item.command==='verify'),freshReview=freshJob.runs.find(item=>item.command==='review');
+  assert.equal(freshCandidate.build_policy_hash,digest(JSON.stringify(json(join(freshFolder,freshBuild.id,'execution-config.json')))));
+  assert.equal(json(join(freshFolder,'checks.json')).policyHash,freshCandidate.build_policy_hash);
+  assert.equal(json(join(freshFolder,'review.json')).policyHash,freshCandidate.build_policy_hash);
+  assert.equal(freshVerify.execution.policyHash,freshCandidate.build_policy_hash);
+  assert.equal(freshReview.execution.policyHash,freshCandidate.build_policy_hash);
+  await cli('approve',fresh.id);await waitState(fresh.id,'succeeded');
+  assert.equal(json(join(freshFolder,'accepted.json')).head,freshCandidate.head);
+  record('an explicit fresh build under the current check policy completes with matching check, review and handoff evidence');
 
   const cancel=await work('SYNTHETIC_TIMEOUT cancellation fixture');
   const live=await until(()=>containers(state).find(c=>c.Config.Labels['sdf.job']===cancel.id&&c.State.Running));

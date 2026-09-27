@@ -155,10 +155,78 @@ model servers, public listeners, Docker socket mounts or whole account folders.
 Cloud inference likewise needs a real provider/model connectivity check without
 printing credentials. A model-list/health response is connectivity evidence;
 qualifying model output requires a separately accepted bounded task.
+Store only supported inference settings in `model.env`; jobs reject unrelated
+names such as deployment credentials. Codex receives its OpenAI setting group,
+and Pi receives only its operator-selected provider group. Use
+`--inference-provider` with `init` when Pi's provider is not encoded in the
+operator-configured model name or when multiple provider groups are stored.
+An installation already using Codex account auth may set the validated
+`FACTORY_CODEX_AUTH_JSON` single-line JSON value in private `model.env`; only
+Codex agent phases receive it. Pi and checks do not. See the [quickstart
+inference guidance](quickstart.md#connect-an-application) for constraints.
 
 Checkpoint: record the exact source revision, image ID, check command, resource
 limits, inference connectivity and CI result. Keep product controllers stopped
 until their tasks are explicitly ready to run.
+
+### Optional trusted PR delivery
+
+Patch-only handoff is the default. When the operator intends to enable GitHub
+delivery for this installation, configure the exact canonical repository and
+target while initializing it, for example:
+
+```sh
+software-defence-factory init --repo /absolute/path/to/app --harness pi \
+  --check "npm ci && npm test" --source-ref main \
+  --delivery-provider github \
+  --delivery-repository https://github.com/OWNER/REPO \
+  --delivery-target main --state /private/state/my-app
+```
+
+The admitted source ref and PR target are independent. Only `main` and `dev`
+are supported target choices in this release. The destination must match the
+canonical origin retained at admission. A changed/renamed origin, moved target
+base or changed Factory policy blocks delivery until fresh applicable evidence
+exists. Configure this before admitting work. Unknown providers remain
+patch-only.
+
+Before enabling trusted PR delivery, confirm the repository workflows fit the
+bounded qualification in [recovery](recovery.md#trusted-pr-delivery). Factory
+compares the immutable admitted base and accepted candidate trees, refuses any
+candidate change to a GitHub Actions workflow, and requires jobs that can run
+for generated-branch pushes, PR events or selected-ref manual dispatches to use
+explicit `contents: read` or `none`, a known GitHub-hosted runner, and no
+secrets, protected environments, OIDC or deploy permissions. Unsupported
+workflow syntax keeps the patch-only path available. Organization hooks and
+other external CI automation remain operator-owned and are not audited by this
+check.
+
+The operator's authenticated `gh` identity stays on the controller. Keep GitHub
+credentials out of `model.env`, project files and worker containers. Do not add
+deploy credentials or a Docker socket for PR delivery. Use only the existing
+authorized repository and the repository access already approved for the
+operator; do not create a new fixture repository or request broader access.
+
+The release lead owns the live provider/browser qualification after installing
+the published candidate separately. Use a separate private state against the
+already authorized Factory repository and `main`; ordinary issue admission,
+checks, independent review and approval must produce the disposable candidate.
+Give its issue a title beginning **[Factory PR handoff proof]**, then use the
+normal **Publish accepted candidate as draft PR** action. Record the job,
+candidate SHA/tree, generated unique branch, exact draft PR, base/head/tree and
+triggered check states. The CLI allows up to ten minutes for this multi-request
+controller action; other CLI API requests retain their five-second deadline.
+If the client deadline expires, inspect status and repeat `publish JOB_ID` so
+the controller can reconcile its saved intent. Restart the installed controller
+and repeat `publish JOB_ID`; verify the same branch and PR head are read back
+and no second PR appears. Delete issue is disabled while the delivery is
+unresolved, and the controller rejects the same removal through its API. Leave
+pending/unknown checks labelled as such. After inspection, close the proof PR
+without merging its fixture change. Do not publish a worker candidate from
+inside its sandbox.
+
+Mocks exercise controller and receipt behavior only. They are not live GitHub
+publication or browser proof; record each separately in [qualification](proof.md).
 
 ## 5. Enable only the intended background services
 
@@ -242,6 +310,8 @@ Copy this private completion record into the installation's handoff:
 | History and intentionally stopped products preserved | Pending | |
 | Backups, logs, stop/update/rollback owner and guide | Pending | |
 | First bounded application task | Not started | Separate task authority and proof |
+| Optional trusted PR provider and target explicitly configured, or patch-only retained | Pending | |
+| Release lead live disposable Factory draft PR/readback/restart/close proof | Not started | Separate from mocked provider tests |
 
 Use Pass, Fail or Not applicable with a reason; never infer success from an
 installed file. Keep host identities, credentials, raw logs and customer details

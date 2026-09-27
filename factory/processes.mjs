@@ -3,12 +3,37 @@ import { existsSync, mkdirSync, openSync, closeSync, readFileSync, renameSync, r
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { ROOT, configAt, run, json, save, stopContainers, sleep } from './lib.mjs';
-import { withRequestedModel, executionProfile } from './execution-profile.mjs';
+import { effectiveExecutionConfig, executionProfile } from './execution-profile.mjs';
 import { parseCodexJsonl, emptyUsage, usageFields } from './usage.mjs';
+import { removeScratch } from './scratch.mjs';
+import { selectedInferenceSecrets } from './model-environment.mjs';
+import { redactRetainedPhaseOutputs } from './inference-redaction.mjs';
 
 const MAX_LEGACY_LOG_BYTES = 1024 * 1024;
+const credentialedPhases = new Set(['build', 'review', 'defence']);
 
 const alive = pid => { try { process.kill(pid, 0); return true; } catch (error) { if (error.code === 'ESRCH') return false; throw error; } };
+function clearStoppedFence(state, jobId, expectedPid) {
+  const folder = join(state, 'jobs', jobId), lock = join(folder, 'active.json');
+  if (!existsSync(lock)) return false;
+  const previous = json(lock);
+  if (!Number.isSafeInteger(previous.pid) || !Number.isSafeInteger(previous.pgid)
+    || (expectedPid !== undefined && (previous.pid !== expectedPid || previous.pgid !== expectedPid)))
+    throw new Error('Stopped executor identity does not match the retained recovery fence');
+  if (/^run_[a-z0-9]+$/.test(previous.attempt || '') && credentialedPhases.has(previous.phase)) {
+    const runFolder = join(folder, previous.attempt), modelEnvironment = join(runFolder, `.model-${previous.phase}.env`);
+    if (existsSync(modelEnvironment)) redactRetainedPhaseOutputs(runFolder, previous.phase, selectedInferenceSecrets(modelEnvironment));
+  }
+  if (previous.phase === 'verify') {
+    if (!/^run_[a-z0-9]+$/.test(previous.attempt || ''))
+      throw new Error('Stopped verification attempt does not match the retained recovery fence');
+    removeScratch(join(folder, previous.attempt, 'check-workspace'));
+  }
+  if (/^run_[a-z0-9]+$/.test(previous.attempt || '') && credentialedPhases.has(previous.phase))
+    rmSync(join(folder, previous.attempt, `.model-${previous.phase}.env`), { force: true });
+  rmSync(lock);
+  return true;
+}
 // Older queues did not retain the verdict. Only recover it from the exact
 // attempt's controller-exported review, bound to its checked candidate/policy.
 export function retainedReviewVerdict(state, job, attempt) {
@@ -62,8 +87,15 @@ function usageForAttempt(state, job, attempt) {
   return recovered ? usageFields(recovered, attempt.execution, attempt.command) : stored;
 }
 
-export function executors(state) {
+export function executors(state, recovery = {}) {
   const children = new Map();
+  const spawnChild = recovery.spawn || spawn;
+  const killGroup = recovery.killGroup || ((pid, signal) => process.kill(pid, signal));
+  const stopSleep = recovery.sleep || sleep;
+  const processAlive = recovery.alive || alive;
+  const recoveryStopContainers = recovery.stopContainers || stopContainers;
+  const recoveryRun = recovery.run || run;
+  const recoveryAlive = recovery.alive || alive;
   const usageCache = new Map();
   let usageReadWindow = -1, usageReads = 0;
   function presentedUsage(job, attempt) {
@@ -84,7 +116,8 @@ export function executors(state) {
     return value;
   }
   function prepare(job, attempt) {
-    const config = withRequestedModel(configAt(state), job.model);
+    const operatorConfig = configAt(state);
+    const config = effectiveExecutionConfig(operatorConfig, job.model, join(state, 'model.env'));
     // Resolve tags before admission so the recorded image is the one actually run.
     config.image = run('docker', ['image', 'inspect', '--format', '{{.Id}}', config.image]);
     if (!/^sha256:[a-f0-9]{64}$/.test(config.image)) throw new Error('Expected an immutable Docker image ID');
@@ -96,26 +129,26 @@ export function executors(state) {
   async function stop(jobId) {
     const running = children.get(jobId);
     if (running) {
-      try { process.kill(-running.child.pid, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
-      await Promise.race([running.done, sleep(2000)]);
-      if (alive(-running.child.pid)) {
-        try { process.kill(-running.child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+      try { killGroup(-running.child.pid, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+      await Promise.race([running.done, stopSleep(2000)]);
+      if (processAlive(-running.child.pid)) {
+        try { killGroup(-running.child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
         await running.done;
       }
     }
-    stopContainers(state, jobId);
-    if (running && !alive(-running.child.pid)) rmSync(join(state, 'jobs', jobId, 'active.json'), { force: true });
+    recoveryStopContainers(state, jobId);
+    if (running && !processAlive(-running.child.pid)) clearStoppedFence(state, jobId, running.child.pid);
   }
   async function reconcile(jobId, phase) {
     if (children.has(jobId)) throw new Error('Previous executor is still finishing');
-    stopContainers(state, jobId);
+    recoveryStopContainers(state, jobId);
     const folder = join(state, 'jobs', jobId), lock = join(folder, 'active.json');
     if (existsSync(lock)) {
       const previous = json(lock);
-      if (!Number.isSafeInteger(previous.pid) || alive(previous.pid)) throw new Error('Previous executor is still present or unknown');
-      if (!Number.isSafeInteger(previous.pgid) || run('ps', ['-axo', 'pgid=']).split('\n').map(Number).includes(previous.pgid))
+      if (!Number.isSafeInteger(previous.pid) || recoveryAlive(previous.pid)) throw new Error('Previous executor is still present or unknown');
+      if (!Number.isSafeInteger(previous.pgid) || recoveryRun('ps', ['-axo', 'pgid=']).split('\n').map(Number).includes(previous.pgid))
         throw new Error('Previous process group is still present or unknown');
-      rmSync(lock);
+      clearStoppedFence(state, jobId);
     }
     if (['build', 'defence'].includes(phase) && existsSync(join(folder, 'checkout')))
       renameSync(join(folder, 'checkout'), join(folder, `previous-checkout-${Date.now()}`));
@@ -124,7 +157,7 @@ export function executors(state) {
     const config = json(join(state, 'jobs', job.id, attempt.id, 'execution-config.json')), output = join(state, 'jobs', job.id, 'artifacts', attempt.id);
     mkdirSync(output, { recursive: true, mode: 0o700 });
     const resultPath = join(output, 'result.json'), fd = openSync(join(output, 'executor.log'), 'a', 0o600);
-    const child = spawn(process.execPath, [join(ROOT, 'factory/executor.mjs'), state, attempt.command], {
+    const child = spawnChild(process.execPath, [join(ROOT, 'factory/executor.mjs'), state, attempt.command], {
       detached: true, stdio: ['pipe', fd, fd], env: { ...process.env, SDF_JOB_ID: job.id, SDF_RUN_ID: attempt.id, SDF_OUTPUT_DIR: output, SDF_STEP_RESULT_PATH: resultPath,
         SDF_SOURCE_ADMISSION: JSON.stringify(job.source_admission || null) },
     }); closeSync(fd);

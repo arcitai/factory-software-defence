@@ -2,6 +2,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { chmodSync, lstatSync, mkdirSync, realpathSync, renameSync, rmSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { runCandidateGit, runHostGit } from './git-environment.mjs';
+import { readProjectLinks } from './project-links.mjs';
 
 const REF_NAME = 'refs/heads/factory-source';
 
@@ -98,6 +99,7 @@ export function publicSourceAdmission(record) {
   return {
     status: 'retained',
     repository_identity: record.repository_identity,
+    source_repository: record.source_repository || null,
     requested_ref: record.requested_ref,
     ref_source: record.ref_source,
     resolved_sha: record.resolved_sha,
@@ -153,6 +155,10 @@ export class SourceAdmissionStore {
         repository_identity: identity.identity,
         repository_path: identity.path,
         repository_common_dir: identity.common_dir,
+        // Expose only the canonical public repository URL, never the original
+        // transport which may contain credentials. This identity is pinned at
+        // admission so a later remote rename cannot redirect delivery.
+        source_repository: readProjectLinks(repository)?.repository || null,
         object_format: identity.object_format,
         requested_ref: requested,
         ref_source: explicit ? 'explicit' : 'configured',

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createController } from '../factory/server.mjs';
 import { configAt } from '../factory/lib.mjs';
-import { withRequestedModel, executionProfile, attemptPresentation } from '../factory/execution-profile.mjs';
+import { withRequestedModel, effectiveExecutionConfig, executionProfile, attemptPresentation } from '../factory/execution-profile.mjs';
 import { execFileSync } from 'node:child_process';
 
 const image='sha256:'+'a'.repeat(64);
@@ -25,6 +25,20 @@ test('model overrides and public phase facts are isolated from credentials and m
   assert.equal(executionProfile(effective,'handoff').executor,'deterministic');
   assert.equal(executionProfile(effective,'handoff').image,null);
   assert.throws(()=>withRequestedModel({...config,agent:'custom'},'other'),/overrides/);
+});
+
+test('effective execution policy binds inferred provider before an untrusted task model override', () => {
+  const codex = { harness: 'codex', command: ['codex', 'exec', '-'], model: null, image };
+  const codexEffective = effectiveExecutionConfig(codex, 'task-requested-model');
+  assert.equal(codexEffective.inferenceProvider, 'openai');
+  assert.equal(codexEffective.model, 'task-requested-model');
+  assert.equal(executionProfile(codexEffective, 'build').policyHash, executionProfile(codexEffective, 'handoff').policyHash);
+
+  const pi = { harness: 'pi', command: ['pi'], model: 'openai/default-model', image };
+  const piEffective = effectiveExecutionConfig(pi, 'anthropic/requested-by-task');
+  assert.equal(piEffective.inferenceProvider, 'openai');
+  assert.equal(piEffective.model, 'anthropic/requested-by-task');
+  assert.equal(executionProfile(piEffective, 'build').policyHash, executionProfile(piEffective, 'handoff').policyHash);
 });
 
 test('A-profile failure and B-profile retry remain distinct through controller restart and status',async t=>{

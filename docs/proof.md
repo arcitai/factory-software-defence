@@ -565,3 +565,399 @@ Retain `qualification.json` and the nested `source-admission-*` fixture evidence
 Repeat browser inspection when UI assets change. The implementation and review
 containers do not have Docker or browser access; the operator proof above was
 performed outside those containers against the packed candidate.
+
+## 0.8.0 — trusted PR handoff (#29)
+
+The implementation candidate starts at the admitted `main` source revision
+`b2643a8b67b748e9f0bf99a66e7cdd091bda3a71`. Package and root lockfile versions
+are `0.8.0`. `npm run build:dashboard` completed successfully against the
+dashboard lockfile. `npm run check` exited successfully, including all runtime,
+package and 51 dashboard tests. The focused delivery and model-environment
+regressions passed 10/10.
+
+The bounded delivery tests use disposable real local Git repositories and an
+injected fake GitHub provider. They cover default patch-only mode, trusted
+destination selection separate from source ref, stale policy/check/review/
+approval/patch rejection, changed source origin and target base, collision
+preservation, concurrent requests, repeated publication, lost branch/PR
+responses across controller restart, exact PR head/tree readback, and pending,
+unknown or unrelated PR checks. They also exercise the authenticated API and
+CLI against the same receipt. They do not establish live GitHub API behavior,
+provider permissions, credential validity or successful external publication.
+
+The dashboard regression is rendered with JSDOM. No browser tool or browser
+executable is available in this implementation environment, so desktop and
+narrow-width visual inspection of the final built assets was not performed.
+The release lead owns that browser inspection and the authorized disposable
+GitHub fixture: use the existing Factory repository, normal admission/check/
+review/approval, a uniquely named draft proof PR, repeated publication and
+restart recovery, exact readback, and close without merge. No GitHub write or
+live fixture was attempted by this implementation worker. These checks are
+required before lead acceptance; delivery itself still does not merge,
+integrate or deploy.
+
+## #29 recovery repairs on the admitted 0.8.0 checkpoint — 26 September 2026
+
+This repair starts from admitted candidate
+`0f0012a13ff67a021fc51191042e77cdc9cd7631`; the repository main baseline for
+the combined review is `b2643a8b67b748e9f0bf99a66e7cdd091bda3a71`. Package and
+lockfile versions remain `0.8.0`.
+
+The controller now refuses to remove a stopped job while a saved delivery is
+not confirmed `published`. Status exposes the same removal decision and reason
+to the dashboard. The detail view disables Delete issue and explains how to
+reconcile or inspect the delivery. Saved `intent`, `publishing`, `uncertain`
+and retryable `blocked` checkpoints retain a guarded publish/reconcile action;
+legacy acceptance without candidate-bound phase evidence is labelled
+`legacy_unverified` and cannot be published.
+
+The shared CLI API keeps its five-second default and bounds trusted publication
+requests at ten minutes. A delayed local provider test holds one GitHub-shaped
+request for 5.2 seconds and verifies that CLI publication receives the final
+receipt. A controller API regression starts from a durable `intent`, rejects
+delete, simulates a lost branch/PR response, rejects delete again, then
+reconciles the same single branch and PR. These are local fake-provider and
+HTTP-controller checks, not live GitHub qualification.
+
+The provider retains each raw check-run conclusion. `success`, `skipped` and
+`neutral` are non-blocking in the aggregate; only `success` is an executed
+passing check. Known failure, action-required, timed-out and cancelled outcomes
+remain failures. Unknown conclusions, absent/incomplete pagination and
+unassociated PR checks remain unknown. The dashboard displays raw conclusions
+beside readable labels. The aggregate does not infer branch-protection
+completeness or merge authority.
+
+`npm run build:dashboard` passed. `npm run check` passed syntax/JSON checks,
+100 runtime/package tests and 52 dashboard tests. Focused regressions exercised
+legacy acceptance, intent and lost-response removal guards, the >5-second CLI
+request, conclusion aggregation, action-associated accessible failure
+feedback, and wrapping of the delivery button. The dashboard tests use JSDOM
+and source style assertions; this worker had no browser executable/tool and
+performed no rendered Safari inspection at 320/390px.
+
+No GitHub credential, live repository write or external fixture was used here.
+The implementer inspected the combined source diff from the original main
+baseline through this working tree; this is not a separate reviewer result. A
+protected exact-head/policy attestation was not supplied in this worker
+context. The lead owns the independent exact-final-diff review, protected
+verification, installed CLI/dashboard publication repeat/restart/readback, and
+desktop/narrow light/dark browser inspection before acceptance.
+
+## CRED-1 and policy-retry repairs on admitted checkpoint faca645 — 26 September 2026
+
+This uncommitted repair preserves package version `0.8.0` and starts from
+admitted checkpoint `faca6458ada153454ae9b690287ef78abea14f16`. The combined
+review baseline remains original main `b2643a8b67b748e9f0bf99a66e7cdd091bda3a71`.
+
+`model.env` now accepts a typed set of provider inference settings and rejects
+unrelated variables, including deployment, forge, Git, Actions and cloud
+identity credentials. Before container start, the executor writes a mode-0600
+temporary env file containing only the trusted Codex or Pi provider selection;
+it never mounts the original model.env. Codex is fixed to OpenAI settings. Pi
+uses its private `inferenceProvider`, an operator-configured `provider/model`,
+or a sole provider group in the private model.env. Multiple provider groups
+require explicit operator selection. A task-level model override is applied
+after that selection and cannot choose a credential group. `OPENAI_BASE_URL`
+remains available for the Codex OpenAI-compatible endpoint path used with local
+models.
+
+Regression coverage rejects a synthetic `DEPLOY_TOKEN` without including its
+value in the error, checks that selected Pi/OpenAI settings alone are written
+to the worker env file, rejects ambiguous multi-provider selection, and checks
+failed-check, stale-build-policy and fresh-build evidence at the handoff guard.
+The Docker qualification recipe now retains a failed-check job, verifies an
+unchanged-policy retry fails the same check, verifies changing the policy
+cannot hand off the earlier build, then admits a fresh build under the current
+policy and completes its handoff.
+
+`npm ci --ignore-scripts` and the dashboard lockfile install succeeded. The
+focused credential/evidence/configuration regressions passed. The dashboard
+suite passed 52/52. `npm run check` validated JavaScript/JSON and ran the full
+runtime/package suite, with 101 tests passing and two artifact-dependent tests
+failing because this checkout has no ignored `factory/ui/index.html`; the
+locked dashboard was not rebuilt because its sources did not change. The
+failures were the controller asset-route and npm-tarball asset-presence checks.
+No Docker qualification or live provider/browser qualification ran here.
+
+The requested preserved `review.json` was not available under `/workspace`,
+`/output` or `/tmp`, so its findings could not be reread in this worker context.
+This source diff inspection and test run are not an independent exact-head
+review or protected-policy verification. The lead owns those, plus the new
+isolated Docker qualification and any live-provider/browser proof before
+acceptance.
+
+## Codex account-auth compatibility on admitted checkpoint 64f4173 — 26 September 2026
+
+This uncommitted compatibility repair starts from admitted checkpoint
+`64f41737fa3735988a77926379a8ecae8263ea23`, preserves package version `0.8.0`,
+and retains original main `b2643a8b67b748e9f0bf99a66e7cdd091bda3a71` as the
+combined review baseline.
+
+The typed private `model.env` accepts `FACTORY_CODEX_AUTH_JSON` only when it is a
+single-line JSON object. The shared worker environment selector passes it only
+to the trusted Codex executor during build, review or defence. It remains
+excluded from Pi, including Pi with the OpenAI provider, deterministic checks
+and unrelated executors. Codex API-key and OpenAI-compatible endpoint settings
+remain available; the original `model.env` is not mounted into worker output.
+The selected temporary env file remains private and is removed only after a
+Docker listing confirms container absence. The R1 repair below also preserves
+it and the active fence when removal or the absence probe is uncertain.
+
+Inert-sentinel regressions cover account-auth validation and roundtrip, an
+auth-only Codex profile, Pi/OpenAI provider isolation, verification and custom
+executor exclusion, unrelated deployment-key rejection without value echo,
+and existing API-key/local-endpoint selection. A full combined-diff review
+also found that delivery's policy hash omitted the trusted inferred provider
+for ordinary Codex and provider/model-configured Pi jobs. Execution and
+delivery now use the same effective installation configuration, with Codex/Pi
+handoff regressions. Published readback is read-only after a confirmed
+receipt: a failed refresh preserves published state and does not recreate a
+missing commit, branch or PR. The delivery panel exposes the saved branch and
+admitted source ref at unresolved checkpoints; its regression asserts these
+fields remain rendered.
+
+After these repairs, `npm ci --ignore-scripts`,
+`npm run build:dashboard` and `npm run check` passed. The complete check
+reported 106 passing root tests and 52 passing dashboard tests. The focused
+`node --test tests/model-environment.test.mjs tests/execution-profile.test.mjs tests/delivery.test.mjs`
+reported 20/20 passing tests. The locked dashboard build completed after its
+delivery panel source change.
+
+The task context reports that the installed `64f417` package passed its 15
+Docker qualification paths. This worker did not rerun that installed
+qualification, inspect the actual private Codex profile, pack/install this
+modified worktree, call a real inference provider, or perform browser
+inspection. The preserved native `review.json` was not present in the worker's
+filesystem search; the supplied CRED-1 compatibility finding was addressed,
+but that missing artifact remains a review-input limitation. Independent
+review of the full original-main to final-worktree diff is in progress. The
+lead still owns private installed-profile/qualification checks and the final
+browser inspection before acceptance.
+
+## Final #29 PR lifecycle readback repair — 26 September 2026
+
+This is the final uncommitted Build worktree based on preserved checkpoint
+`f9780b28e5ba214336e853e2a3dd91b7711566c5`, retaining package version `0.8.0`
+and the complete delivery implementation accumulated from original baseline
+`b2643a8b67b748e9f0bf99a66e7cdd091bda3a71`. The checkpoint test counts above
+describe earlier trees; they are not evidence for this final worktree.
+
+Confirmed PR readback now records ready, closed and merged lifecycle state while
+checking the exact saved PR identity, repository, target and branch names, head,
+and accepted delivery commit tree and parent. Closed PR refresh permits a
+deleted source branch and an older PR base. The original accepted base remains
+separate and unchanged. Changed remote identity or candidate data remains a
+visible conflict. A provider outage retains the known publication receipt.
+This path makes read requests only. First publication still requires current
+accepted evidence, the current target base and an open draft PR. The task view
+shows the actual PR state, merged status, immutable accepted base and current PR
+base separately.
+
+`npm ci --ignore-scripts` completed successfully. `npm run build:dashboard`
+completed with the locked dashboard dependencies. The final-tree
+`npm run check` completed successfully: 113 root/runtime/package tests and 52
+dashboard tests passed. The focused `node --test tests/delivery.test.mjs`
+completed 19/19 tests. The regressions use disposable local Git repositories
+and a fake provider; they include ready, closed, merged, deleted-branch-after-
+close, target movement, changed head/tree/parent/repository/target, immutable
+acceptance and provider-outage cases. They perform no live provider writes.
+
+The R1 recovery regressions use a controlled Docker client at the executor
+boundary. Existing selected inert Codex auth cases cover present/unknown
+containers, client and spawn failures, successful removal, and ordinary
+reconciliation of the private file and fence. The verify-specific regression
+records scratch existence and running state at the first Docker remove attempt:
+the pre-fix test failed because scratch was already absent while the container
+was still running. After the repair, present and unknown probes retain scratch
+and the fence until reconciliation confirms shutdown; confirmed absence after
+success/client failure, outer `stopContainers` cleanup, and recovery after a
+spawn error remove scratch. These controlled-client checks do not constitute
+live Docker qualification. On this worktree, `npm ci --ignore-scripts`,
+`npm run build:dashboard` and `npm run check` passed; the full check reported
+129 root test cases and 52 dashboard tests.
+
+The task context reports that the previously installed candidate passed 15
+Docker paths, actual account-profile compatibility, cancellation, and disposable
+PR #68 lifecycle checks including repeat, restart, provider outage, ready and
+closed states. Those results belong to the previous candidate and do not prove
+this executor repair. No real provider credentials, Docker daemon qualification
+of the changed executor, or browser inspection was performed by this Build.
+Browser qualification remains external pending. Factory Verify and independent
+Review must consume the exact final worktree after Build returns.
+
+## #29 branch-only collision resolution — 26 September 2026
+
+This follow-up repairs unaccepted checkpoint `b3632bb039e32e95fd63a2905918d9436266a95f` while retaining `0.8.0` and the full review baseline `b2643a8b67b748e9f0bf99a66e7cdd091bda3a71`. Before the change, the new controlled collision regression failed because status had no explicit resolution action. It now covers a pre-write foreign branch, exact readback, local removal, restart persistence, rejected stale/changed identities, PRs on any base target, later-stage collisions and uncertain effects. Provider write counters stay unchanged. Authenticated API, CLI and visible dashboard action/result/error behavior use the same controller state.
+
+The focused delivery suite passed 22/22 and dashboard suite passed 52/52. These use disposable local repositories and a fake provider; they do not qualify live GitHub behavior. The previous installed candidate's Docker/account/PR qualification remains prior-candidate evidence. No browser inspection was performed because the Mac browser is locked; lead-owned installed, provider and browser qualification, plus Native Factory Verify and independent Review, remain pending.
+
+## #29 synthetic-evidence publication guard — 26 September 2026
+
+The before-fix regression showed the mock acceptance could publish: the fake
+provider recorded one blob, tree, commit, branch and PR write. The shared
+delivery service now binds protected per-run execution profiles to the exact
+build, verify, review and handoff runs and requires candidate/check/review
+artifacts to explicitly state `synthetic: false`. Missing or inconsistent
+evidence blocks new writes in status, CLI, API and dashboard. Saved write-stage
+intents are revalidated; known PR receipts and PR-create checkpoints keep their
+read-only reconciliation path. Executor tests confirm the mock review artifact
+is marked synthetic.
+
+The passing contract fixtures model native Codex/Pi provenance but make no
+model calls; the provider remains fake. This repair did not refresh prior
+installed/provider qualification. Browser inspection remains external and
+pending, and the lead owns fresh candidate qualification after Native Verify
+and independent Review.
+
+For this worktree, `npm ci --ignore-scripts`, `npm run build:dashboard` and
+`npm run check` passed. The complete check reported 137 root/runtime/package
+test cases and 52 dashboard tests.
+
+A follow-up on checkpoint `6d2f3ba120153bb900b23605bfbd360e49185eab` fixes the
+shared publication capability after a branch-only collision. Before the
+change, the strengthened collision regression failed because `can_publish` was
+`true` while `publish` refused the saved conflict. The shared summary now
+offers new/resumable writes only for ready evidence in eligible known states;
+branch-only conflicts expose abandonment only, while known PR receipts and
+pending PR creation retain read-only reconciliation. Unknown states refuse
+both advertisement and action. The delivery regressions also exercise CLI/API
+refusal and the dashboard's existing shared action controls. Final
+`npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check` passed;
+the complete check reported 138 root/runtime/package cases and 52 dashboard
+tests. These are local fixtures with a fake GitHub provider. No fresh installed,
+live-provider, Docker or browser qualification was performed; those remain
+lead-owned, and this result awaits Native Factory Verify and independent Review
+of the full baseline-to-candidate diff.
+
+## #29 read-only PR reconciliation label — 26 September 2026
+
+The D2 regression reproduced at both boundaries before the fix: the shared
+summary had no mode for a conflicted record with a saved PR receipt, and task
+details labeled that available readback action “Publish accepted candidate as
+draft PR.” Delivery status now returns `action_mode` as `publish`, `reconcile`
+or `null`; task details use the shared value for its button and explanatory
+text. The service fixture confirms a saved PR conflict is read-only, while
+ready publication, pending PR-create readback, published receipts and branch-
+only collisions retain their prior modes and guards.
+
+Final `npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check`
+passed; the full check reported 138 root/runtime/package cases and 52 dashboard
+tests. The contract tests use disposable local repositories and a fake provider;
+they do not prove live GitHub behavior. No fresh installed/provider qualification
+was performed. Browser inspection remains pending because the Mac browser is
+locked and there is no usable browser provider; no visual pass is claimed.
+Native Factory Verify and independent Review still own the full
+baseline-to-candidate assessment.
+
+## #29 GitHub Actions qualification — 26 September 2026
+
+The before-fix candidate-workflow regression published through the controlled
+fake provider: 2 blobs, 1 tree, 1 commit, 1 branch and 1 PR write. The shared
+delivery summary and publisher now reconstruct the admitted base and
+digest-bound accepted candidate tree, reject candidate workflow-definition
+changes, and qualify every base workflow that can run on the generated branch
+push, a branch-selected manual dispatch or a PR event. A workflow refusal has
+the same reason in status, CLI, API and the dashboard action contract; saved
+intents are rechecked. Existing exact target readback still verifies the remote
+base before writes, while known receipts remain read-only.
+
+Controlled regressions cover added/changed/deleted/symlinked workflow files,
+malformed and unsupported YAML/triggers, missing/dynamic/write/OIDC/deployment
+permissions, secrets and token contexts, environments, self-hosted/reusable
+jobs, ambiguous guards, non-main branch filters, PR lifecycle events,
+branch-selected `workflow_dispatch`, the unchanged current `ci.yml`, stale
+saved evidence and refusal with zero fake-provider writes. These local fixtures
+do not execute GitHub Actions, use a live provider, or inspect
+repository/organization rules, webhooks, external CI or action code. No browser
+or malicious live workflow was run. Existing installed/provider receipts remain
+bound to their prior candidates and do not qualify this change.
+
+Final `npm ci --ignore-scripts` completed with zero reported vulnerabilities;
+`npm run build:dashboard` passed; `npm run check` passed with 167 root/runtime/
+package tests and 52 dashboard tests. Factory Verify and independent Review
+still own subsequent verification and full-baseline review.
+
+## #29 GitHub Actions guard-semantics correction — 26 September 2026
+
+On checkpoint `1a9eed933c988dcd53bf2c3a47ac4f3cef826cd7`, the new pre-fix
+regressions failed: the shared status incorrectly allowed case-variant PR and
+push guards, a guessed `REFS/PULL/123/MERGE` guard, and a `main+` branch filter;
+the direct qualifier also mishandled case-variant `!=` controls. The saved-intent
+tests now recheck those cases at summary and publish. After the repair, known
+ASCII guard comparisons follow GitHub's case-insensitive semantics, differing
+non-ASCII comparisons and `pull_request` refs remain unknown, and only simple
+ASCII branch literals can prove a filter excludes a candidate. Glob and escape
+patterns stay possible matches. The regressions check the known event/ref,
+head/base values and assert blocked status, matching publish refusal and zero
+fake-provider writes. The unchanged current CI workflow and ordinary delivery
+tests remain positive controls.
+
+This is controlled parser/service evidence only: no GitHub workflow ran, no
+live provider was contacted, no live hostile workflow was used, and
+repository/org automation and external hooks remain outside qualification. The
+repair did not change UI assets or refresh installed, provider, Docker or
+browser qualification.
+
+Final `npm ci --ignore-scripts` and the locked dashboard dependency install
+reported zero vulnerabilities. `npm run build:dashboard` passed, and
+`npm run check` passed with 177 root/runtime/package tests and 52 dashboard
+tests. These checks cover the final code and the new regressions; Native Factory
+Verify and independent full-baseline Review remain pending.
+
+## #29 mixed push filters and inference-output redaction — 26 September 2026
+
+The pre-fix controlled saved-intent regression reproduced the mixed-filter
+workflow error: publication wrote one blob, tree, commit, branch and PR despite
+`tags` plus `branches-ignore`. Qualification now evaluates either branch filter
+category alongside either tag filter category, while a tag-only workflow remains
+excluded from generated branch pushes. Both mixed forms, tag-only behavior and
+the unchanged current CI have shared status/publication coverage.
+
+Before output redaction, the controlled executor retained selected API-key and
+Codex auth token sentinels in split Docker output and raw reports. After the fix,
+executor-boundary tests confirm exact selected values are absent from retained
+logs, reports sanitized after confirmed shutdown, promoted review artifacts and
+the authenticated artifact API; ordinary report text and parsed Codex usage
+remain. Tests also cover nonzero Docker exit, uncertain shutdown followed by
+ordinary recovery, and a report symlink whose outside target is unchanged.
+Final `npm ci --ignore-scripts`,
+`npm run build:dashboard` and `npm run check` passed: 184 root/runtime/package
+tests and 52 dashboard tests. These use controlled Docker behavior and fake
+provider fixtures; no model or real provider was called. This filter does not
+detect encoded/derived values or rewrite candidate content/patches. No new
+installed qualification was performed; Native Factory Verify and independent
+full-baseline Review remain pending.
+
+### Output-retention recovery repair — 27 September 2026
+
+Follow-up recovery regressions reproduced two output-retention failures before
+the repair: a fixed-name FIFO exceeded the bounded child-process timeout, and an
+oversized report lost its selected env file and active fence despite failed
+filtering. The FIFO now returns promptly via nonblocking descriptor open and
+descriptor validation. The executor-boundary fixture confirms oversized output
+fails without artifact promotion, retains the exact selected source and fence
+through another failed recovery, and sanitizes/removes them after the owned
+report is repaired. Candidate and check identities remain unchanged. The
+focused recovery tests passed 25/25. Fresh `npm ci --ignore-scripts`,
+`npm run build:dashboard`, and `npm run check` passed; the full check reported
+186 root/runtime/package cases and 52 dashboard tests. No Docker daemon, model,
+provider, installed package or browser was exercised for this repair; prior
+candidate qualification does not cover it. Native Verify and independent
+full-baseline Review remain pending.
+
+## #29 pending delivery action wording — 27 September 2026
+
+The new held-request dashboard regression failed before the fix: a `publish`
+action displayed “Reconciling…” while waiting. Task details now use the shared
+`action_mode` for pending text: `publish` shows “Publishing…” and `reconcile`
+shows “Reconciling…”. The JSDOM component regression holds both requests,
+checks each button remains disabled, then confirms its idle action label returns.
+
+Final `npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check`
+passed; the full check reported 186 runtime/package tests and 52 dashboard
+tests. This is component-level regression evidence, not browser inspection.
+Runtime, provider, package and policy code are unchanged from checkpoint
+`ecb2499ca786c5c6b39d6ed5b88ea8ef5f2b4771`; its installed qualification remains
+bound to that checkpoint and does not qualify this UI delta. Desktop/narrow
+browser inspection remains pending; no visual pass is claimed. Native Factory
+Verify and independent full-baseline Review remain pending.
