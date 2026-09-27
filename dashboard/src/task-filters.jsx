@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronDown, Layers, Tag, Cpu } from "lucide-react";
+import { issueLabelTone } from "./issue-labels.js";
 import { friendlyName } from "./task-display.jsx";
 
 export function taskModels(job) {
@@ -11,17 +12,19 @@ export function filterTaskFacets(jobs, workflow, model) {
   return jobs.filter(job => (!workflows.length || workflows.includes(job.workflow?.name || job.command))
     && (!models.length || taskModels(job).some(value => models.includes(value))));
 }
-export function TaskFilters({ jobs, availableWorkflows = [], workflow, setWorkflow, model, setModel, filter, setFilter, options, disabled }) {
+export function TaskFilters({ jobs, availableWorkflows = [], workflow, setWorkflow, model, setModel, filter, setFilter, options, disabled, labels = [], setLabels }) {
   const workflows = [...new Set([...availableWorkflows, ...jobs.map(job => job.workflow?.name || job.command)].filter(Boolean))].sort();
   const models = [...new Set(jobs.flatMap(taskModels))].sort();
-  return <div className="task-facets" aria-label="Execution filters">
+  return <div className="task-facets" aria-label="Work filters">
     <Facet label="Work type" value={workflow} change={setWorkflow} disabled={disabled} Icon={Layers} options={workflows.map(id => ({id, label:friendlyName(id)}))} />
     <Facet label="Models" value={model} change={setModel} disabled={disabled} Icon={Cpu} options={models.map(id => ({id, label:id}))} />
+    {setLabels && <Facet label="Labels" value={labels} change={setLabels} disabled={disabled} Icon={Tag} searchable options={[...new Map(jobs.flatMap(job => job.work?.issue?.labels || []).map(label => [label.name,label])).values()].sort((a,b)=>a.name.localeCompare(b.name)).map(label=>({id:label.name,label:label.name,color:label.color}))} />}
     <Facet label="Statuses" value={filter} change={setFilter} disabled={disabled} Icon={Tag} options={options.filter(option => option.id !== "all")} />
   </div>;
 }
-function Facet({ label, value, change, disabled, Icon, options }) {
+function Facet({ label, value, change, disabled, Icon, options, searchable = false }) {
   const [open, setOpen] = useState(false), root = useRef(null), trigger = useRef(null), id = useId();
+  const [query, setQuery] = useState("");
   const selected = selections(value), all = options.length > 0 && options.every(option => selected.includes(option.id));
   useEffect(() => {
     if (!open) return;
@@ -36,8 +39,9 @@ function Facet({ label, value, change, disabled, Icon, options }) {
     </button>
     {open && <div id={id} className="facet-popover" role="group" aria-label={`${label} filter options`}>
       <div className="facet-popover-heading"><span>{label}</span><button type="button" aria-disabled={!selected.length} onClick={() => { if (selected.length) change([]); }}>Reset</button></div>
+      {searchable && <input className="facet-search" aria-label={`Filter ${label.toLowerCase()} options`} placeholder="Filter" value={query} onChange={event=>setQuery(event.target.value)} />}
       <button type="button" role="checkbox" aria-checked={all} className="facet-option facet-select-all" disabled={!options.length} onClick={() => change(all ? [] : options.map(option => option.id))}><span className="facet-check" aria-hidden="true">{all && <Check size={12} />}</span>Select all</button>
-      <div className="facet-options">{options.length ? options.map(option => <button type="button" role="checkbox" aria-checked={selected.includes(option.id)} className="facet-option" key={option.id} onClick={() => change(selected.includes(option.id) ? selected.filter(item => item !== option.id) : [...selected, option.id])}><span className="facet-check" aria-hidden="true">{selected.includes(option.id) && <Check size={12} />}</span><span>{option.label}</span></button>) : <p className="facet-empty">No recorded options</p>}</div>
+      <div className="facet-options">{options.length ? options.filter(option=>option.label.toLowerCase().includes(query.toLowerCase())).map(option => <button type="button" role="checkbox" aria-checked={selected.includes(option.id)} className="facet-option" key={option.id} onClick={() => change(selected.includes(option.id) ? selected.filter(item => item !== option.id) : [...selected, option.id])}><span className="facet-check" aria-hidden="true">{selected.includes(option.id) && <Check size={12} />}</span><span className={option.color ? `issue-label label-${issueLabelTone(option.color)}` : undefined}>{option.label}</span></button>) : <p className="facet-empty">No recorded options</p>}</div>
     </div>}
   </div>;
 }

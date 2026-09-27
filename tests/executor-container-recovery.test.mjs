@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { publishFixtureState } from './helpers/atomic-fixture-state.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -101,13 +102,14 @@ function fixture(t, mode, phase = 'review', harness = 'codex', hostFallback = nu
 const dockerProgram = `#!/usr/bin/env node
 import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { publishFixtureState } from '${pathToFileURL(join(root, 'tests/helpers/atomic-fixture-state.mjs')).href}';
 const statePath = process.env.SDF_DOCKER_STATE;
 const state = JSON.parse(readFileSync(statePath, 'utf8'));
 const [command, ...args] = process.argv.slice(2);
 let stdin = '';
 for await (const chunk of process.stdin) stdin += chunk;
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
-const save = () => writeFileSync(statePath, JSON.stringify(state));
+const save = () => publishFixtureState(statePath, state);
 const fail = (message) => { process.stderr.write(message + '\\n'); process.exit(1); };
 const output = value => process.stdout.write(value ? value + '\\n' : '');
 const webByName = key => Object.values(state.webContainers || {}).find(item => item.name === key || item.id === key);
@@ -360,7 +362,7 @@ function enableRecovery(f) {
   const state = stateOf(f);
   state.listingUnknown = false;
   state.recoveryAllowed = true;
-  writeFileSync(f.dockerState, JSON.stringify(state));
+  publishFixtureState(f.dockerState, state);
 }
 
 function restoreDockerClient(f) {

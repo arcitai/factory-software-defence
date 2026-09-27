@@ -35,6 +35,7 @@ test('shared HTTP backlog: browse, page, stale source, concurrent start, cancell
   const base=`http://127.0.0.1:${controller.server.address().port}`;
   const request=async(path,input,method)=>{const r=await fetch(base+path,{method:method||(input?'POST':'GET'),headers:{Authorization:'Bearer fixture','Content-Type':'application/json'},...(input?{body:JSON.stringify(input)}:{})});return {status:r.status,value:await r.json()};};
   let listed=await request('/api/v1/issues?page=1&state=open');assert.equal(listed.value.issues[0].readiness.state,'ready');assert.equal(listed.value.total,null);assert.equal(listed.value.next_page,2);
+  assert.equal(listed.value.work_records.length,1);assert.equal(listed.value.work_records[0].state,'not_started');assert.equal(listed.value.work_records[0].workflow,null);
   assert.equal((await request('/api/v1/issues/preview',{url})).value.executions.length,0);assert.equal(controller.queue.all().length,0);
   failure=true;assert.equal((await request('/api/v1/issues')).status,400);failure=false;
   assert.equal((await request('/api/v1/issues?state=invalid')).status,400);
@@ -54,6 +55,8 @@ test('shared HTTP backlog: browse, page, stale source, concurrent start, cancell
   assert.equal((await request(`/api/v1/jobs/${first}/retry`,{run_id:controller.queue.get(first).runs.at(-1).id})).status,409);
   issueState='closed';listed=await request('/api/v1/issues?state=closed');assert.equal(listed.value.issues[0].state,'closed');assert.equal(listed.value.issues[0].executions.length,2);
   const cliPage=await cli('list','--source','inbox','--issue-state','closed');assert.deepEqual(cliPage.issues[0].identity,listed.value.issues[0].identity);assert.equal(cliPage.issues[0].executions.length,2);
+  assert.deepEqual(cliPage.work_records,listed.value.work_records);
+  assert.equal(cliPage.work_records.length,1);assert.equal(cliPage.work_records[0].executions.length,2);assert.equal(cliPage.work_records[0].issue.state,'closed');
   await request('/api/v1/jobs',{workflow:'defence',repository:'app',title:'Local evidence',spec:'Local request'});
   missing=true;assert.match((await request('/api/v1/issues/preview',{url})).value.error,/missing or inaccessible/);
   const history=(await request('/api/v1/issues?page=2&state=all')).value.history;assert.equal(history.length,2);assert(history.some(row=>row.source_status==='local'));assert(history.some(row=>row.source_status==='not_loaded'));

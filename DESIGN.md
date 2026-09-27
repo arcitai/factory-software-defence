@@ -22,8 +22,7 @@ task detail. Use the bold `factory.` wordmark with a smaller SOFTWARE & DEFENCE 
 logos, media or source code.
 
 The desktop composition is the fidelity target. At 320–390px, adapt the layout
-so navigation and status filters collapse into labelled controls, rows stack
-their metadata and all project identity and actions remain available. The
+so navigation and status filters collapse into labelled controls, row metadata wraps naturally and all project identity and actions remain available. The
 reference's clipped narrow view is not part of the target.
 
 ## Composition and navigation
@@ -48,8 +47,7 @@ reference's clipped narrow view is not part of the target.
   configured project. Unknown or credential-bearing origins expose no link.
 - Place real workflow, requested-model and status checkbox multiselects beside search, with Select all, individual toggle-off and Reset. Keep the result-count and clear-action row at a stable height.
   Their intersection drives both list and board; clear resets them together.
-  Status groups expand to their actual Factory states and clicking the selected group clears it. Do not add unconnected
-  contributor or GitHub-label controls.
+  Status groups expand to their actual Factory states and clicking the selected group clears it. Repository-label facets use the actual loaded provider labels, with colored chips, option search and the same whole-row selection. Do not add unconnected contributor controls.
 - Task detail has previous/next navigation within the current filtered list,
   copy-link feedback, a close button (Escape) and a metadata column. Open at
   the top and restore the list position on return. Keep all artifact and
@@ -137,18 +135,47 @@ recoverable through its saved receipt. Freeze the published content; a successfu
 issue link is not proof that work started. Do not claim browser GitHub sign-in or
 background synchronization.
 
-## Repository Inbox lifecycle (0.11.0)
+## Primary all-work Inbox (0.12.0, #90)
 
-Inbox opens on repository issues. Identify the provider/repository, loaded page,
-open/closed/all filter, unknown total and refresh time. A failed request leaves
-an explicitly stale page or an unavailable state, never an empty-repository claim.
-Search covers only the loaded page and visible execution associations. A single
-canonical provider/repository/number row owns its separate execution attempts.
-Local execution requests and remote histories outside the page remain visible,
-with source state explicitly unknown until preview succeeds. The execution history
-tab retains workflow/model/state filters, list and board; its counts are executions.
-Its filters and empty states name executions. The Inbox navigation has no count
-badge: a local job count cannot stand for the unknown repository issue total.
+Inbox opens directly on the accepted compact RunsOverview list, status rail,
+checkbox filters and horizontal Board. There is no Execution history mode.
+Adapt the retained components and progressive TaskDetail composition; this
+restoration changes integration, not the visual direction. One canonical
+provider/repository/number record represents each issue, including never-started
+issues, with every real execution linked from its detail. Local requests retain
+their own identities. Actual active/unresolved execution takes precedence over
+the latest terminal execution; no execution means Not started, with unknown
+workflow/model and no agent phase. Readiness labels remain planning metadata.
+
+An anchored Repository disclosure beside the stable result count exposes
+open/closed/all, refresh, available paging and local execution requests. Its
+trigger shows the concise loaded scope (for example, 24 loaded · Page 1).
+Read time, remote total and the search boundary belong inside the disclosure;
+loading and source errors remain visible outside it. Opening it or a filter
+does not move the list. The remote total stays unknown unless reported. Search covers loaded issues and retained execution
+history only. Failed refresh preserves an explicitly stale page; unavailable,
+loading, empty-page and no-filter-match states stay distinct. Off-page or missing
+sources retain history with source state not loaded; never infer closure from
+absence. The stable count line reads “36 items” or “4 of 36 items”; the Repository
+disclosure explains loaded issues plus retained history and gives the separate
+issue, local request and execution totals.
+Inbox navigation has no repository-total count badge.
+
+Rows and cards use a title, one compact wrapping metadata line and optional
+colored labels. Combine issue number/author, activity, actual workflow/phase,
+source state and readiness without repeating unknown assignments or zero
+attempts. Multiple attempts remain discoverable; assignment details, token usage
+and evidence remain in progressive detail/analytics. Keep readiness distinct
+from the runtime badge. Metadata separators stay with their text on narrow screens.
+
+List and board share search and intersection of workflow/model/status/label
+multiselects; values within a facet use OR. Clear resets them together, status
+selection toggles off, and popovers preserve whole-row checkbox, Select all and
+Reset behavior. Opening detail preserves the underlying view, filters and scroll.
+Previous/next follows the filtered workset; individual execution links remain
+valid. Never-started context and explicit Start work use TaskDetail's layout and
+metadata column, with advanced inputs disclosed progressively. Executions retain
+their actual results, checks, artifacts, guarded actions and linked history.
 
 Opening an issue reads context and a deterministic Software/Defence suggestion;
 Start work is explicit. Preserve issue context, choices and operator brief across

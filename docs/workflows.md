@@ -24,7 +24,9 @@ kept outside those execution mounts.
 
 ## Start work
 
-Inbox lists repository issues directly. Choose Open, Closed or All states and use
+Inbox opens on the shared list/Board of repository issues and local work, with
+status rail and workflow/model/status/label multiselects. Never-started issues
+have unknown workflow/model and a distinct Not started state. Choose Open, Closed or All states and use
 Previous/Next page or Refresh issues. Search covers the loaded page and visible
 history, not the whole repository. GitHub returns up to 50 records per page;
 pull requests are excluded, so even a page with zero issues can have a next page.
@@ -146,4 +148,7 @@ non-issue paths are not admitted by the provider preview. Local-only records and
 executions whose source is missing, closed or outside the loaded page remain in
 Local and other execution history. Removing local execution history preserves
 private evidence and never deletes a provider issue; unresolved delivery guards
-still apply. The separate Execution history tab keeps the execution list/board.
+still apply. The primary list/board includes all these records; no separate
+Execution history tab is needed. Its count line distinguishes issue identities
+and individual executions. Open a record for progressive context and every
+linked attempt; close/Escape returns to the preserved filters, view and scroll.

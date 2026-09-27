@@ -43,7 +43,7 @@ test('GitHub adapter pins repository identity, preserves labels and reconciles a
   const root=directory(t);execFileSync('git',['init',root],{stdio:'ignore'});execFileSync('git',['-C',root,'remote','add','origin','git@github.com:example/project.git']);
   let stored,writes=0;
   const provider=githubIssueProvider(root,{read:async args=>{
-    if(args[0]==='issue'){assert.deepEqual(args,['issue','view','https://github.com/example/project/issues/4','--json','title,body,url,labels,state']);return {title:stored.title,body:stored.body,url:stored.html_url,labels:stored.labels};}
+    if(args[0]==='issue'){assert.deepEqual(args,['issue','view','https://github.com/example/project/issues/4','--json','title,body,url,labels,state,author,createdAt,updatedAt']);return {title:stored.title,body:stored.body,url:stored.html_url,labels:stored.labels};}
     const endpoint=args[3];if(endpoint==='user')return {id:7,login:'operator'};
     if(endpoint==='repos/example/project')return {full_name:'example/project',has_issues:true,permissions:{push:true}};
     assert.match(endpoint,/repos\/example\/project\/issues\?state=all&creator=operator/);return stored?[stored]:[];

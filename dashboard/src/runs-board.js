@@ -1,5 +1,6 @@
 // One partition owns list and board groups; detailed filters may overlap within a group.
 export const statusGroups = [
+  { id: "not_started", label: "Not started", count: "notStarted", tone: "neutral", states: ["not_started"] },
   { id: "in_progress", label: "In progress", count: "active", tone: "violet", states: ["queued", "running", "cancelling"], children: [["queued", "Queued", "queued"], ["running", "Running", "running"], ["cancelling", "Cancelling", "cancelling"]] },
   { id: "needs_attention", label: "Needs attention", count: "needsAttention", tone: "amber", states: ["failed", "timed_out", "blocked", "interrupted"], children: [["failed", "Failed", "failed"], ["blocked", "Blocked", "blocked"], ["interrupted", "Interrupted", "interrupted"], ["review_changes", "Revisions available · subset", "reviewChanges"]] },
   { id: "awaiting_approval", label: "Awaiting acceptance", count: "awaitingApproval", tone: "pink", states: ["awaiting_approval"] },
@@ -13,7 +14,7 @@ const activeStates = new Set(["queued", "running", "cancelling"]);
 const failedStates = new Set(["failed", "timed_out"]);
 const attentionStates = new Set(["failed", "timed_out", "blocked", "interrupted"]);
 const knownStates = new Set([
-  "queued", "running", "cancelling", "failed", "timed_out", "blocked",
+  "not_started", "queued", "running", "cancelling", "failed", "timed_out", "blocked",
   "interrupted", "awaiting_approval", "succeeded", "cancelled",
 ]);
 
@@ -36,6 +37,8 @@ export function filterJobs(jobs, filter) {
         return attentionStates.has(job.state);
       case "failed":
         return failedStates.has(job.state);
+      case "not_started":
+        return job.state === "not_started";
       case "queued":
         return job.state === "queued";
       case "running":
@@ -73,6 +76,8 @@ export function searchJobs(jobs, query) {
       jobDisplayTitle(job), job.id, job.state, job.repository,
       job.workflow?.name, job.command, latest?.command,
       job.task?.spec, job.task?.source_url, job.prompt, job.trigger_subject,
+      job.work?.identity?.number, ...(job.work?.issue?.labels || []).map(label => label.name),
+      ...(job.work?.executions || []).map(item => `${item.id} ${item.workflow || ""} ${item.state} ${item.phase || ""}`),
     ];
     return fields.some((field) => String(field || "").toLocaleLowerCase().includes(needle));
   });
@@ -87,6 +92,7 @@ export function groupJobsByBoardColumn(jobs) {
 export function jobCounts(jobs) {
   const result = {
     all: jobs.length,
+    notStarted: 0,
     active: 0,
     failed: 0,
     needsAttention: 0,
@@ -103,6 +109,7 @@ export function jobCounts(jobs) {
     other: 0,
   };
   for (const job of jobs) {
+    if (job.state === "not_started") result.notStarted += 1;
     if (activeStates.has(job.state)) result.active += 1;
     if (failedStates.has(job.state)) result.failed += 1;
     if (attentionStates.has(job.state)) result.needsAttention += 1;
@@ -143,6 +150,8 @@ export function taskPhase(job) {
 export function nextOperatorAction(job) {
   const latest = job.runs?.at(-1);
   switch (job.state) {
+    case "not_started":
+      return "Open context to start work";
     case "queued":
       return "Waiting for a worker";
     case "running":

@@ -104,8 +104,8 @@ installation or retained attempt needs them.
 
 ## Protected evidence compatibility
 
-Factory 0.11.2 recognizes version-1 execution profiles emitted by native
-**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1 and 0.11.2**. This is an exact allowlist in
+Factory 0.12.0 recognizes version-1 execution profiles emitted by native
+**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2 and 0.12.0**. This is an exact allowlist in
 `factory/execution-profile.mjs`, independent of the installed package version;
 it is not a semver range or an automatic promise for later releases. Unknown
 runtime strings, unknown profile formats and incomplete legacy acceptance
@@ -148,6 +148,10 @@ rules while preserving exact patch bytes and requiring reconstruction before
 new acceptance. Older writers remain compatible only when their retained patch
 passes the current digest and tree reconstruction checks. A digest-matching
 malformed patch remains blocked and unchanged; follow the [recovery guidance](recovery.md#already-accepted-malformed-patches-91).
+
+Version 0.12.0 adds the all-work Inbox read model and restores the retained
+overview. Protected execution writers and acceptance/publication guards are
+unchanged; the explicit compatible-writer entry preserves all checks above.
 
 New publication still requires the current remote target to equal the original
 accepted base; reviewed-candidate continuation preserves that baseline, while

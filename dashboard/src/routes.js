@@ -2,6 +2,10 @@ const pages = new Set(["runs", "analytics", "infrastructure", "automations", "ag
 const aliases = { inbox: "runs", workers: "infrastructure", triggers: "automations", commands: "agents", workflows: "agents" };
 export function routeFromHash(hash) {
   const value = hash.replace(/^#\//, "");
+  if (value.startsWith("issues/")) {
+    try { return { view: "issue", issueKey: decodeURIComponent(value.slice(7)), jobID: "" }; }
+    catch { return { view: "runs", jobID: "" }; }
+  }
   const detail = value.match(/^(?:runs|inbox)\/(.+)$/);
   if (detail) {
     try { return { view: "task", jobID: decodeURIComponent(detail[1]) }; }

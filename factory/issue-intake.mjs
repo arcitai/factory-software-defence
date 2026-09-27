@@ -24,6 +24,13 @@ function issueLabels(labels = []) {
   return labels.map(label => ({name:label.name, color:/^[a-f0-9]{6}$/i.test(label.color || '') ? label.color.toLowerCase() : null}));
 }
 
+function issueMetadata(issue) {
+  const date = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
+  const author = issue.user?.login || issue.author?.login;
+  return { author: typeof author === 'string' ? author : null,
+    created_at: date(issue.created_at || issue.createdAt), updated_at: date(issue.updated_at || issue.updatedAt) };
+}
+
 export async function listIssues(repo, page = 1, read = githubRead, state = 'open') {
   if (!Number.isSafeInteger(page) || page < 1 || page > 10000) throw new Error('Issue page must be an integer between 1 and 10000.');
   if (!['open', 'closed', 'all'].includes(state)) throw new Error('Issue state must be open, closed or all.');
@@ -35,7 +42,7 @@ export async function listIssues(repo, page = 1, read = githubRead, state = 'ope
   const issues = result.filter(issue => !issue.pull_request).map(issue => {
     validateIssueURL(repository, issue.html_url);
     if (!Number.isSafeInteger(issue.number) || !issue.html_url.endsWith(`/issues/${issue.number}`) || typeof issue.title !== 'string' || !issue.title.trim()) throw new Error('GitHub returned an unexpected issue.');
-    return { number: issue.number, title: issue.title, url: issue.html_url, state: issue.state || 'unknown', labels: issueLabels(issue.labels) };
+    return { ...issueMetadata(issue), number: issue.number, title: issue.title, url: issue.html_url, state: issue.state || 'unknown', labels: issueLabels(issue.labels) };
   });
   return { repository, issues, next_page: result.length === 50 && page < 10000 ? page + 1 : null };
 }
@@ -46,7 +53,7 @@ export function validateIssueURL(repoURL, value) {
   if (!repoURL || identity.repository !== repoURL.toLowerCase()) throw new Error('Issue does not belong to this project’s configured GitHub origin.');
   return identity.url;
 }
-export async function readIssue(repo, url, read = url => githubRead(['issue', 'view', url, '--json', 'title,body,url,labels,state'])) {
+export async function readIssue(repo, url, read = url => githubRead(['issue', 'view', url, '--json', 'title,body,url,labels,state,author,createdAt,updatedAt'])) {
   const repoURL = readProjectLinks(repo)?.repository;
   url = validateIssueURL(repoURL, url);
   const issue = await read(url);
@@ -55,5 +62,5 @@ export async function readIssue(repo, url, read = url => githubRead(['issue', 'v
   const spec = `Issue: ${issue.url}\n${issue.title}\n\n${issue.body}`;
   if (Buffer.byteLength(spec) > 240000) throw new Error('Issue exceeds the 240 KB task limit. Use a bounded task file instead.');
   const labels = issueLabels(issue.labels);
-  return { title: issue.title, url, number: canonicalIssue(url).number, state: issue.state?.toLowerCase() || 'unknown', body: issue.body, spec, labels, recommendation: recommendWork({ spec, labels: labels.map(label => label.name) }) };
+  return { ...issueMetadata(issue), title: issue.title, url, number: canonicalIssue(url).number, state: issue.state?.toLowerCase() || 'unknown', body: issue.body, spec, labels, recommendation: recommendWork({ spec, labels: labels.map(label => label.name) }) };
 }

@@ -40,6 +40,7 @@ export function formatTimestamp(value) {
 }
 export function stateLabel(value) {
   const labels = {
+    not_started: "Not started",
     awaiting_approval: "Awaiting acceptance",
     cancelling: "Cancelling",
     failed: "Failed",

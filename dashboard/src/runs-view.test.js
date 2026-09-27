@@ -65,16 +65,14 @@ test("runs default to the searchable list and share state filters across board a
   });
 
   mountedRoot = (await server.ssrLoadModule("/src/main.jsx")).appRoot;
-  await eventually(() => assert.ok(button("Execution history")));
-  button("Execution history").click();
   await eventually(() => assert.match(document.body.textContent, /Failed fixture/));
 
   assert.equal(button("List").getAttribute("aria-pressed"), "true");
   assert.ok(document.querySelector('a[href="#/runs/job_failed"]'), "list links to task");
   assert.equal(button("Board").getAttribute("aria-pressed"), "false");
-  assert.match(document.body.textContent, /Last activity/);
+  assert.ok(document.querySelector('time[title^="Last activity"]'));
 
-  const search = document.querySelector('input[aria-label="Search executions"]');
+  const search = document.querySelector('input[aria-label="Search loaded work"]');
   const setInputValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, "value").set;
   setInputValue.call(search, "compact");
   search.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
@@ -84,9 +82,9 @@ test("runs default to the searchable list and share state filters across board a
   await eventually(() => assert.equal(button("Failed").getAttribute("aria-pressed"), "true"));
   assert.ok(document.querySelector('a[href="#/runs/job_failed"]'), "search and failed-state filters intersect");
 
-  setInputValue.call(document.querySelector('input[aria-label="Search executions"]'), "Succeeded fixture");
-  document.querySelector('input[aria-label="Search executions"]').dispatchEvent(new dom.window.Event("input", { bubbles: true }));
-  await eventually(() => assert.match(document.body.textContent, /No matching executions/));
+  setInputValue.call(document.querySelector('input[aria-label="Search loaded work"]'), "Succeeded fixture");
+  document.querySelector('input[aria-label="Search loaded work"]').dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  await eventually(() => assert.match(document.body.textContent, /No matching work/));
   button("Clear filters").click();
   await eventually(() => assert.match(document.body.textContent, /Failed fixture/));
   assert.match(document.body.textContent, /Succeeded fixture/);
