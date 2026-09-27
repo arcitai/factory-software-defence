@@ -3,9 +3,8 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { isDeepStrictEqual } from 'node:util';
-import { VERSION } from './updates.mjs';
 import { configAt, digest } from './lib.mjs';
-import { effectiveExecutionConfig } from './execution-profile.mjs';
+import { effectiveExecutionConfig, isSupportedExecutionProfile } from './execution-profile.mjs';
 import { publicSourceAdmission } from './source-admission.mjs';
 import { QueueError } from './queue.mjs';
 import { readProjectLinks } from './project-links.mjs';
@@ -221,8 +220,8 @@ function trustedExecutionProfile(state, job, run, phase, expectedPolicy) {
         && ['explicit', 'provider_default'].includes(profile.modelSelection)
         && (profile.modelSelection === 'explicit' ? typeof profile.requestedModel === 'string' : profile.requestedModel === null)
       : profile.executor === 'deterministic' && profile.modelSelection === 'not_applicable' && profile.requestedModel === null;
-    return profile.version === 1 && profile.phase === phase && executorMatches
-      && profile.runtimeVersion === VERSION && profile.policyHash === expectedPolicy
+    return isSupportedExecutionProfile(profile) && profile.phase === phase && executorMatches
+      && profile.policyHash === expectedPolicy
       && isDeepStrictEqual(run.execution, profile);
   } catch { return false; }
 }
@@ -284,7 +283,7 @@ function acceptanceSummary(job, state, config, sourceAdmission) {
     { build: buildRun, verify: checkRun, review: reviewRun, handoff: handoffRun }, candidate, checks, review);
   if (!phaseEvidence.trusted) return { state: 'blocked', reason: phaseEvidence.reason };
   const validRun = (run, command) => run?.command === command && run.state === 'succeeded' && run.outcome === 'complete'
-    && run.execution?.runtimeVersion === VERSION && run.execution?.policyHash === expectedPolicy;
+    && isSupportedExecutionProfile(run.execution) && run.execution.policyHash === expectedPolicy;
   const bound = handoff.id === accepted.handoff_run_id && validRun(buildRun, 'build')
     && validRun(checkRun, 'verify') && validRun(reviewRun, 'review') && validRun(handoff, 'handoff')
     && job.source_admission?.status === 'retained' && accepted.head !== accepted.base && candidate.parent === accepted.base
@@ -508,7 +507,7 @@ export class DeliveryService {
     const byID = id => job.runs.find(run => run.id === id);
     const buildRun = byID(accepted.build_run_id), checkRun = byID(accepted.checks_run_id), reviewRun = byID(accepted.review_run_id);
     const validRun = (run, command) => run?.command === command && run.state === 'succeeded' && run.outcome === 'complete'
-      && run.execution?.runtimeVersion === VERSION && run.execution?.policyHash === expectedPolicy;
+      && isSupportedExecutionProfile(run.execution) && run.execution.policyHash === expectedPolicy;
     if (!validRun(buildRun, 'build') || !validRun(checkRun, 'verify') || !validRun(reviewRun, 'review') || !validRun(handoff, 'handoff'))
       throw new QueueError('Build, checks, review and approval do not match the current Factory policy.');
     const phaseEvidence = trustedPhaseEvidence(this.state, job, expectedPolicy,

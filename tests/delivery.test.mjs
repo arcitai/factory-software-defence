@@ -17,6 +17,8 @@ import { VERSION } from '../factory/updates.mjs';
 import { githubDeliveryProvider } from '../factory/providers/github-delivery.mjs';
 import { createController } from '../factory/server.mjs';
 import { qualifyGitHubActions } from '../factory/workflow-qualification.mjs';
+import { expectedWebStories, webPolicyHash } from '../factory/web-verification.mjs';
+import { qualificationWebConfig } from '../factory/web/qualification-fixture.mjs';
 
 const jobID = `job_${'a'.repeat(24)}`;
 const execFileAsync = promisify(execFile);
@@ -25,6 +27,7 @@ const git = (repo, ...args) => execFileSync('git', ['-C', repo, ...args], { enco
 const save = (path, value) => { mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 }); writeFileSync(path, JSON.stringify(value), { mode: 0o600 }); };
 
 function testFixture(t, { delivery = true, port = 7331, harness = 'codex', model = null, taskModel = null, modelEnv = '',
+  runtimeVersion, webVerification,
   baseWorkflows = {}, candidateFiles = {}, candidateDeletes = [], candidateSymlinks = {} } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'sdf-delivery-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -44,6 +47,7 @@ function testFixture(t, { delivery = true, port = 7331, harness = 'codex', model
   const config = { version: 1, repo, sourceRef: 'main', harness, command, port,
     timeoutSeconds: 10, memoryMiB: 256, image: 'fixture:1', network: 'none', check: 'node --test', model,
     scope: { project: 'fixture', service: 'app', environment: 'test', owner: 'operator' },
+    ...(webVerification ? { webVerification } : {}),
     ...(delivery ? { delivery: { provider: 'github', repository: 'https://github.com/example/project', target: 'main' } } : {}) };
   writeFileSync(join(state, 'factory.json'), JSON.stringify(config), { mode: 0o600 });
   writeFileSync(join(state, 'model.env'), modelEnv, { mode: 0o600 });
@@ -92,7 +96,17 @@ function testFixture(t, { delivery = true, port = 7331, harness = 'codex', model
   save(join(folder, 'candidate.json'), candidate); save(join(folder, 'checks.json'), checks);
   save(join(folder, 'review.json'), review); save(join(folder, 'accepted.json'), accepted);
   const effective = effectiveExecutionConfig(config, taskModel, join(state, 'model.env'));
-  const executions = Object.fromEntries(['build', 'verify', 'review', 'handoff'].map(phase => [phase, executionProfile(effective, phase)]));
+  const executions = Object.fromEntries(['build', 'verify', 'review', 'handoff'].map(phase => {
+    if (!runtimeVersion) return [phase, executionProfile(effective, phase)];
+    // Browser-disabled v1 output inspected at released 0.8.0 (380f749) and
+    // 0.9.0 (cdaadef). Keep this shape independent of today's profile writer.
+    const deterministic = ['verify', 'handoff'].includes(phase);
+    return [phase, { version: 1, phase, executor: deterministic ? 'deterministic' : harness,
+      requestedModel: deterministic ? null : effective.model,
+      modelSelection: deterministic ? 'not_applicable' : effective.model ? 'explicit' : 'provider_default',
+      runtimeVersion, image: phase === 'handoff' ? null : effective.image,
+      policyHash, hostName: 'retained-fixture-host' }];
+  }));
   for (const phase of ['build', 'verify', 'review', 'handoff'])
     save(join(folder, 'artifacts', runIDs[phase], 'execution.json'), executions[phase]);
   const runs = [
@@ -469,6 +483,165 @@ test('saved delivery intent rechecks workflow evidence after its earlier qualifi
   assert.match(summary.error, /patch digest/i);
   assert.equal(failure?.message, summary.error, 'saved-intent retry and status share the stale-evidence refusal');
   assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
+});
+
+// These are controlled retained-record/provider fixtures, not production or model proof.
+for (const runtimeVersion of ['0.8.0', '0.9.0']) {
+  test(`retained ${runtimeVersion} evidence is recognized without rewriting its provenance`, async t => {
+    const f = testFixture(t, { runtimeVersion }), gh = fakeGitHub(f), manager = service(f, gh.provider);
+    const jobBefore = structuredClone(f.queue.get(jobID));
+    const paths = ['candidate.json', 'checks.json', 'review.json', 'accepted.json', 'delivery-input/candidate.patch',
+      ...Object.values(runIDs).map(id => `artifacts/${id}/execution.json`)];
+    const before = paths.map(path => readFileSync(join(f.folder, path)));
+    await t.test('shared capability', () => {
+      const summary = manager.summary(f.queue.get(jobID));
+      assert.equal(summary.state, 'ready', summary.error);
+      assert.equal(summary.can_publish, true);
+      assert.equal(summary.action_mode, 'publish');
+    });
+    await t.test('actual publication validator', () => {
+      const evidence = manager.validateEvidence(f.queue.get(jobID), configAt(f.state));
+      assert.equal(evidence.accepted.policyHash, f.policyHash);
+      assert.equal(evidence.patch.tree, f.tree);
+    });
+    assert.deepEqual(f.queue.get(jobID), jobBefore, 'inspection does not reapprove or retry');
+    const published = await manager.publish(jobID, { run_id: f.run_id });
+    assert.equal(published.state, 'published');
+    assert.equal(gh.state.writes.pulls, 1, 'only the explicit fake-provider action publishes');
+    const writes = structuredClone(gh.state.writes);
+    assert.equal(manager.summary(f.queue.get(jobID)).action_mode, 'reconcile');
+    await manager.publish(jobID, { run_id: f.run_id });
+    assert.deepEqual(gh.state.writes, writes, 'an existing PR receipt is read-only');
+    assert.deepEqual(f.queue.get(jobID).runs, jobBefore.runs);
+    assert.deepEqual(paths.map(path => readFileSync(join(f.folder, path))), before,
+      'profiles, accepted record, policy hashes and patch remain byte-for-byte unchanged');
+  });
+}
+
+function changeProfile(f, mutate, { frozen = true } = {}) {
+  const job = f.queue.get(jobID), run = job.runs.find(run => run.command === 'review');
+  mutate(run.execution);
+  if (frozen) save(join(f.folder, 'artifacts', run.id, 'execution.json'), run.execution);
+  f.queue.save(job);
+}
+function changeEvidence(f, file, mutate) {
+  const path = join(f.folder, file), record = JSON.parse(readFileSync(path, 'utf8'));
+  mutate(record); save(path, record);
+}
+async function assertPublicationRefused(f, gh, manager) {
+  const summary = manager.summary(f.queue.get(jobID));
+  assert.equal(summary.can_publish, false, summary.error);
+  assert.equal(summary.action_mode, null);
+  // Directly exercise validation as well as publish: a summary-only fix cannot pass.
+  assert.throws(() => manager.validateEvidence(f.queue.get(jobID), configAt(f.state)));
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }));
+  assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
+}
+
+test('compatible runtime alone never authorizes incomplete, stale or inconsistent protected evidence', async t => {
+  const defects = [
+    ...['0.7.0', '0.8.1', '0.9.2', '1.0.0', '0.9.1-dev', 'v0.8.0', '', null].map(version =>
+      [`unknown runtime ${JSON.stringify(version)}`, f => changeProfile(f, p => { p.runtimeVersion = version; })]),
+    ['unknown schema', f => changeProfile(f, p => { p.version = 2; })],
+    ['missing schema', f => changeProfile(f, p => { delete p.version; })],
+    ['missing runtime', f => changeProfile(f, p => { delete p.runtimeVersion; })],
+    ['record differs from frozen profile', f => changeProfile(f, p => { p.runtimeVersion = '0.9.0'; }, { frozen: false })],
+    ['missing protected profile', f => rmSync(join(f.folder, 'artifacts', runIDs.review, 'execution.json'))],
+    ['missing recorded profile', f => { const job = f.queue.get(jobID); delete job.runs[2].execution; f.queue.save(job); }],
+    ['wrong profile phase', f => changeProfile(f, p => { p.phase = 'build'; })],
+    ['wrong phase role', f => changeProfile(f, p => { p.executor = 'deterministic'; })],
+    ['unknown model selection', f => changeProfile(f, p => { p.modelSelection = 'unknown'; })],
+    ['inconsistent model request', f => changeProfile(f, p => { p.requestedModel = 'unexpected'; })],
+    ['failed phase', f => { const job = f.queue.get(jobID); job.runs[2].state = 'failed'; f.queue.save(job); }],
+    ['incomplete phase', f => { const job = f.queue.get(jobID); job.runs[2].outcome = 'blocked'; f.queue.save(job); }],
+    ['wrong phase command', f => { const job = f.queue.get(jobID); job.runs[2].command = 'build'; f.queue.save(job); }],
+    ['changed policy', f => changeEvidence({ folder: f.state }, 'factory.json', c => { c.check = 'changed check'; })],
+    ['enabled browser policy changed', f => changeEvidence({ folder: f.state }, 'factory.json', c => {
+      c.webVerification = qualificationWebConfig(`sha256:${'a'.repeat(64)}`);
+    })],
+    ['incomplete legacy acceptance', f => changeEvidence(f, 'accepted.json', r => { delete r.checks_run_id; })],
+    ['mismatched phase links', f => changeEvidence(f, 'accepted.json', r => { r.review_run_id = runIDs.build; })],
+    ['mismatched check link', f => changeEvidence(f, 'checks.json', r => { r.run_id = runIDs.build; })],
+    ['mismatched build link', f => changeEvidence(f, 'candidate.json', r => { r.build_run_id = runIDs.review; })],
+    ['mismatched handoff link', f => changeEvidence(f, 'accepted.json', r => { r.handoff_run_id = runIDs.review; })],
+    ...['candidate.json', 'checks.json', 'review.json'].flatMap(file => [
+      [`synthetic ${file}`, f => changeEvidence(f, file, r => { r.synthetic = true; })],
+      [`unknown synthetic status ${file}`, f => changeEvidence(f, file, r => { delete r.synthetic; })],
+    ]),
+  ];
+  for (const [name, mutate] of defects) await t.test(name, async t => {
+    const f = testFixture(t, { runtimeVersion: '0.8.0' }), gh = fakeGitHub(f), manager = service(f, gh.provider);
+    mutate(f);
+    await assertPublicationRefused(f, gh, manager);
+  });
+});
+
+test('compatible retained evidence still requires the unchanged original remote target', async t => {
+  const f = testFixture(t, { runtimeVersion: '0.8.0' }), gh = fakeGitHub(f, { targetSha: '9'.repeat(40) });
+  const manager = service(f, gh.provider);
+  assert.equal(manager.summary(f.queue.get(jobID)).can_publish, true, 'local capability cannot observe the remote target');
+  assert.equal(manager.validateEvidence(f.queue.get(jobID), configAt(f.state)).accepted.base, f.base);
+  await assert.rejects(manager.publish(jobID, { run_id: f.run_id }), /target moved/);
+  assert.deepEqual(gh.state.writes, { blobs: 0, trees: 0, commits: 0, branches: 0, pulls: 0 });
+});
+
+function addPassingBrowserEvidence(f) {
+  const web = f.config.webVerification;
+  // Contract fixture only: the signature bytes are not proof of a rendered page.
+  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const evidence = {
+    version: 1, status: 'passed', job: jobID, attempt: runIDs.verify,
+    head: f.head, tree: f.tree, policyHash: f.policyHash, webPolicyHash: webPolicyHash(web),
+    tool: { adapter: web.adapter, version: web.version, browser: 'chromium', browserVersion: '153.0.8010.12',
+      image: web.image, platform: 'linux-container', coverage: 'web' },
+    stories: expectedWebStories(web).map((story, index) => {
+      const file = `web-story-${story.id}.png`;
+      writeFileSync(join(f.folder, 'artifacts', runIDs.verify, file), png, { mode: 0o600 });
+      return { ...story, status: 'passed', durationMs: 10,
+        trace: web.stories[index].steps.map((step, index) => ({ index, op: step.op,
+          ...(step.op === 'press' ? { key: step.key } : { role: step.role, name: step.name }),
+          ...(step.op === 'expect-text' ? { expectedText: step.text } : {}), status: 'passed', durationMs: 1 })),
+        screenshot: { file, sha256: digest(png), bytes: png.length } };
+    }),
+  };
+  changeEvidence(f, 'checks.json', checks => { checks.web_verification = evidence; });
+}
+
+test('native browser evidence retains artifact, story, tool and candidate identity gates in delivery', async t => {
+  const webVerification = qualificationWebConfig(`sha256:${'a'.repeat(64)}`);
+  const f = testFixture(t, { webVerification }), gh = fakeGitHub(f), manager = service(f, gh.provider);
+  addPassingBrowserEvidence(f);
+  assert.equal(manager.summary(f.queue.get(jobID)).can_publish, true);
+  assert.equal(manager.validateEvidence(f.queue.get(jobID), configAt(f.state)).accepted.tree, f.tree);
+  assert.equal((await manager.publish(jobID, { run_id: f.run_id })).state, 'published');
+
+  const defects = [
+    ['missing browser evidence', checks => { delete checks.web_verification; }],
+    ['unknown evidence schema', checks => { checks.web_verification.version = 2; }],
+    ['wrong job', checks => { checks.web_verification.job = `job_${'9'.repeat(24)}`; }],
+    ['wrong attempt', checks => { checks.web_verification.attempt = runIDs.review; }],
+    ['wrong candidate', checks => { checks.web_verification.head = '9'.repeat(40); }],
+    ['wrong tree', checks => { checks.web_verification.tree = '9'.repeat(40); }],
+    ['wrong policy', checks => { checks.web_verification.policyHash = '9'.repeat(64); }],
+    ['wrong tool', checks => { checks.web_verification.tool.version = 'unknown'; }],
+    ['missing browser version', checks => { delete checks.web_verification.tool.browserVersion; }],
+    ['missing story', checks => { checks.web_verification.stories.pop(); }],
+    ['wrong story content', checks => { checks.web_verification.stories[0].contentHash = '9'.repeat(64); }],
+    ['missing action trace', checks => { checks.web_verification.stories[0].trace = []; }],
+    ['non-passing story', checks => { checks.web_verification.stories[0].status = 'failed'; }],
+    ['missing artifact', () => {}, f => rmSync(join(f.folder, 'artifacts', runIDs.verify, 'web-story-desktop-light.png'))],
+    ['altered artifact', () => {}, f => writeFileSync(join(f.folder, 'artifacts', runIDs.verify, 'web-story-desktop-light.png'), 'altered')],
+    ['changed enabled browser policy', () => {}, f => changeEvidence({ folder: f.state }, 'factory.json', c => {
+      c.webVerification.stories[0].steps[0].name = 'Changed action';
+    })],
+  ];
+  for (const [name, mutate, alterFiles] of defects) await t.test(name, async t => {
+    const f = testFixture(t, { webVerification }), gh = fakeGitHub(f), manager = service(f, gh.provider);
+    addPassingBrowserEvidence(f);
+    changeEvidence(f, 'checks.json', mutate);
+    alterFiles?.(f);
+    await assertPublicationRefused(f, gh, manager);
+  });
 });
 
 test('synthetic mock acceptance cannot advertise or perform trusted PR publication', async t => {
@@ -1095,12 +1268,13 @@ test('concurrent publish requests serialize on the accepted job', async t => {
   assert.equal(gh.state.writes.pulls, 1);
 });
 
-test('CLI and authenticated dashboard action use the same accepted delivery receipt', async t => {
+for (const runtimeVersion of [undefined, '0.8.0', '0.9.0']) {
+test(`CLI and authenticated dashboard action share the ${runtimeVersion || 'native'} delivery receipt`, async t => {
   const reservation = createNetServer();
   await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
   const port = reservation.address().port;
   await new Promise(resolve => reservation.close(resolve));
-  const f = testFixture(t, { port }), gh = fakeGitHub(f);
+  const f = testFixture(t, { port, runtimeVersion }), gh = fakeGitHub(f);
   await f.closeQueue();
   const controller = createController(f.state, { execute: async () => ({ outcome: 'complete' }), stop: async () => {}, reconcile: async () => {} }, { deliveryProvider: gh.provider });
   await new Promise(resolve => controller.server.listen(port, '127.0.0.1', resolve));
@@ -1109,6 +1283,11 @@ test('CLI and authenticated dashboard action use the same accepted delivery rece
   const status = await (await fetch(`${origin}/api/v1/status`)).json();
   assert.equal(status.delivery_configuration.mode, 'trusted_pr');
   assert.equal(status.jobs[0].delivery_status.can_publish, true);
+  const { stdout: cliStatus } = await execFileAsync(process.execPath, ['bin/software-defence-factory.mjs', 'status', '--state', f.state], {
+    encoding: 'utf8', env: { ...process.env, SDF_AUTO_UPDATE: '0', SDF_BOOTSTRAPPED: '1' },
+  });
+  assert.deepEqual(JSON.parse(cliStatus).jobs[0].delivery_status, status.jobs[0].delivery_status);
+  assert.equal(status.jobs[0].runs[0].execution.runtimeVersion, runtimeVersion || VERSION);
   const unauthorized = await fetch(`${origin}/api/v1/jobs/${jobID}/publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ run_id: f.run_id }) });
   assert.equal(unauthorized.status, 403);
   const { stdout: cli } = await execFileAsync(process.execPath, ['bin/software-defence-factory.mjs', 'publish', jobID, '--state', f.state], {
@@ -1123,6 +1302,7 @@ test('CLI and authenticated dashboard action use the same accepted delivery rece
   assert.equal((await dashboard.json()).pull_request.head_sha, gh.finalSha);
   assert.equal(gh.state.writes.pulls, 1);
 });
+}
 
 test('durable intent and lost-response delivery cannot be hidden before API reconciliation', async t => {
   const reservation = createNetServer();

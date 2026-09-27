@@ -71,6 +71,43 @@ rebuilding the shared tag cannot remove an existing installation's pinned image.
 These retained images are recovery data; remove them only after confirming no
 installation or retained attempt needs them.
 
+## Protected evidence compatibility
+
+0.9.1 recognizes version-1 execution profiles emitted by native **0.8.0,
+0.9.0 and 0.9.1**. This is an exact allowlist in
+`factory/execution-profile.mjs`, independent of the installed package version;
+it is not a semver range or an automatic promise for later releases. Unknown
+runtime strings, unknown profile formats and incomplete legacy acceptance
+remain unverified or blocked. New profiles still record the actual emitting
+runtime version. Updates never relabel profiles, rewrite policy hashes,
+re-approve jobs or retry old work.
+
+Compatibility only permits interpreting the protected evidence. Publication
+still requires exact protected-file/run-record equality, successful linked
+phases with supported role/model provenance, the unchanged effective policy
+hash, retained source and candidate/patch identity, passing checks, independent
+review and bound approval. Synthetic or missing provenance cannot authorize
+publication. Enabled browser verification still requires current tool, story,
+candidate, attempt and retained artifact evidence; enabling or changing that
+policy invalidates prior evidence. CLI, API and dashboard consume the same
+delivery capability.
+
+Before extending this list, inspect the released profile/evidence writers and
+exercise both capability derivation and publication validation. Remove support
+for an older writer whenever a trust-relevant format, isolation, provenance or
+validation change makes its guarantees insufficient for current policy; bump
+the evidence format when its meaning changes. A package version bump alone is
+neither a reason to discard evidence nor proof of compatibility. Retain
+unsupported records unchanged and obtain fresh applicable evidence through the
+normal workflow; never repair them by editing private records or hashes.
+
+After native Verify/Review, the lead must qualify the installed patch read-only
+against actual retained production evidence. This source change and its
+controlled fixtures do not supply that proof. An already delivered PR keeps
+read-only receipt reconciliation. New publication still requires the current
+remote target to equal the original accepted base; checkpoint continuation and
+target mismatch remain the separate #42 limit.
+
 ## Release flow
 
 `.github/workflows/ci.yml` tests pull requests and pushes on Node 22 and 24,
