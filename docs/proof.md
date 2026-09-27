@@ -944,3 +944,20 @@ focused recovery tests passed 25/25. Fresh `npm ci --ignore-scripts`,
 provider, installed package or browser was exercised for this repair; prior
 candidate qualification does not cover it. Native Verify and independent
 full-baseline Review remain pending.
+
+## #29 pending delivery action wording — 27 September 2026
+
+The new held-request dashboard regression failed before the fix: a `publish`
+action displayed “Reconciling…” while waiting. Task details now use the shared
+`action_mode` for pending text: `publish` shows “Publishing…” and `reconcile`
+shows “Reconciling…”. The JSDOM component regression holds both requests,
+checks each button remains disabled, then confirms its idle action label returns.
+
+Final `npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check`
+passed; the full check reported 186 runtime/package tests and 52 dashboard
+tests. This is component-level regression evidence, not browser inspection.
+Runtime, provider, package and policy code are unchanged from checkpoint
+`ecb2499ca786c5c6b39d6ed5b88ea8ef5f2b4771`; its installed qualification remains
+bound to that checkpoint and does not qualify this UI delta. Desktop/narrow
+browser inspection remains pending; no visual pass is claimed. Native Factory
+Verify and independent full-baseline Review remain pending.

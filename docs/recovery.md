@@ -264,8 +264,10 @@ read-only reconciliation action. Unknown and abandoned delivery states cannot
 advertise or start publication.
 
 The shared delivery status marks each available PR action as `publish` or
-`reconcile`; task details use that mode for the button wording. A conflicted
-record with a saved PR receipt therefore stays visibly a readback action.
+`reconcile`; task details use that mode for idle and pending button wording.
+While a request is pending, publication shows “Publishing…” and read-only
+recovery shows “Reconciling…”. A conflicted record with a saved PR receipt
+therefore stays visibly a readback action.
 
 A collision found while the record is still at `intent` is known to precede
 provider writes. Inspect the exact branch in GitHub, then use the task action

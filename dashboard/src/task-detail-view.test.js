@@ -17,9 +17,10 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   const runs=[{id:'run_a',command:'build',state:'failed',started_at:'2026-09-25T00:00:00Z',summary:'Old failed build'},
     {id:'run_b',command:'review',state:'failed',outcome:'blocked',review_verdict:'changes',started_at:'2026-09-25T01:00:00Z',summary:'Fix the concern. Claimed PR: https://github.com/example/app/pull/42',executor:'codex',model:'requested-model',worker_name:'fixture',execution:{runtimeVersion:'test-version',image:'sha256:fixture',policyHash:'policy-fixture'}}];
   const job={id:'job_fixture',state:'failed',repository:'app',task:{title:'Revision fixture'},source_admission:{status:'retained',requested_ref:'main',resolved_sha:'a'.repeat(40),repository_identity:`sha256:${'b'.repeat(64)}`},workflow:{name:'software',steps:['build','verify','review','handoff'],current_step:2},runs,can_request_changes:true};
-  let captured, denied=true, deliveryActionError='';
-  const render=async()=>act(()=>root.render(createElement(TaskDetail,{job,loaded:true,csrfToken:'fixture',deliveryActionError,onWorkflowAction:async(...args)=>{captured=args;/* parent retains job and exposes API error on rejection */if(!denied)job.state='queued';}})));
+  let captured, denied=true, deliveryActionError='', deliveryPending=null;
+  const render=async()=>act(()=>root.render(createElement(TaskDetail,{job,loaded:true,csrfToken:'fixture',deliveryActionError,onWorkflowAction:async(...args)=>{captured=args;if(deliveryPending)await deliveryPending;/* parent retains job and exposes API error on rejection */if(!denied)job.state='queued';}})));
   const click=target=>act(async()=>{target.click();await Promise.resolve();});
+  const holdDelivery=()=>{let release;const pending=new Promise(resolve=>{release=resolve;});deliveryPending=pending;return async()=>{deliveryPending=null;release();await act(async()=>{await pending;await new Promise(resolve=>setTimeout(resolve,0));});};};
   await render();
   const close = document.querySelector('a[aria-label="Close issue detail"]');
   assert.equal(close.getAttribute('href'), '#/runs');
@@ -99,7 +100,12 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   await render();
   assert.match(document.body.textContent,/Ready for explicit draft PR delivery/);
   assert.match(document.body.textContent,/target dev/);
+  const finishPublish=holdDelivery();
   await click(button('Publish accepted candidate as draft PR'));
+  assert(button('Publishing…'),'an in-flight new publication is labeled as a publication');
+  assert.equal(button('Publishing…').disabled,true,'the publication action stays disabled while pending');
+  await finishPublish();
+  assert(button('Publish accepted candidate as draft PR'),'publication wording returns when the request settles');
   assert.equal(captured[1],'publish','publishing is a deliberate accepted-result action');
   job.delivery_status={state:'published',repository:'https://github.com/example/project',target:'dev',can_publish:true,action_mode:'reconcile',accepted_base_sha:'e'.repeat(40),
     pull_request:{number:29,url:'https://github.com/example/project/pull/29',state:'open',draft:true,merged:false,branch:'factory/job_fixture',target:'dev',base_sha:'a'.repeat(40),head_sha:'c'.repeat(40),tree:'d'.repeat(40)},
@@ -117,7 +123,12 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   assert(button('Reconcile PR delivery'),'a conflict with a saved PR receipt is a read-only reconciliation action');
   assert(!button('Publish accepted candidate as draft PR'),'a conflicted receipt must not be labeled as a new publication');
   assert.match(document.querySelector('[aria-label="Trusted PR delivery action"]').textContent,/does not publish new content/);
+  const finishReconcile=holdDelivery();
   await click(button('Reconcile PR delivery'));
+  assert(button('Reconciling…'),'an in-flight read-only recovery is labeled as reconciliation');
+  assert.equal(button('Reconciling…').disabled,true,'the reconciliation action stays disabled while pending');
+  await finishReconcile();
+  assert(button('Reconcile PR delivery'),'reconciliation wording returns when the request settles');
   assert.equal(captured[1],'publish','the reconciliation label still calls the shared readback action');
   job.delivery_status.state='published';
   job.delivery_status.pull_request.state='closed';

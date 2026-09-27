@@ -488,7 +488,7 @@ function TaskActions({ job, result, deliveryActionError = "", onAction }) {
             aria-describedby={(deliveryActionError || delivery.error) ? `delivery-action-error-${job.id}` : undefined}
             onClick={() => action("publish")}
           >
-            {busy ? "Reconciling…" : delivery.action_mode === "reconcile" ? delivery.state === "published" ? "Refresh PR readback and checks" : "Reconcile PR delivery" : "Publish accepted candidate as draft PR"}
+            {busy ? (delivery.action_mode === "reconcile" ? "Reconciling…" : "Publishing…") : delivery.action_mode === "reconcile" ? delivery.state === "published" ? "Refresh PR readback and checks" : "Reconcile PR delivery" : "Publish accepted candidate as draft PR"}
           </Button>}
           {delivery.can_abandon && delivery.remote_collision && <div className="space-y-2 border-t border-border pt-2">
             <p className="text-xs text-muted-foreground">Inspect this GitHub branch and confirm it is unrelated. Factory will recheck this exact head and confirm no pull request is attached; this action records local abandonment only and leaves the remote branch unchanged.</p>
