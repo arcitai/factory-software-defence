@@ -4,6 +4,7 @@ import { digest } from './lib.mjs';
 import { VERSION } from './updates.mjs';
 import { usageFields } from './usage.mjs';
 import { effectiveInferenceProvider } from './model-environment.mjs';
+import { expectedWebStories, webPolicyHash } from './web-verification.mjs';
 
 export function withRequestedModel(configuration, requestedModel) {
   const config = structuredClone(configuration);
@@ -33,13 +34,19 @@ export function executionProfile(config, phase) {
   const applicable = !deterministic && harnessOf(config) !== 'mock';
   const provider = applicable && ['codex', 'pi'].includes(harnessOf(config));
   const requestedModel = provider ? config.model || null : null;
-  return {
+  const profile = {
     version: 1, phase, executor: deterministic ? 'deterministic' : harnessOf(config),
     requestedModel,
     modelSelection: !applicable ? 'not_applicable' : !provider ? 'unknown' : requestedModel ? 'explicit' : 'provider_default',
     runtimeVersion: VERSION, image: phase === 'handoff' ? null : config.image,
     policyHash: digest(JSON.stringify(config)), hostName: hostname(),
   };
+  if (config.webVerification?.enabled) profile.webVerification = {
+    enabled: true, adapter: config.webVerification.adapter, version: config.webVerification.version,
+    browser: 'chromium', image: config.webVerification.image, policyHash: webPolicyHash(config.webVerification),
+    requiredStories: expectedWebStories(config.webVerification), platform: 'linux-container',
+  };
+  return profile;
 }
 
 export function attemptPresentation(attempt, recoveredUsage) {

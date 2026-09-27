@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 
 import { ROOT, DEFAULT_STATE } from './paths.mjs';
 import { isInferenceProvider, inferenceProviderFromModel } from './model-environment.mjs';
+import { validateWebVerification } from './web-verification.mjs';
 export { ROOT, DEFAULT_STATE };
 export const PINS = JSON.parse(readFileSync(join(ROOT, 'factory/pins.json')));
 export const json = path => JSON.parse(readFileSync(path, 'utf8'));
@@ -75,6 +76,7 @@ export function configAt(state) {
     }
   }
   if (typeof config.check !== 'string' || !config.scope || !['project','service','environment','owner'].every(k=>typeof config.scope[k]==='string'&&config.scope[k].trim())) throw new Error('Missing check or installation scope');
+  validateWebVerification(config.webVerification);
   return config;
 }
 export async function api(state, path, body, method, { timeoutMs = API_TIMEOUT_MS } = {}) {

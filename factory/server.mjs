@@ -1,6 +1,6 @@
 import { harnessOf } from './lib.mjs';
 import http from 'node:http';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, lstatSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { issueProvider, providerInfo } from './issue-provider.mjs';
@@ -17,6 +17,7 @@ import { attemptPresentation } from './execution-profile.mjs';
 import { SourceAdmissionStore, publicSourceAdmission } from './source-admission.mjs';
 import { deliveryProvider, deliveryProviderInfo } from './delivery-provider.mjs';
 import { DeliveryService } from './delivery.mjs';
+import { MAX_WEB_SCREENSHOT_BYTES } from './web-verification.mjs';
 
 function equal(a, b) { return typeof a === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b)); }
 async function body(request) {
@@ -27,11 +28,34 @@ async function body(request) {
 }
 function artifacts(state, jobId) {
   const root = join(state, 'jobs', jobId, 'artifacts'); if (!existsSync(root)) return [];
-  return readdirSync(root).filter(name => /^run_[a-f0-9]+$/.test(name)).flatMap(runId =>
-    readdirSync(join(root, runId)).filter(name => /^[\w.-]+\.(?:md|json|patch|log)$/.test(name)).flatMap(name => {
-      const stat = lstatSync(join(root, runId, name));
-      return stat.isFile() && !stat.isSymbolicLink() ? [{ id: `${jobId}~${runId}~${name}`, run_id: runId, path: name, storagePath: `${runId}/${name}`, size: stat.size, bytes: stat.size, content_type: 'text/plain' }] : [];
-    }));
+  return readdirSync(root).filter(name => /^run_[a-f0-9]+$/.test(name)).flatMap(runId => {
+    const runFolder = join(root, runId), screenshots = new Map();
+    try {
+      const proofPath = join(runFolder, 'web-verification.json'), proofStat = lstatSync(proofPath);
+      if (proofStat.isFile() && !proofStat.isSymbolicLink() && proofStat.size <= 1024 * 1024) {
+        const proof = JSON.parse(readFileSync(proofPath, 'utf8'));
+        for (const story of Array.isArray(proof.stories) ? proof.stories : []) {
+          const shot = story?.screenshot;
+          if (shot && /^web-story-[a-z0-9-]+\.png$/.test(shot.file || '')
+            && /^[a-f0-9]{64}$/.test(shot.sha256 || '') && Number.isSafeInteger(shot.bytes)
+            && shot.bytes >= 8 && shot.bytes <= MAX_WEB_SCREENSHOT_BYTES) screenshots.set(shot.file, shot);
+        }
+      }
+    } catch { /* Invalid browser evidence cannot expose an image artifact. */ }
+    return readdirSync(runFolder).filter(name => /^[\w.-]+\.(?:md|json|patch|log|png)$/.test(name)).flatMap(name => {
+      const path = join(runFolder, name), stat = lstatSync(path);
+      if (!stat.isFile() || stat.isSymbolicLink()) return [];
+      if (name.endsWith('.png')) {
+        const expected = screenshots.get(name);
+        if (!expected || stat.size !== expected.bytes || stat.size > MAX_WEB_SCREENSHOT_BYTES) return [];
+        const bytes = readFileSync(path);
+        if (bytes.length < 8 || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+          || createHash('sha256').update(bytes).digest('hex') !== expected.sha256) return [];
+      }
+      const content_type = name.endsWith('.png') ? 'image/png' : 'text/plain';
+      return [{ id: `${jobId}~${runId}~${name}`, run_id: runId, path: name, storagePath: `${runId}/${name}`, size: stat.size, bytes: stat.size, content_type }];
+    });
+  });
 }
 export function createController(state, adapter = executors(state), integrations = {}) {
   const config = configAt(state), csrf = randomBytes(32).toString('hex');
@@ -47,7 +71,7 @@ export function createController(state, adapter = executors(state), integrations
   const server = http.createServer(async (request, response) => {
     const send = (status, value, type = 'application/json; charset=utf-8') => { response.writeHead(status, { 'Content-Type': type }); response.end(type.startsWith('application/json') ? JSON.stringify(value) : value); };
     response.setHeader('Cache-Control', 'no-store'); response.setHeader('X-Content-Type-Options', 'nosniff'); response.setHeader('Referrer-Policy', 'no-referrer');
-    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     try {
       const port = server.address().port, hosts = [`localhost:${port}`, `127.0.0.1:${port}`];
       if (!hosts.includes(request.headers.host)) throw new QueueError('Host is not allowed', 403);
@@ -93,10 +117,12 @@ export function createController(state, adapter = executors(state), integrations
         const jobId = (artifactList || content)[1]; queue.get(jobId);
         const entries = artifacts(state, jobId), file = content ? `${content[2]}/${content[3]}` : url.searchParams.get('file');
         if (!file) return send(200, entries);
-        if (!entries.some(item => item.storagePath === file && item.bytes <= 1024 * 1024)) throw new QueueError('Artifact not available', 404);
+        const artifact = entries.find(item => item.storagePath === file
+          && item.bytes <= (item.content_type === 'image/png' ? MAX_WEB_SCREENSHOT_BYTES : 1024 * 1024));
+        if (!artifact) throw new QueueError('Artifact not available', 404);
         const root = realpathSync(join(state, 'jobs', jobId, 'artifacts')), path = realpathSync(resolve(root, file));
         if (!path.startsWith(root + sep)) throw new QueueError('Artifact path rejected', 403);
-        return send(200, readFileSync(path), 'text/plain; charset=utf-8');
+        return send(200, readFileSync(path), artifact.content_type === 'image/png' ? 'image/png' : 'text/plain; charset=utf-8');
       }
       if (request.method === 'POST') {
         if (!authenticated) throw new QueueError('Session required', 403);

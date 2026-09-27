@@ -16,6 +16,7 @@ import { bootstrap, registerInstallation, VERSION } from '../factory/updates.mjs
 import { hasService, manageService, serviceDefinition, withServiceOperation, isManagedLaunch } from '../factory/services.mjs';
 import { runCandidateGit } from '../factory/git-environment.mjs';
 import { initializeDemoRepository } from '../factory/demo-fixture.mjs';
+import { probeWebBrowser } from '../factory/web-readiness.mjs';
 
 try {
   const handled = await bootstrap(process.argv.slice(2));
@@ -190,8 +191,9 @@ try {
   else if(command==='status') { const snapshot=await api(state,'/api/v1/status');delete snapshot.csrf_token;console.log(JSON.stringify(snapshot,null,2)); }
   else if(command==='doctor') {
     const config=configAt(state),dockerVersion=run('docker',['info','--format','{{.ServerVersion}}']),imageStatus=inspectImageInstallation(state,config);
-    console.log(JSON.stringify({node:process.version,docker:dockerVersion,engineInstalled:imageStatus.installed,image:imageStatus.image,repo:config.repo,harness:harnessOf(config),agent:harnessOf(config),checksConfigured:!!config.check?.trim(),inference:'Not called or verified',qualification:{model:'not assessed',toolchain:'not assessed'},dashboard:`http://127.0.0.1:${config.port}`},null,2));
-    if(!imageStatus.installed)process.exitCode=1;
+    const webVerification=config.webVerification?.enabled?probeWebBrowser(config,state):null;
+    console.log(JSON.stringify({node:process.version,docker:dockerVersion,engineInstalled:imageStatus.installed,image:imageStatus.image,repo:config.repo,harness:harnessOf(config),agent:harnessOf(config),checksConfigured:!!config.check?.trim(),inference:'Not called or verified',qualification:{model:'not assessed',toolchain:'not assessed'},dashboard:`http://127.0.0.1:${config.port}`,...(webVerification?{web_verification:webVerification}:{})},null,2));
+    if(!imageStatus.installed||webVerification&&!webVerification.ready)process.exitCode=1;
   } else if(command==='issue') {
     const action=positional[0], sourceURL=flags.url || flags.github;
     if(action==='list') {
@@ -263,11 +265,20 @@ try {
       initializeDemoRepository(repo);
       init(repo,'mock',"test \"$(cat value.txt)\" = fixed",Number(flags.port || 7332));
     } else if(harnessOf(configAt(state))!=='mock')throw new Error('Demo requires a mock configuration');
+    save(join(state,'synthetic-demo.json'),{version:1,createdAt:new Date().toISOString(),purpose:'Disposable Factory runtime qualification only'});
     await withServiceOperation('demo startup',async()=>{await install();await up();});console.log(JSON.stringify(await submit('software','Synthetic installation qualification: fix value.txt. No inference is used.')));
     console.log('Review the synthetic change in the dashboard and approve its handoff.');
   } else if(['version','--version','-v'].includes(command))console.log(VERSION);
   else if(command==='qualify') {
     await stream(process.execPath,[join(ROOT,'scripts/probe-platform.mjs'),state]);
+  } else if(command==='qualify-web') {
+    if(!flags.image)throw new Error('qualify-web requires --image sha256:<local browser image ID>');
+    await stream(process.execPath,[join(ROOT,'scripts/probe-web.mjs'),state,flags.image]);
+  } else if(command==='web') {
+    if(positional[0]!=='probe'||positional.length!==1)throw new Error('Use web probe to execute the configured browser readiness check');
+    const readiness=probeWebBrowser(configAt(state),state);
+    console.log(JSON.stringify(readiness,null,2));
+    if(readiness.enabled&&!readiness.ready)process.exitCode=1;
   } else if(command==='kit') {
     if(!flags.output)throw new Error('kit requires --output NEW_DIRECTORY');
     await stream(process.execPath,[join(ROOT,'scripts/export-kit.mjs'),resolve(flags.output)]);
@@ -276,11 +287,13 @@ try {
   kit --output NEW_DIRECTORY               Export the portable method without a runtime
   demo                                    Install and run a synthetic sample (no model key)
   qualify --state PATH                    Exercise recovery and isolation with a stopped demo job
+  qualify-web --state PATH --image ID     Exercise Playwright Verify with a synthetic delayed-action fixture
   init --repo PATH --harness codex|pi|custom --check "npm ci && npm test" [--source-ref REF]
        [--inference-provider PROVIDER]
        [--delivery-provider github --delivery-repository https://github.com/OWNER/REPO --delivery-target main|dev]
   install [--image LOCAL_REF]             Build the standard image, or select an existing local image
   doctor | up | status | stop              Inspect / operate your private installation
+  web probe --state PATH                    Execute the pinned local Chromium readiness probe
   foundation                              Read the operator setup skill; no installation required
   definition | agents | skills            Inspect roles, instructions and installation settings
   inbox | infrastructure | automations    Inspect live tasks, host/worker and automation state

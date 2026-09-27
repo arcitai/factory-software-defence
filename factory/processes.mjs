@@ -28,6 +28,8 @@ function clearStoppedFence(state, jobId, expectedPid) {
     if (!/^run_[a-z0-9]+$/.test(previous.attempt || ''))
       throw new Error('Stopped verification attempt does not match the retained recovery fence');
     removeScratch(join(folder, previous.attempt, 'check-workspace'));
+    removeScratch(join(folder, previous.attempt, 'web-output'));
+    rmSync(join(folder, previous.attempt, 'web-policy.json'), { force: true });
   }
   if (/^run_[a-z0-9]+$/.test(previous.attempt || '') && credentialedPhases.has(previous.phase))
     rmSync(join(folder, previous.attempt, `.model-${previous.phase}.env`), { force: true });
@@ -167,7 +169,9 @@ export function executors(state, recovery = {}) {
     child.on('error', error => finish({ error }));
     child.on('close', code => finish({ code }));
     child.stdin.on('error', error => { if (error.code !== 'EPIPE') finish({ error }); }); child.stdin.end(job.prompt);
-    const deadline = setTimeout(() => { stop(job.id).catch(error => console.error(error.message)); }, (config.timeoutSeconds + 30) * 1000);
+    const phaseTimeout = config.timeoutSeconds + (attempt.command === 'verify' && config.webVerification?.enabled
+      ? config.webVerification.timeoutSeconds : 0);
+    const deadline = setTimeout(() => { stop(job.id).catch(error => console.error(error.message)); }, (phaseTimeout + 30) * 1000);
     let exit;
     try { exit = await done; }
     finally { clearTimeout(deadline); children.delete(job.id); }
@@ -179,7 +183,9 @@ export function executors(state, recovery = {}) {
     catch { return { outcome: 'blocked', ...usageFields(recovered || emptyUsage(attempt.execution, attempt.command), attempt.execution, attempt.command), summary: 'Executor result was malformed' }; }
     const reportedUsage = outcome.usage?.status === 'unknown' ? recovered || outcome.usage : outcome.usage || recovered;
     const usage = usageFields(reportedUsage, attempt.execution, attempt.command);
-    if (exit.code !== 0 || outcome.outcome !== 'complete') return { outcome: 'blocked', ...usage, summary: outcome.summary || `Executor exited ${exit.code}`, review_verdict: outcome.review_verdict };
+    if (exit.code !== 0 || outcome.outcome !== 'complete') return { outcome: 'blocked', ...usage,
+      summary: outcome.summary || `Executor exited ${exit.code}`, review_verdict: outcome.review_verdict,
+      ...(outcome.web_verification ? { web_verification: outcome.web_verification } : {}) };
     return { ...outcome, ...usage };
   }
   return { prepare, execute, stop, reconcile, reviewVerdict: (job, attempt) => retainedReviewVerdict(state, job, attempt), usage: presentedUsage };

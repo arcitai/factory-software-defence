@@ -10,6 +10,7 @@ import { publicSourceAdmission } from './source-admission.mjs';
 import { QueueError } from './queue.mjs';
 import { readProjectLinks } from './project-links.mjs';
 import { qualifyGitHubActions } from './workflow-qualification.mjs';
+import { assertCurrentWebEvidence, assertCurrentWebArtifacts } from './web-verification.mjs';
 
 const MAX_PATCH_BYTES = 8 * 1024 * 1024;
 const MAX_CHANGED_FILES = 500;
@@ -269,6 +270,16 @@ function acceptanceSummary(job, state, config, sourceAdmission) {
   const byID = id => job.runs.find(run => run.id === id);
   const buildRun = byID(accepted.build_run_id), checkRun = byID(accepted.checks_run_id), reviewRun = byID(accepted.review_run_id);
   const handoffRun = byID(accepted.handoff_run_id);
+  let browserEvidenceCurrent = true;
+  if (config.webVerification?.enabled) {
+    try {
+      assertCurrentWebEvidence(config.webVerification, checks.web_verification,
+        { job: job.id, attempt: checkRun?.id, meta: candidate, policyHash: expectedPolicy });
+      assertCurrentWebArtifacts(config.webVerification, checks.web_verification,
+        join(state, 'jobs', job.id, 'artifacts', checks.web_verification.attempt));
+    }
+    catch { browserEvidenceCurrent = false; }
+  }
   const phaseEvidence = trustedPhaseEvidence(state, job, expectedPolicy,
     { build: buildRun, verify: checkRun, review: reviewRun, handoff: handoffRun }, candidate, checks, review);
   if (!phaseEvidence.trusted) return { state: 'blocked', reason: phaseEvidence.reason };
@@ -282,7 +293,7 @@ function acceptanceSummary(job, state, config, sourceAdmission) {
     && accepted.base === job.source_admission?.resolved_sha && accepted.policyHash === expectedPolicy
     && accepted.checks_run_id === checkRun.id && accepted.review_run_id === reviewRun.id
     && checks.run_id === checkRun.id && checks.passed === true && checks.head === accepted.head
-    && checks.tree === accepted.tree && checks.policyHash === expectedPolicy && checks.command === config.check
+    && checks.tree === accepted.tree && checks.policyHash === expectedPolicy && checks.command === config.check && browserEvidenceCurrent
     && review.run_id === reviewRun.id && review.verdict === 'pass' && review.head === accepted.head
     && review.tree === accepted.tree && review.policyHash === expectedPolicy && reviewRun.review_verdict === 'pass';
   if (!bound) return { state: 'blocked', reason: 'Candidate, checks, review or approval evidence is stale or does not match the current Factory policy.' };
@@ -515,6 +526,15 @@ export class DeliveryService {
       || review.run_id !== reviewRun.id || review.verdict !== 'pass' || review.head !== accepted.head || review.tree !== accepted.tree
       || review.policyHash !== expectedPolicy || reviewRun.review_verdict !== 'pass')
       throw new QueueError('Current successful checks and independent review for this candidate are required.');
+    if (config.webVerification?.enabled) {
+      try {
+        assertCurrentWebEvidence(config.webVerification, checks.web_verification,
+          { job: job.id, attempt: checkRun.id, meta: candidate, policyHash: expectedPolicy });
+        assertCurrentWebArtifacts(config.webVerification, checks.web_verification,
+          join(this.state, 'jobs', job.id, 'artifacts', checks.web_verification.attempt));
+      }
+      catch { throw new QueueError('Required browser evidence is missing, stale or non-passing; publication is blocked.'); }
+    }
     if (!SHA1.test(accepted.base || '') || !SHA1.test(accepted.head || '') || !SHA1.test(accepted.tree || '')
       || accepted.head === accepted.base || candidate.parent !== accepted.base)
       throw new QueueError('Candidate base, head or tree is invalid for trusted PR delivery.');

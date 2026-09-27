@@ -29,6 +29,21 @@ alongside the cleanup error.
 Inspect that retained attempt before manual removal; never substitute the source
 candidate path for the scratch path.
 
+When trusted web verification is enabled, Verify keeps the copied check output
+as disposable preview scratch and creates separate preview and browser
+containers. The preview uses `network none`; the browser shares only that exact
+preview's isolated network namespace for loopback. Their mounts and PID
+namespaces remain separate, and only the browser mounts its private result and
+screenshot directory. The `web-policy.json`, preview scratch, browser output
+and active fence remain until both exact labelled containers are confirmed
+removed. Normal stop/retry recovery reconciles all Factory-labelled containers
+before removing those files. An unknown stop, deadline or cancellation keeps
+the state and fence for recovery. A missing browser, unsupported Linux
+capability, interrupted story or malformed evidence blocks acceptance; never
+retry around a retained writer or reuse earlier story evidence for a changed
+candidate or policy. Browser traces and screenshots are private evidence and
+are presented through the shared interfaces. See [the web contract](web-verification.md).
+
 ## Review feedback or phase retry
 
 Use **Request changes** on a failed software review only when its validated

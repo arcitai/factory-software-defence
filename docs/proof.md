@@ -961,3 +961,71 @@ Runtime, provider, package and policy code are unchanged from checkpoint
 bound to that checkpoint and does not qualify this UI delta. Desktop/narrow
 browser inspection remains pending; no visual pass is claimed. Native Factory
 Verify and independent full-baseline Review remain pending.
+
+## #71 prior bounded checkpoint repair — 27 September 2026
+
+The preceding Build started at unaccepted checkpoint
+`7fc3395649f35bdefb6353ac5e4219169edfa56b` and retains version `0.9.0`.
+Independent Review must cover the entire aggregate diff from original main
+`380f74983d278f4a517d26a6a4bad4e3dbcb6809`, including checkpoints `4b9e8a3`
+and `7fc3395` and this final repair. Both previous 3600-second Build attempts
+remain failed histories; this manual continuation does not deliver #42 support.
+
+Required preparation (`npm ci --ignore-scripts`, `npm run build:dashboard`)
+passed. The initial `npm run check` passed 197 runtime/package tests but failed
+one of 53 dashboard tests: the browser-evidence assertion read the retained
+Details tab after rerendering the same job. The corrected component test selects
+Result explicitly, checks the selected visible panel for the failed attempt,
+screenshot and action trace, then starts a new attempt and verifies that the
+same evidence remains in History without being attributed to the current
+result. Both existing rendering paths pass without a production-code change.
+
+The dashboard package test and final `npm run check` passed on Node 22.23.3:
+197 runtime/package tests and 53 dashboard tests, including PNG artifact
+rendering. These are local automated checks with controlled fixtures and JSDOM,
+not live browser/Docker qualification. Logs and the Build report are private
+under `/output`; no generated fixtures or browser artifacts are source changes.
+
+The lead reports prior real Z13 Docker qualification of the selected
+two-container architecture; this Build did not repeat it. Installed final
+candidate `qualify-web`, desktop/narrow browser inspection and external proof
+remain lead-owned and pending. The exact image recipe and installed invocation
+are in [web verification](web-verification.md) and the private Build report.
+Native Verify and independent aggregate-diff Review remain pending.
+
+## #71 browser integration boundary repair — 27 September 2026
+
+This uncommitted repair starts at `7d5fb6a767ff62a2645d4a7386e649e3028946eb`
+and keeps `0.9.0`. The initial required preparation and full check passed
+(197 runtime/package and 53 dashboard tests), but new regressions reproduced
+all three reported integration defects before their fixes:
+
+- Unsuccessful executor completion now retains its browser summary while
+  remaining blocked. Controlled executor results pass through the real adapter,
+  queue and HTTP status into Result and History for failed, unavailable and
+  inconclusive evidence; retries preserve prior attempts and acceptance stays
+  closed. This exercises JSDOM consumers, not a live browser or executor.
+- Readiness and execution explicitly set the packaged
+  `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright` after `env -i`, before Node loads
+  Playwright. Exact command-contract regressions retain the environment
+  allowlist, isolation, deadline and cleanup checks.
+- The actual controller response permits `img-src 'self' blob:` while retaining
+  all other CSP directives. Header and existing PNG component checks do not
+  prove real browser decoding or CSP enforcement.
+
+Final `npm run build:dashboard` and `npm run check` passed on Node 22.23.3:
+197 runtime/package tests and 54 dashboard tests. Both repair-delta and
+original-main aggregate `git diff --check` passed. Before/after regression
+logs and the handoff report remain private under `/output`; workflows,
+dependencies and package versions are unchanged by this repair.
+
+Lead-reported diagnosis used image
+`sha256:c348f440a637ba13c1e4f1ee72a57b43941d7cc23d5dfe581937485a9b2d8762`;
+its successful browser-path counterfactual proves the cause, not this repaired
+candidate. Installed `qualify-web`, actual PNG decoding under server headers,
+and desktop/narrow inspection remain lead-owned and pending. No browser,
+Docker, nested agent or external provider qualification ran in this Build.
+Native Verify and independent Review must cover the **entire aggregate** from
+`380f74983d278f4a517d26a6a4bad4e3dbcb6809`, including `4b9e8a3`, `7fc3395`,
+`7d5fb6a` and this repair. Both timed-out Build histories remain failed;
+this manual continuation does not deliver #42 or claim acceptance/publication.
