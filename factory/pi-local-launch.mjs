@@ -24,6 +24,8 @@ export class PiCompletion {
   settled = false;
   lastAssistant = null;
   contextReady = false;
+  proactiveRecovery = false;
+  proactiveCount = 0;
 
   write(chunk) {
     this.pending += chunk;
@@ -42,6 +44,17 @@ export class PiCompletion {
   event(value) {
     if (!value || typeof value.type !== 'string') { this.failed = true; return; }
     if (value.type === 'factory_context_ready' && value.version === 1) this.contextReady = true;
+    if (value.type === 'factory_context_recovery') {
+      if (value.phase === 'start') {
+        if (this.proactiveRecovery || value.recovery !== this.proactiveCount + 1 || value.recovery > 16) this.failed = true;
+        this.proactiveCount = value.recovery;
+        this.proactiveRecovery = true;
+        this.settled = false;
+      } else if (value.phase === 'complete') {
+        if (!this.proactiveRecovery || value.recovery !== this.proactiveCount) this.failed = true;
+        this.proactiveRecovery = false;
+      } else this.failed = true;
+    }
     if (value.type === 'agent_start' || value.type === 'message_start') {
       this.completed = false; this.settled = false;
     }
@@ -95,7 +108,7 @@ export class PiCompletion {
 
   finish() {
     return !this.pending && !this.failed && !this.error && !this.retry && !this.compacting && !this.recovery
-      && this.completed && (!this.modern || this.settled);
+      && !this.proactiveRecovery && this.completed && (!this.modern || this.settled);
   }
 }
 

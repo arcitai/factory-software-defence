@@ -509,6 +509,40 @@ guessed or silently rewritten. Do not add project Pi settings to bypass
 the admitted binding or rely on custom tuning that has not been qualified.
 See [pinned compaction behavior](https://github.com/earendil-works/pi/blob/v0.87.1/packages/coding-agent/docs/compaction.md).
 
+Starting with the **0.15.5 candidate (#105)**, the local adapter also checks
+history pressure at Pi's completed-tool-turn boundary. This conservative byte
+signal counts the system/task/tool envelope once, call arguments, non-tool text
+and capped tool excerpts, separately from provider-reported usage. At 65% of the
+input budget it considers Pi's supported summary generator and append-only
+compaction entry. The newest complete tool group is retained; up to three older
+complete groups can remain as additional evidence when the actual summary and
+retained envelope fit. The original task is restored exactly on every generation;
+raw events and existing session entries are not rewritten. Large-result bursts
+still use upstream compaction and the final request projection. Projection gives
+recent short results (up to 2 KiB each, 8 KiB total and at most a quarter of the
+input budget) priority when they fit.
+
+Recovery allows at most 16 proactive summaries per process and two retries per
+summary. It must reduce pressure by at least 4 KiB and leave headroom of 8 KiB
+(or 15% of the input budget when smaller). Its preferred reduction target adapts
+to the immutable latest-group/envelope floor and actual summary size; it cannot
+require that floor to fit an arbitrary fraction of the trigger. The next trigger
+also leaves room for new work. If the latest write/group alone makes recovery
+unproductive, the adapter defers to a later complete turn under the unchanged
+wire guard, when that group can become summary input. This does not permit an
+oversized request through transport. Empty, failed, cancelled or ineffective
+summaries fail the attempt. Oversized instructions, arguments or retained groups
+can still fail closed. These are bounded recovery limits, not automatic
+context/output tuning or a guarantee of useful model work.
+
+The selected context, generation output and model remain unchanged; summary
+output is separately capped (6,553 for proactive summaries with 8,192 selected
+output on pinned Pi). `factory_context_recovery` JSONL events record only
+pressure, envelope/floor sizes, group counts and recovery progress, without
+prompts/content. Pi token accounting stays partial; this summary path is not
+added to ordinary assistant usage totals. See
+[source measurements, rejected real trial and pending qualification](proof.md#short-local-pi-history-recovery-0155-candidate-105).
+
 Before adoption, stop and reconcile all work, retain the old immutable image ID
 and a stopped private-state backup. Build/qualify the exact candidate image, then
 explicitly select it with `factory install --image LOCAL_IMAGE_REF --state PRIVATE_STATE`

@@ -30,6 +30,166 @@ adoption preserved histories. Those results apply to 0.11.0, not later revisions
 | [Profile](../tests/execution-profile.test.mjs) and [delivery tests](../tests/delivery.test.mjs) | Exact writer versions, unchanged retained records, current provenance/policy/revision guards and unsupported writer rejection | Controlled records/providers do not prove live account writes. |
 | [Service](../tests/services.test.mjs) and [source admission tests](../tests/source-admission.test.mjs) | Stable launch/update contracts and retained-source behavior | Does not prove a running installation's service/image/history preservation. |
 
+### Short local Pi history recovery (0.15.5 candidate, #105)
+
+Implemented from clean 0.15.4 source `9d4e29e49d1103d50c9e5c8d3fc8d1b807c509fb`.
+Before editing the adapter, a new actual-Pi 0.87.1 loopback fixture reproduced
+exhaustion after **71 short tool turns, zero summaries, exit 1**. Each command
+printed `TURN_N` and 500 zeros. Every response reported 12,000 input / 40 output /
+3,000 cached input; Pi's normal 49,152 threshold did not trigger. Maximum outgoing
+conservative pressure was **57,337** (serialized UTF-8 bytes plus framing), within
+the 57,344 input budget until the next request failed locally. The independent
+recent-marker assertion also failed on the original adapter. The fixture differs
+slightly from the lead's retained 69-turn baseline; it neither replaces that
+private proof nor establishes the cause of repeated reads in real work.
+
+The reviewed checkpoint `5a2ff49cd2cd53779d5070d8a1eb7a722f09b3a0` was
+**rejected by installed real-work qualification**. The lead reports the exact
+standard image (Pi 0.87.1 / Node 22.23.3) passed 141 image regressions, independent
+native Build and Review controlled 80-tool sequences (82 generation + eight
+summary requests each), latest-result retention, CLI/API/restart parity and eight
+unchanged UI assets. The corrected external oracle permits 6,553 summary output
+and 8,192 generation output; its earlier summary-cap failure required no product
+change and is not evidence of a product defect.
+
+The subsequent actual local work-items trial, job
+`job_f396f006bda483cf239e1388`, run `run_d54e118e07d8d63b1d7c131a`, failed on
+28 September 2026, 04:39:13–04:41:54 UTC (**161 seconds**). Five completed assistant
+messages / eight tool calls produced a useful `src/work-items.mjs` edit, then the
+first recovery rejected its summary at pressure 38,703 / trigger 37,273. There was
+no Verify or Review. The lead retained the failed checkout and 117,577-byte log
+with zero omitted bytes; this worker did not access or mutate them. Native
+**partial** usage was 22,820 inclusive input / 17,198 cached input / 1,042 output,
+excluding summary usage. These supplied observations reject that artifact's
+real-work qualification; they do not qualify the revision below.
+
+The revision adds [a productive-history regression](../tests/pi-context-productive.test.mjs)
+using actual pinned Pi, the public Factory Build prompt wrapper, repository
+instructions, policy and skill reads, grouped tools and generated work-item
+source. Before changing product code, it reproduced **five turns / eight calls,
+a 14,386-byte write, one summary and exit 1**, with the same insufficient-recovery
+error. The old signal reached 59,061 despite a maximum outgoing pressure of
+45,204. This is a durable sanitized reproduction of the mechanism, not a replay
+of the private model history.
+
+Inspection and bounded size diagnostics found two source defects: Pi's boundary
+projection includes the system message and task already counted in Factory's
+wire envelope, while the proposed retained suffix excluded them, so before/after
+pressure used different baselines. Also, four retained groups could not reach
+the fixed 75%-of-trigger target when write arguments plus the envelope alone
+exceeded it. The revised signal counts the envelope once. Recovery summarizes the
+older complete prefix through Pi's exported generator and chooses one to four
+recent complete groups against the returned summary size, the immutable latest
+group/envelope floor, measurable progress and bounded headroom. Additional recent
+groups may overlap the summary as retained primary evidence. Pi's manual
+`compact()` still is not called inside an active turn. Raw entries stay
+append-only and the unchanged serialized-request guard remains authoritative.
+
+All three productive fixtures now complete their real tool write, semantic
+assertions and scripted report with **eight generation requests and one summary**:
+
+| Controlled case | Recovery boundary | Pressure before / after | Retained groups | Maximum outgoing pressure |
+| --- | --- | --- | --- | --- |
+| 14,386-byte write | After turn 5 | 44,403 / 35,125 | 1 | 45,204 |
+| Same write, longer summary | After turn 5 | 44,403 / 39,555 | 1 | 45,204 |
+| 30,586-byte write | After turn 6; write first retained under wire guard | 61,846 / 20,712 | 1 | 57,344 |
+
+The longer summary legitimately leaves pressure above the initial 37,273 trigger;
+it neither causes immediate re-compaction nor changes the allocation. Every
+generation keeps **8,192 output** in the **65,536 window**; proactive summaries
+keep Pi's **6,553 output** cap. Tests compare exact task/system/tools, complete
+latest groups, retained arguments, raw read results and raw write arguments.
+Ordinary parser coverage remains **partial**, 96,000 inclusive input / 24,000
+cached input / 320 output; complete scripted endpoint accounting including the
+summary is 108,000 / 27,000 / 360. Focused runs took 625 / 465 / 458 ms respectively.
+These fixed endpoint numbers and times are controlled transport observations,
+not model inference, cache performance, cost or useful model judgment.
+
+The 75-short-turn and repeated discovery cases still complete, now with four
+summaries and all latest markers retained. In the focused complete run, maximum
+outgoing pressure was 26,454; 72 of 76 adjacent generation comparisons retained
+the full prior prefix, and four changed at recovery. Its 907 ms elapsed time and
+prefix observations are separate from correctness and establish no inference
+latency/cache claim. Raw short-tool events and messages remain byte-for-byte
+checked; parser usage remains partial at 924,000 / 231,000 / 3,080 (inclusive
+input / cached input / output). Complete endpoint accounting is 972,000 / 243,000 /
+3,240 across 81 responses. The recovery-limit fixture now requests 350 turns so
+it still reaches the unchanged 16-summary limit after duplicate-envelope
+counting is removed; it fails at turn 276 without a report.
+
+`npm run qualify:pi` requires pinned Pi and covers the productive cases, short
+histories/discovery, generation and summary retries, failed/empty/ineffective
+summaries, cancellation, recovery limit, large reads, grouped tools, output
+starvation, irreducible tasks/arguments and trust isolation. Small-window batch
+coverage distinguishes observed upstream turn-prefix and proactive history
+summary caps. Failure of either lifecycle remains failure of the attempt.
+
+Worker source validation on Node **22.23.3**: `npm run build:dashboard` passed;
+`npm run qualify:pi` passed **33 cases**, zero failures/skips. After installing
+the locked root dependency (the first check failed because `yaml` was absent),
+`FACTORY_REQUIRE_PI=1 npm run check` passed **479 runtime/package + 65 dashboard
+cases**, zero failures/skips. No dashboard source/layout, cloud
+profile, explicit local selection, evidence schema or package version target
+(0.15.5) changed in this revision.
+
+#### Exact-candidate operator qualification (2026-09-28)
+
+The operator supplies independent qualification of **0.15.5**, candidate
+`e45e04d68c6e6950c56b99dd30f7b50a1e8a7e20`, tree
+`833f551a654350f65404709e36e8d8b0dfea2eef`. These observations supersede the
+installed and representative-task pending gates for that candidate; the rejected
+first trial above remains failed evidence. This documentation worker did not
+access the host, private logs or checkouts, or rerun inference. Product repair used
+explicit cloud implementation and independent cloud Review (`run_ca7aee0f11159623fe733e37`);
+native source checks passed **479 runtime/package + 65 UI tests**, with
+**72 independent targeted source checks**.
+
+The standard installed image
+`sha256:656b80eff630bf66cd9796942caebf5a0f0d3abbeddcd474bb2f95f1306c3910`
+(Pi **0.87.1**, Node **22.23.3**) passed **144 actual-image cases**, zero
+failures/skips, including productive-write, detailed-summary and deferred-large-write
+cases. Controlled native job `68fdb85a` completed **82 ordinary calls + five
+summaries in each of Build and independent Review**. Maximum wire sizes were
+22,966 / 23,442 bytes; generation output stayed 8,192 and summary output 6,553.
+Every ordinary generation retained the newest result. CLI/API/controller-restart
+parity passed. Native partial synthetic usage per phase was 984,000 inclusive
+input / 246,000 cached input / 3,280 output. The retained 0.15.4 baseline failed
+at 69 ordinary calls without a summary. Controlled transport does not establish
+model intelligence.
+
+Actual **Qwen3.8 instruct** trial `779a5c82` completed Build at
+05:05:11–05:18:08 UTC (**12m57**) and independent local Review at
+05:18:09–05:40:10 UTC (**22m01**); immutable-base Verify passed. The fixture
+candidate was `7962f6a5554f9b69ff5a87ab5d0f23955e34e169`, tree
+`7ce43e85b2979fdfce0f4c5c851bdd5eefc61ca1`, on original base
+`6998070fbccc5f60ffc08bd580cd11f9520d6bc0`. Model digest
+`08a9707afbcf0324d2bc247f6595e90c7f6af117b6958f013ac9272960a012bc`
+used the Pi local provider with **65,536 context / 8,192 output**, no cloud
+credentials or fallback. Build produced a useful module implementation and six
+developer tests; **two proactive recoveries in Build and four in Review**
+completed. The lead inspected the code/contract and local review, then
+independently passed **seven semantic probes** and byte-preservation checks for
+all base resources except the intended module. Unsupported review narrative was
+not adopted.
+
+| Actual local phase | Completed assistant messages | Inclusive input | Cached input (subset) | Output | Total |
+| --- | --- | --- | --- | --- | --- |
+| Build | 18 | 101,162 | 85,640 | 6,830 | 107,992 |
+| Review | 27 | 166,986 | 134,774 | 10,783 | 177,769 |
+
+Independent full-log sums match native counts; both logs omitted **zero bytes**.
+Coverage remains **partial** because summary and unreported failed-call usage
+are excluded; money and hardware costs are unknown. This proves representative
+fixture completion with repeated actual context recovery, not a real repository
+issue delivered locally or a broad model benchmark.
+
+All **eight UI assets** are byte-identical to qualified 0.15.4. Its six
+responsive/theme cases are reused by identity, not rerun or new browser evidence.
+The final documentation-only artifact still requires native Verify and separate
+Factory Review of the complete candidate, plus the lead's independent comparison
+of all **112 package files** before protected release. No deployment, publication
+or broad model qualification is claimed.
+
 ### Pi token measurements (0.15.4 candidate, bounded #51 slice)
 
 Implemented from protected 0.15.3 base `c138b6b1669637635ba738646a7a1d5d5886c92d`.

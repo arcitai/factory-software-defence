@@ -59,3 +59,18 @@ test('request pairing rejects missing, duplicate, orphan and interrupted results
   for (const messages of [[call], [result], [call, result, result], [call, { role: 'user', content: 'interrupt' }, result], [call, result, call, result]])
     assert.throws(() => validatePairs(messages), /tool/);
 });
+
+test('repeated projections retain recent short discovery results without changing raw history', () => {
+  for (const count of [12, 16, 20]) {
+    const messages = [{ role: 'system', content: 'policy' }, { role: 'user', content: 'task' }];
+    for (let n = 0; n < count; n++) messages.push(
+      { role: 'assistant', tool_calls: [{ id: `read_${n}`, function: { name: 'read', arguments: '{}' } }] },
+      { role: 'tool', tool_call_id: `read_${n}`, content: `DIRECTORY_${n}\n` + 'x'.repeat(1000) });
+    const original = structuredClone(messages);
+    const projected = fitToolText({ messages }, 15000, projectedTokens);
+    assert(projectedTokens(projected) <= 15000);
+    assert.equal(projected.messages.at(-1).content, messages.at(-1).content);
+    assert.deepEqual(messages, original);
+    validatePairs(projected.messages);
+  }
+});

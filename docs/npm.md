@@ -282,3 +282,13 @@ reject tampered selections/images/policies and unsupported future writers, and
 verify that readback does not rewrite retained evidence. Image adoption is a
 separate idle operator action; existing attempt images are not migrated by a CLI
 update. See [the migration/rollback recipe](setup.md#local-context-budget-and-worker-image-0152-100).
+
+
+The 0.15.5 compatibility audit adds that exact writer to the explicit v1/v2/v3
+allowlists. The examined change is confined to local Pi projection, proactive
+recovery and completion validation. Evidence schemas, frozen commands, model and
+image selections, policy hashes, candidate reconstruction and acceptance guards
+remain unchanged from 0.15.4. Profile tests exercise all phases and inherited,
+cloud, hybrid and local definitions, reject changed selections and future writers,
+and verify immutable readback. This does not upgrade or qualify historical local
+attempts; installed image adoption and actual inference remain separate gates.
