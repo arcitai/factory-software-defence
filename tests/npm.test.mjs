@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { dirname, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { busyInstallations, installRelease, latestVersion, newer, registerInstallation } from '../factory/updates.mjs';
 
@@ -102,6 +102,35 @@ test('npm artifact installs without a checkout, keeps state outside the package,
   try {
     await new Promise(resolve => controller.server.listen(0, '127.0.0.1', resolve));
     const origin = `http://127.0.0.1:${controller.server.address().port}`;
+    // Installed CLI/API use the packaged reader, with finite synthetic retained
+    // observations only. This does not qualify Docker or an inference provider.
+    const originalConfigBytes = readFileSync(join(state, 'factory.json'));
+    writeFileSync(join(state, 'factory.json'), JSON.stringify({ ...configured, port: controller.server.address().port }));
+    const { ActivityWriter } = await import(pathToFileURL(join(packageRoot, 'factory/activity.mjs')).href);
+    const attempt = { id: 'run_ab', command: 'build', state: 'cancelled', started_at: '2026-09-28T00:00:00.000Z' };
+    const activityJob = { id: 'job_ab', state: 'cancelled', created_at: attempt.started_at,
+      workflow: { name: 'software', steps: ['build'], current_step: 0 }, runs: [attempt] };
+    controller.queue.save(activityJob);
+    const activityFolder = join(state, 'jobs', activityJob.id, attempt.id);
+    mkdirSync(activityFolder, { recursive: true, mode: 0o700 });
+    const writer = new ActivityWriter(activityFolder, { job: activityJob.id, attempt: attempt.id, phase: 'build', harness: 'pi' });
+    writer.parser.write(Buffer.from(JSON.stringify({type:'tool_execution_end',toolName:'read',result:'PRIVATE_PACKAGE_SENTINEL'})+'\n'));
+    await writer.finish(false);
+    const activityPage = await (await fetch(origin + '/api/v1/jobs/job_ab/runs/run_ab/activity?after=1', {
+      headers: { Authorization: `Bearer ${readFileSync(join(state, 'worker.token'), 'utf8').trim()}` },
+    })).json();
+    const activityCLI = await new Promise((resolve, reject) => {
+      const child = spawn(bins[0], ['activity', 'job_ab', 'run_ab', '--state', state, '--after', '1', '--follow'], { cwd: dir, env: environment });
+      let out = '', err = '';
+      child.stdout.on('data', bytes => out += bytes); child.stderr.on('data', bytes => err += bytes);
+      child.on('error', reject); child.on('close', code => code === 0 ? resolve(JSON.parse(out)) : reject(new Error(err)));
+    });
+    assert.deepEqual(activityCLI.events, activityPage.events);
+    assert.deepEqual(activityCLI.events.map(event => event.kind), ['tool_completed', 'phase_error']);
+    assert.equal(activityCLI.next_cursor, 3); assert.equal(activityCLI.terminal, true);
+    assert(!JSON.stringify(activityCLI).includes('PRIVATE_PACKAGE_SENTINEL'));
+    writeFileSync(join(state, 'factory.json'), originalConfigBytes);
+
     assert.deepEqual(await (await fetch(origin + '/api/v1/definitions')).json(), definition);
     const response = await fetch(origin);
     assert.equal(response.status, 200);

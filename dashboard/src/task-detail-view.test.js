@@ -5,6 +5,78 @@ import { JSDOM } from 'jsdom';
 import { createServer } from 'vite';
 import { githubDeliveryProvider } from '../../factory/providers/github-delivery.mjs';
 
+test('Result activity follows executed attempts across Review approval, queued work and active phases', async t => {
+  const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
+  const prior = new Map(), requests = [];
+  const stamp = '2026-09-28T00:00:00.000Z';
+  const fetch = async path => {
+    const match = path.match(/\/runs\/([^/]+)\/activity\?/);
+    if (!match) return { ok: true, json: async () => [] };
+    requests.push(match[1]);
+    return { ok: true, json: async () => ({ job: 'job_activity', attempt: match[1], status: 'available',
+      terminal: true, has_more: false, completion_observed: true, next_cursor: 1,
+      events: [{ cursor: 1, kind: 'message_completed', at: stamp }] }) };
+  };
+  for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document,
+    navigator: dom.window.navigator, IS_REACT_ACT_ENVIRONMENT: true, fetch })) {
+    prior.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+  }
+  const server = await createServer({ server: { middlewareMode: true, ws: false }, appType: 'custom' });
+  const { createRoot } = await import('react-dom/client'), root = createRoot(document.getElementById('root'));
+  t.after(async () => {
+    await act(() => root.unmount()); await server.close(); dom.window.close();
+    for (const [key, descriptor] of prior) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key];
+    }
+  });
+  const { TaskDetail } = await server.ssrLoadModule('/src/task-detail.jsx');
+  const build = { id: 'run_build', command: 'build', state: 'succeeded', started_at: stamp, outcome: 'complete' };
+  const review = { id: 'run_review', command: 'review', state: 'succeeded', started_at: stamp,
+    outcome: 'complete', summary: 'Completed Review report' };
+  const handoff = { id: 'run_handoff', command: 'handoff', state: 'awaiting_approval', reviewed_run_id: review.id };
+  const job = { id: 'job_activity', repository: 'app', state: 'awaiting_approval', task: { title: 'Activity fixture' },
+    workflow: { name: 'software', steps: ['build', 'verify', 'review', 'handoff'], current_step: 3 },
+    runs: [build, review, handoff] };
+  const render = () => act(() => root.render(createElement(TaskDetail, { job, loaded: true, csrfToken: 'fixture' })));
+  const activity = () => document.querySelector('[aria-label="Current result"] [aria-label="Execution activity"]');
+  const expectAttempt = (id, label) => {
+    assert.match(activity().textContent, new RegExp(`Attempt${id}`));
+    assert.equal(activity().querySelector('h3').textContent, label);
+    assert.match(activity().textContent, /Message completed/);
+  };
+  await render();
+  assert.match(document.querySelector('[aria-label="Current result"]').textContent, /Completed Review report/);
+  expectAttempt('run_review', 'Activity · Review · Completed');
+  assert(!requests.includes('run_handoff'), 'the approval placeholder is never read');
+  const history = document.querySelector('[role="tabpanel"][id$="history"]');
+  assert.match(history.querySelector('[aria-label="Execution activity"]').textContent, /Attemptrun_build/);
+
+  job.state = 'running'; Object.assign(handoff, { state: 'running', started_at: stamp });
+  await render(); expectAttempt('run_handoff', 'Activity · Handoff · Running');
+  for (const state of ['failed', 'cancelled', 'interrupted']) {
+    Object.assign(handoff, { state, completed_at: stamp }); job.state = 'queued';
+    job.runs = [build, review, handoff, { id: `run_retry_${state}`, command: 'build', state: 'queued' }];
+    await render(); expectAttempt('run_handoff', `Activity · Handoff · ${state[0].toUpperCase()}${state.slice(1)}`);
+    assert(!requests.includes(`run_retry_${state}`), 'queued retries cannot hide the last execution');
+  }
+  const queued = { id: 'run_initial', command: 'build', state: 'queued' };
+  job.runs = [queued]; job.workflow.current_step = 0;
+  await render();
+  assert.match(document.querySelector('[aria-label="Current result"]').textContent, /No attempt has started/);
+  assert(!requests.includes('run_initial'), 'initial queued work has no fabricated activity');
+  Object.assign(queued, { state: 'cancelled', completed_at: stamp }); job.state = 'cancelled';
+  await render();
+  assert.match(document.querySelector('[aria-label="Current result"]').textContent, /No attempt has started/);
+  assert(!requests.includes('run_initial'), 'cancellation before start is not execution');
+  Object.assign(queued, { state: 'running', started_at: stamp }); job.state = 'running';
+  await render(); expectAttempt('run_initial', 'Activity · Build · Running');
+  queued.state = 'succeeded'; queued.outcome = 'complete';
+  job.runs.push({ id: 'run_verify', command: 'verify', state: 'running', started_at: stamp });
+  job.workflow.current_step = 1;
+  await render(); expectAttempt('run_verify', 'Activity · Verify · Running');
+});
+
 test('failed review offers explicit revision, preserves denied/stale feedback, and labels recorded versus unknown history', async t => {
   const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost/'}), prior=new Map();
   for(const [key,value] of Object.entries({window:dom.window,document:dom.window.document,navigator:dom.window.navigator,IS_REACT_ACT_ENVIRONMENT:true,fetch:async()=>({ok:true,json:async()=>[]})})) {
@@ -36,7 +108,7 @@ test('failed review offers explicit revision, preserves denied/stale feedback, a
   assert(document.querySelector('[aria-label="Issue details"]'));
   assert.match(document.querySelector('[aria-label="Issue details"]').textContent,/a{40}/);
   const button=name=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===name);
-  assert.match(document.body.textContent,/Agent-reported text/);
+  assert.match(document.body.textContent,/Run summary, including executor diagnostics/);
   assert.equal(document.querySelector('a[href="https://github.com/example/app/pull/42"]'),null,'a model summary does not create a verified PR action');
   assert(button('Request changes'));assert(![...document.querySelectorAll('button')].some(b=>b.textContent.startsWith('Approve')));
   await click(button('Request changes'));

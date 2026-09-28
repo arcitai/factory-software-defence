@@ -312,6 +312,17 @@ body { font-size: 14px; }
 .task-detail-main [role="tablist"] { gap: 22px; margin-bottom: 24px; }
 .task-detail-main [role="tab"] { font-size: 13px; padding-top: 8px; padding-bottom: 10px; }
 .task-result { border: 0; border-left: 1px solid var(--border); border-radius: 0; background: transparent; box-shadow: none; padding: 0 0 0 20px; margin-left: 11px; }
+/* Detail text must contribute a bounded minimum width, including unbroken report paths. */
+.task-detail-main [role="tabpanel"] { min-width: 0; overflow-wrap: anywhere; }
+.task-detail-main [role="tabpanel"] .break-words { overflow-wrap: anywhere; }
+.execution-activity { min-width: 0; overflow-wrap: anywhere; }
+.execution-activity summary { cursor: pointer; color: var(--muted-foreground); }
+.execution-activity details > :not(summary) { margin-top: 8px; }
+.activity-events { max-height: 256px; overflow-y: auto; }
+.activity-events li { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding-block: 4px; }
+.activity-facts { display: grid; gap: 8px; }
+.activity-facts dt { color: var(--muted-foreground); }
+.activity-facts dd { margin: 0; }
 .task-result > h2 { font-size: 14px; }
 .trusted-delivery-action { min-width: 0; overflow-wrap: anywhere; }
 .delivery-action-button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: left; justify-content: flex-start; height: auto; min-height: 36px; line-height: 20px; }

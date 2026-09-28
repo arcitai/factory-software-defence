@@ -88,14 +88,14 @@ export function configAt(state) {
   }
   return config;
 }
-export async function api(state, path, body, method, { timeoutMs = API_TIMEOUT_MS } = {}) {
+export async function api(state, path, body, method, { timeoutMs = API_TIMEOUT_MS, signal } = {}) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_API_TIMEOUT_MS)
     throw new Error(`API timeout must be between 1 and ${MAX_API_TIMEOUT_MS} milliseconds`);
   const config = configAt(state);
   const response = await fetch(`http://127.0.0.1:${config.port}${path}`, {
     method: method || (body === undefined ? 'GET' : 'POST'),
     headers: { Authorization: `Bearer ${readFileSync(join(state, 'worker.token'), 'utf8').trim()}`, 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs),
+    body: body === undefined ? undefined : JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`Controller ${response.status}: ${text}`);

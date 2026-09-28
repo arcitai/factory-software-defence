@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { followActivity } from '../factory/activity-follow.mjs';
 import { harnessPreset, parseRoleDefinition, ROLE_CAPABILITIES } from '../factory/role-definition.mjs';
 import { inspectDefinition, previewDefinition, previewRollback } from '../factory/definition-store.mjs';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, openSync, closeSync, rmSync, renameSync, realpathSync } from 'node:fs';
@@ -29,6 +30,7 @@ const args = process.argv.slice(2), command = args.shift() || 'help';
 const positional = [], flags = {};
 for (let i=0;i<args.length;i++) {
   if (args[i].startsWith('--')) {
+    if (args[i] === '--follow') { flags.follow = true; continue; }
     if (!args[i+1] || args[i+1].startsWith('--')) throw new Error(`Value required for ${args[i]}`);
     flags[args[i].slice(2)] = args[++i];
   } else positional.push(args[i]);
@@ -231,6 +233,18 @@ try {
     const snapshot=await api(state,'/api/v1/status');
     console.log(JSON.stringify(command==='automations'?snapshot.automation_control:snapshot[command],null,2));
   }
+  else if(command==='activity') {
+    const [job, attempt] = positional;
+    if (!/^job_[a-f0-9]+$/.test(job || '') || !/^run_[a-f0-9]+$/.test(attempt || '')) throw new Error('activity requires JOB_ID RUN_ID; inspect status for exact identities');
+    const controller = new AbortController(), interrupt = () => controller.abort();
+    process.once('SIGINT', interrupt); process.once('SIGTERM', interrupt);
+    try {
+      await followActivity({ job, attempt, after: flags.after, limit: flags.limit || '50', follow: flags.follow === true,
+        interval: Number(flags['poll-ms'] || 2000), signal: controller.signal,
+        request: (path, signal) => api(state, path, undefined, undefined, { timeoutMs: 5000, signal }),
+        output: page => console.log(JSON.stringify(page)), unavailable: page => console.error(JSON.stringify(page)) });
+    } finally { process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt); }
+  }
   else if(command==='status') { const snapshot=await api(state,'/api/v1/status');delete snapshot.csrf_token;console.log(JSON.stringify(snapshot,null,2)); }
   else if(command==='doctor') {
     const config=configAt(state),dockerVersion=run('docker',['info','--format','{{.ServerVersion}}']),imageStatus=inspectImageInstallation(state,config);
@@ -383,6 +397,8 @@ Compatibility executable: software-defence-factory (same runtime and state)
   run --file task.md | --issue URL         Submit software (default), or --workflow defence
        [--source-ref REF]                 Pin a configured-repository ref before admission
   incident --file incident.json            Submit a private, read-only incident draft
+  activity JOB_ID RUN_ID [--after CURSOR] [--limit 1..128]
+    [--follow] [--poll-ms 1000..30000]      Bounded JSON activity; exact-attempt reconnect
   approve JOB_ID | cancel JOB_ID           Review gate / stop this attempt
   publish JOB_ID                          Publish/reconcile the accepted candidate as one draft PR
   abandon-delivery JOB_ID --branch-sha SHA Resolve an inspected pre-write collision; keep the remote branch
