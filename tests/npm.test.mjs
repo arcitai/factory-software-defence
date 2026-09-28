@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,readFileSync,readdirSync,rmSync,existsSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readFileSync,readdirSync,rmSync,existsSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -23,6 +23,8 @@ test('real tarball installs offline, carries yaml and documentation, and exports
  const state=join(scratch,'service-state');mkdirSync(state);
  const runtime=pinInstalledRuntime(state,{root:installed,version:packed.version});
  const manifest=serviceManifest({state,config:{repo:root,node:process.execPath},root:installed,runtime});
+ const unit=join(scratch,manifest.unit);writeFileSync(unit,manifest.definition);
+ execFileSync('systemd-analyze',['--user','verify',unit],{encoding:'utf8'});
  assert.equal(existsSync(join(runtime,'node_modules','.bin')),false);
  execFileSync(manifest.verification[0],manifest.verification.slice(1),{encoding:'utf8'});
  const cli=join(installed,'bin/software-defence-factory.mjs');

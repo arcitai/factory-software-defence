@@ -13,7 +13,7 @@ const serviceHash=value=>createHash('sha256').update(value).digest('hex').slice(
 const serviceID=(state,repo)=>`factory-native-${serviceHash(`${state}\n${repo}`)}`;
 const quote=value=>`"${String(value).replaceAll('\\','\\\\').replaceAll('"','\\"').replaceAll('$','$$').replaceAll('%','%%').replaceAll('\n','\\n')}"`;
 const validPort=port=>Number.isSafeInteger(port)&&port>=1024&&port<=65535;
-const unitText=({state,repo,node,runtime,port,verification})=>`[Unit]\nDescription=Factory native Codex Inbox\nStartLimitIntervalSec=0\n\n[Service]\nType=exec\nWorkingDirectory=${quote(repo)}\nExecStartPre=${verification.map(quote).join(' ')}\nExecStart=${[node,join(runtime,'bin/software-defence-factory.mjs'),'serve','--state',state,'--port',String(port)].map(quote).join(' ')}\nRestart=on-failure\nRestartSec=10\nTimeoutStopSec=45\nKillMode=control-group\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`;
+const unitText=({state,repo,node,runtime,port,verification})=>`[Unit]\nDescription=Factory native Codex Inbox\nStartLimitIntervalSec=0\n\n[Service]\nType=exec\nExecStartPre=${verification.map(quote).join(' ')}\nExecStart=${[node,join(runtime,'bin/software-defence-factory.mjs'),'serve','--state',state,'--port',String(port)].map(quote).join(' ')}\nRestart=on-failure\nRestartSec=10\nTimeoutStopSec=45\nKillMode=control-group\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`;
 function callSystemctl(args) {
   return execFileSync('systemctl',['--user',...args],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000}).trim();
 }
@@ -203,9 +203,10 @@ async function serviceAction(action,statePath,port) {
   if(action==='stop')callSystemctl(['stop',record.unit]);
   if(action==='restart')callSystemctl(['restart',record.unit]);
   if(action==='remove') {
-    callSystemctl(['disable','--now',record.unit]);
+    callSystemctl(['disable',...(before.active?['--now']:[]),record.unit]);
     rmSync(record.file);
     rmSync(recordPath);
+    rmSync(join(state,'maintenance.json'),{force:true});
     callSystemctl(['daemon-reload']);
     return {installed:false,state,preserved:true,runtime:record.runtime};
   }
