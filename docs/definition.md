@@ -255,7 +255,7 @@ The binding contract supports at most 16 named, keyless HTTP(S) endpoints. URLs
 with user information, queries, fragments, escapes or malformed syntax are refused.
 Model identifiers cannot contain shell syntax, whitespace or traversal. Context
 must be 1,024–1,048,576 tokens; output must be 1–32,000 and smaller than context.
-The output ceiling follows pinned Pi 0.73.1's simple chat adapter. Range acceptance
+The output ceiling remains 32,000 with the pinned Pi 0.87.1 chat adapter. Range acceptance
 is **not** evidence of server allocation or useful task capacity. Only the three
 shown compatibility fields are supported. Authentication, custom headers, shell
 credential commands, arbitrary request fields, sampling overrides, custom thinking
@@ -271,7 +271,7 @@ The optional binding `reasoningEffort` accepts only these OpenAI-style requests:
 | `low`, `medium`, `high` | `reasoning_effort` set to that exact value |
 
 This is a request choice, not a measured thinking budget or quality claim. The
-pinned Pi 0.73.1 adapter uses a fixed internal `thinkingLevelMap.off="none"` for
+pinned Pi 0.87.1 adapter uses a fixed internal `thinkingLevelMap.off="none"` for
 `none`; `--thinking off` alone does **not** disable a server's default thinking.
 Low/medium/high use the corresponding explicit Pi thinking level. Existing
 bindings with no choice retain their omitted request and private policy shape;
@@ -295,7 +295,12 @@ For the selected local role only, the executor creates a private single-model
 `models.json` and deterministic launcher, mounted read-only at `/factory-local`.
 `PI_CODING_AGENT_DIR` selects that directory; HOME is still ephemeral. The launcher
 checks explicit provider/model argv, removes inherited credential/override inputs
-and propagates Pi JSON provider failures even if Pi exits zero. The registry uses
+and requires a completed JSON turn even if Pi exits zero. Explicit successful
+retry/overflow recovery can clear an assistant error; failed/aborted compaction,
+exhausted retries, malformed/truncated JSONL and missing completion remain failures.
+The original event stream is retained in the bounded private log. The launcher also
+passes the fixed placeholder as Pi's supported runtime `--api-key`, avoiding a
+credential-store refresh against the read-only registry. No credentials are added. The registry uses
 Pi's required fixed non-secret key placeholder (`factory-local-keyless`), which may
 be sent as a bearer value; this is not endpoint authentication. No host home, provider
 catalog or credential store is mounted. Repository files cannot replace this mount.
@@ -308,3 +313,9 @@ automatic skills/extensions/templates but explicitly adds `--skill /factory-skil
 preserving the six packaged skills. Recommendations remain guidance, not per-role
 access controls. Build still returns to Factory's independent Review and operator
 handoff; no duplicate review workflow is launched.
+
+
+For long tool-use runs, use the [context-boundary qualification and image migration
+recipe](setup.md#local-context-budget-and-worker-image-0152-100). Declared context
+and output budgets are the same shared binding fields in CLI, API and dashboard;
+there are no Factory compaction knobs or automatic larger-window/model choices.

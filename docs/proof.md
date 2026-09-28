@@ -30,6 +30,270 @@ adoption preserved histories. Those results apply to 0.11.0, not later revisions
 | [Profile](../tests/execution-profile.test.mjs) and [delivery tests](../tests/delivery.test.mjs) | Exact writer versions, unchanged retained records, current provenance/policy/revision guards and unsupported writer rejection | Controlled records/providers do not prove live account writes. |
 | [Service](../tests/services.test.mjs) and [source admission tests](../tests/source-admission.test.mjs) | Stable launch/update contracts and retained-source behavior | Does not prove a running installation's service/image/history preservation. |
 
+### Pi context-boundary first slice (0.15.2, #100)
+
+This candidate pins the standard worker to **`@earendil-works/pi-coding-agent@0.87.1`**
+with engine enforcement (**Node >=22.19.0**), keeping **Codex 0.156.1** and the base
+image digest unchanged. Registry metadata identified the maintained namespace and
+repository; the old `@mariozechner/pi-coding-agent` remains at 0.73.1. The installed
+0.87.1 package reports that version and includes an npm shrinkwrap. Its registry
+integrity is
+`sha512-m8ArJUtVcQMSe1lLE/Ei7vX/JV7O39sWmWBsXV2NOU70F0qCp8GubA24pT3LnwTmM6LL2xV80/h6sQg85n69ew==`.
+The standard image tag advances to `software-defence-factory-job:0.4.0`; it is not
+an instruction to change an active installation's frozen image.
+
+Primary-source audit: the [pinned changelog](https://github.com/earendil-works/pi/blob/v0.87.1/packages/coding-agent/CHANGELOG.md)
+records between-tool threshold compaction in 0.84.4, trailing-tool accounting in
+0.86.0, and context projection/recovery changes in 0.87.0. The
+[pinned session implementation](https://github.com/earendil-works/pi/blob/v0.87.1/packages/coding-agent/src/core/agent-session.ts)
+and [compaction documentation](https://github.com/earendil-works/pi/blob/v0.87.1/packages/coding-agent/docs/compaction.md)
+place the check after tools and before the next assistant request; installed
+0.73.1 instead checks after `agent_end`/before another prompt. Both actual packages
+emit `compaction_*` events; the new stream also exposes retry-aware `agent_end`
+and `agent_settled`. This is an upstream compaction implementation, not a second
+Factory agent loop. Ollama's [0.33.3 prompt construction](https://github.com/ollama/ollama/blob/v0.33.3/server/prompt.go)
+can truncate earlier messages while retaining system/latest messages. That source
+inspection **does not establish** the cause of #83's `no user query found in messages`.
+
+The actual installed CLIs were exercised on Node 22.23.3/npm 10.9.9 with a disposable
+loopback HTTP chat-completions server and isolated HOME, working directory and
+read-only selected registry. No Ollama server or real model was used. The fixture
+model `fixture-context`, character/4 token accounting and 65,536 allocation are
+**synthetic transport budgets**, with 8,192 output, upstream default 16,384 reserve
+and 20,000 recent-token retention. No private installation, usage database or
+production analytics receives those counts.
+
+| Controlled actual-CLI case | Observed result | Boundary |
+| --- | --- | --- |
+| 0.73.1 baseline, seven requested reads | Five reads; next request exceeded the fixture allocation (about 59,241 input + 8,192 output); `agent_end` preceded compaction; launcher failed, no report | Reproduces ordering, not the original provider's exact error |
+| 0.87.1 same seven-read workload | Threshold compaction, resumed reads and report write; ten requests including one summary; exit 0 | All requests fit the fixture allocation; summary content is scripted |
+| Long aggregate, 24 reads | Multiple compactions and report; final JSON record exceeds 1 MiB; exit 0 | Demonstrated why the old 1 MiB parser limit rejected otherwise recovered long runs |
+| Transient HTTP 500 | Explicit bounded retry, later compaction/tool use/report; exit 0 | No error event discarded or model changed |
+| Explicit context overflow after three reads | Overflow summary/retry, resumed work and later threshold compaction; exit 0 | Recovery depends on summarizable history |
+| Overflow after only one read | Exit nonzero, no summary/report, input file retained | Insufficient history is not represented as successful recovery |
+| Terminal summarization/provider errors | Exit nonzero; no report or fallback; input retained | Upstream may continue after a compaction failure; launcher keeps that failure fatal |
+| Persistent HTTP 500 | Four provider requests (initial + three retries), then nonzero | Per-case process-group deadline 45 seconds, request bound 24 (40 for aggregate) |
+
+The [wire fixture](../tests/pi-local-adapter.test.mjs) also passes against both
+pins for independent role contexts, exact model/provider/output, all supported
+reasoning requests, unsupported reasoning, unavailable model and registry mismatch.
+Pi 0.87.1 initially failed against the read-only registry because credential refresh
+tried to create/lock `auth.json`. Passing the existing fixed non-secret placeholder
+via supported `--api-key` resolves that compatibility issue without creating a
+credential store or making the registry writable. No local registry schema or
+CLI/API/dashboard setting was added. Cloud credential selection is unchanged.
+
+The [completion tests](../tests/pi-completion.test.mjs) require explicit recovery
+and a successful terminal assistant/aggregate (plus settlement on the new stream).
+They reject failed/aborted compaction even followed by success, retry exhaustion,
+unfinished recovery, malformed/oversized/truncated JSONL, missing completion and
+length/abort exits. Parsing permits at most 8 Mi characters per record, separately
+from the existing bounded retained log. The [24-read native regression](../tests/pi-context.test.mjs)
+failed with the old limit and passes with the bounded larger limit. Larger streams
+still fail closed. Raw error events remain in the output stream; production Pi
+usage is still unknown (#51).
+
+Reproduce from the exact candidate source with its locked dependencies:
+
+```sh
+npm ci --ignore-scripts
+# Isolated install; use an executable filesystem (some workers mount /tmp noexec).
+npm install --prefix .tmp/pi-current --no-audit --no-fund @earendil-works/pi-coding-agent@0.87.1
+PATH="$PWD/.tmp/pi-current/node_modules/.bin:$PATH" npm run qualify:pi
+npm install --prefix .tmp/pi-baseline --no-audit --no-fund @mariozechner/pi-coding-agent@0.73.1
+PATH="$PWD/.tmp/pi-baseline/node_modules/.bin:$PATH" FACTORY_PI_BASELINE=1 FACTORY_REQUIRE_PI=1 \
+  node --test tests/pi-context.test.mjs
+npm run build:dashboard
+PATH="$PWD/.tmp/pi-current/node_modules/.bin:$PATH" npm run check
+```
+
+`qualify:pi` requires the exact pin and fails rather than silently skipping when
+unavailable. Ordinary `check` reports native Pi tests skipped if the pin is absent.
+It does not download Pi automatically. Baseline mode requires an explicit flag and
+asserts the old long-run failure. Fixtures create/remove only their own temporary
+data; production unfinished-checkout preservation remains the existing executor's
+responsibility and is covered by container/recovery regressions.
+
+For Lead's exact-image transport rerun, after building the reviewed worker image,
+mount this candidate (including locked source dependencies) read-only. No published
+ports, credentials or host inference are needed for loopback transport:
+
+```sh
+docker run --rm --read-only --network none --cap-drop=ALL \
+  --security-opt=no-new-privileges --memory=2g --cpus=2 --pids-limit=128 \
+  --tmpfs /tmp:rw,nosuid,size=512m \
+  --mount "type=bind,source=$PWD,target=/candidate,readonly" --workdir /candidate \
+  --env FACTORY_REQUIRE_PI=1 --entrypoint node REVIEWED_IMAGE_ID \
+  --test tests/pi-local-adapter.test.mjs tests/pi-context.test.mjs
+```
+
+Final worker checks passed: `npm run build:dashboard`, then `npm run check` with
+**436 runtime/package tests and 63 dashboard tests**, no failures or skips, including
+the candidate tarball install/invocation. Dedicated `qualify:pi` passed nine native
+0.87.1 cases; explicit 0.73.1 baseline/registry compatibility passed two cases.
+The completion protocol suite passed 34 cases. These are Node 22.23.3 source and
+controlled transport results; protected Node 22/24 CI remains Lead-owned. No Docker CLI,
+local inference endpoint or live-model allocation was available to this worker.
+Lead still owns exact installed CLI/API/Docker proof, one bounded actual local
+inference Factory fixture, independent Review, protected CI/release and idle image
+adoption. There is no 64k/larger-window quality, latency or memory comparison here;
+actual inference quality/latency/peak memory and hardware cost remain null. No
+claim is made for long real repository delivery, resolution of #83's provider
+root cause, #51 usage, #42 unfinished-checkpoint reuse or broader #69/#100 tuning.
+See [setup/migration/rollback](setup.md#local-context-budget-and-worker-image-0152-100).
+
+### Pi retained batch revision (0.15.2, #100)
+
+The reviewed first slice above was **not accepted or delivered**. Lead reported
+that the exact installed image passed synthetic/installed checks but the actual
+65,536 local allocation failed after six 44,629-byte reads in one assistant batch,
+even after a successful summary. Those external results are operator-supplied;
+this worker did not access that private job or host. The earlier sequential fixture
+and its historical counts above remain evidence of that earlier slice only.
+
+This revision bundles a local-only adapter using Pi 0.87.1's supported
+`registerProvider` stream wrapper and `session_before_compact` hook. Pi still owns
+cut selection, summaries, retry limits and the agent loop. Only tool-result text
+in request copies is shortened. Calls/arguments, result IDs/order, system/tool
+instructions and the exact original task survive; raw events and source files
+are untouched. Shortened results carry original byte length and explicit bounded
+re-read guidance. The unchanged bounded diagnostic retention still applies.
+The summary preparation hook projects copies before upstream serialization;
+the provider wrapper checks **every actual generation and summary payload**.
+
+The conservative request bound is serialized UTF-8 bytes + 1,024 template
+headroom + 64 per message/tool declaration + the **full configured output**.
+It includes schemas, arguments and escaping, unlike the old characters/4 fixture.
+This is an estimate for text tokenization, not measured usage or a guarantee for
+arbitrary endpoint chat templates/tokenizers. Summary preparation additionally
+reserves 8,192 bytes for pinned upstream templates and previous-summary text;
+the exact final wire guard remains authoritative. When fixed content cannot fit,
+the adapter exits before transport, retaining unfinished files. It neither drops
+instructions nor changes models/allocations. It can be intentionally conservative;
+useful recovery with an actual model still needs Lead's unchanged fixture.
+
+`tests/pi-context-batch.test.mjs` uses the **actual pinned CLI**, six distinct
+44,629-byte/551-line files in a single assistant response, scripted pre-burst
+usage of 6,108 input tokens, and an independent byte-budget wire oracle. It checks:
+
+| Case | Controlled result |
+| --- | --- |
+| Unprotected 0.87.1 | Summary succeeds, then retained six-result request projects to about 282,363 before 8,192 output; fixture rejects it. Pi itself exits 0 despite the provider error. No report. |
+| Bundled adapter, 65,536 / 8,192 | Summary, six paired excerpts, bounded re-read of an omitted line, report and successful completion; all requests fit. |
+| Bundled adapter, 16,384 / 1,024 | Same batch succeeds with two summaries and resumed useful tools. |
+| 4,096 / 1,024 | Required fixed prompt/schema cannot fit; zero provider requests, nonzero exit. |
+| Failed summary | Upstream continues tools and writes the scripted report; launcher still returns nonzero. |
+| Terminal provider failure | Nonzero exit, no report/fallback; input files intact. |
+| Oversized required tool arguments | Explicit budget failure; actual unfinished write is preserved, no fabricated report. |
+
+This proves the retained-group boundary in the deterministic transport. It does
+**not** prove Ollama removed the user message or reproduce its exact 500 error.
+Raw tool events retain all six complete results; wire assertions verify original
+task, system and every tool ID/order, with no automatic repository extension load.
+Each case has a 45-second process-group deadline and 16-request bound. Synthetic
+responses, summaries, usage and reports never enter production analytics.
+
+`qualify:pi` now includes this seven-case batch regression alongside the nine
+existing protocol/transport cases. The sequential suite uses separately scripted
+threshold usage and independent byte-based request bounds; its old 0.73.1 baseline
+retains the original characters/4 oracle. Reproduce the baseline with only
+`FACTORY_PI_BASELINE=1 FACTORY_REQUIRE_PI=1 node --test tests/pi-context.test.mjs`
+on a PATH selecting 0.73.1. It invokes the old CLI directly and applies the existing
+completion parser; the new protected launcher explicitly requires 0.87.1.
+The exact-image Docker command above should also include
+`tests/pi-context-batch.test.mjs`.
+
+The controller now mounts the two bundled adapter modules read-only beside the
+selected registry. Automatic extension discovery remains disabled; only that
+explicit bundled extension is loaded. Missing adapter files or unsupported Pi
+versions fail closed. No new profile field or UI control was added, and the
+admitted role command/config/image remains immutable. Historical 0.15.0/0.15.1
+records stay readable; running the new local launcher on an old image requires
+an explicit idle image migration, never an automatic image rewrite.
+
+Worker validation on Node 22.23.3/npm 10.9.9 passed: `npm run build:dashboard`,
+`npm run check` (**446 runtime/package + 63 dashboard tests**, no skips),
+`npm run qualify:pi` (**16 actual-CLI synthetic cases**), and the explicit
+0.73.1 baseline (**one expected-failure regression**). The full suite includes
+Unicode/escaping budgets, malformed tool-pair rejection, read-only adapter mounts,
+missing-adapter rejection, packaging and existing recovery/profile tests. Initial
+full-check startup failed because root dependencies were absent; locked
+`npm ci --ignore-scripts` restored them before the passing run.
+No Docker CLI or local model endpoint is available here. Lead must rebuild the
+exact image, rerun installed CLI/API/Docker proof and the unchanged real local
+fixture, then obtain independent aggregate Review and fresh acceptance. Larger
+windows, quality, latency, memory, hardware cost, #51 and broader #69/#100 remain
+unqualified; no local product delivery is claimed.
+
+### Pi output allowance revision (0.15.2, #100)
+
+The retained-batch candidate above, reviewed checkpoint `d7cc323`, was also
+**rejected, not delivered** after Lead's unchanged actual local fixture ended
+with `stopReason: length` and one output token after successful compaction.
+Those private-model observations are operator-supplied. The earlier synthetic
+passes did not enforce output allowance and therefore missed this boundary.
+
+This worker reproduced it with the actual installed official **Pi 0.87.1** on
+Node **22.23.3**, isolated HOME/registry/workspace and loopback transport. Before
+the adapter repair, the tightened six-read fixture failed: generation allowances
+were **8192, 8192, 1**, with a bounded **8192** summary between the last two.
+The final request's independent input budget was **57,339**; the endpoint returned
+`length` instead of a complete scripted tool call. This proves output starvation
+in the transport path, not the historical Ollama 500's cause.
+
+Audited installed `pi-ai/dist/api/simple-options.js` and
+`pi-ai/dist/api/openai-completions.js` agree with the pinned primary sources:
+[`buildBaseOptions`](https://github.com/earendil-works/pi/blob/v0.87.1/packages/ai/src/api/simple-options.ts)
+clamps against native history, including a 4,096 safety margin and minimum one
+token; [`streamSimple`/`stream`](https://github.com/earendil-works/pi/blob/v0.87.1/packages/ai/src/api/openai-completions.ts)
+construct the request before invoking `onPayload`. Factory's existing projection
+therefore ran too late to affect that clamp. The repair captures the caller's
+allowance before `streamSimple`, restores the selected output field in the
+request copy, then measures/projects that final payload before transport.
+Generation defaults to the admitted binding; explicit upstream summary limits
+are preserved. Missing/ambiguous output fields, invalid or excessive allowances,
+and unsupported reasoning-budget formats fail closed. Supported effort selection
+is unchanged and shares the output ceiling. No history, allocation, model,
+upstream compaction loop or completion/failure guard is changed.
+
+The actual-CLI batch fixture now enforces a deterministic output allowance
+(serialized response UTF-8 bytes/4, synthetic units only) as well as the existing
+conservative input bound. An insufficient allowance produces `length`, never a
+complete call. Every successful generation must request exactly the selected
+output. Exact system/policy, original task, tool schemas and paired IDs/names/
+arguments are asserted; raw six-file results remain intact with re-read guidance
+in projections. Each process still has a 45-second deadline and 16-request bound.
+
+| Controlled six-read configuration | Wire result after repair |
+| --- | --- |
+| 65,536 / 8,192, reasoning none | Post-summary input budget <=57,344, generation output 8,192; re-read/report succeeds |
+| 65,536 / 16,384 | Generation output 16,384, summary still 8,192; re-read/report succeeds |
+| 32,768 / 4,096, `max_completion_tokens`, reasoning high | Correct alternate field/effort, input <=28,672; re-read/report succeeds |
+| 16,384 / 1,024 | Two summaries, bounded requests, re-read/report succeeds |
+| Terminal length/provider/summary failures, 4k fixed-content overflow | Nonzero launcher exit; summary failure stays fatal even if Pi later writes a report |
+
+The oversized-required-argument control uses 32,000 output so its scripted
+70,000-character write itself fits the fixture response allowance; subsequent
+input protection fails and preserves that unfinished file. Unit checks reject
+ambiguous fields/unsafe reasoning limits and preserve both 8,192 turn-prefix and
+13,107 history-summary caps under a larger generation limit.
+
+Reproduction uses the existing isolated install and `npm run qualify:pi` commands
+above (now **19 actual-CLI synthetic cases**, including ten grouped-batch cases).
+Worker validation passed `npm run build:dashboard`, then `npm run check`
+(**451 runtime/package + 63 dashboard tests**, no failures/skips), the dedicated
+19-case qualification, 118 focused budget/completion/profile/recovery tests, and
+the explicit Pi 0.73.1 expected-failure baseline. Package checks install and invoke
+the candidate tarball. No dependency, dashboard source, CI or image-pin change was
+needed for this output-allowance repair; the retained migration stays intact.
+The exact-image Docker command must include `tests/pi-context-batch.test.mjs`.
+Docker and a local model endpoint are unavailable in this worker; these are actual
+package/CLI tests, **not an installed-image or actual-inference qualification**.
+Lead must rebuild the exact image, rerun installed CLI/API/Docker proof and repeat
+the unchanged real fixture. Factory owns fresh independent aggregate Review and
+acceptance. No local quality/delivery claim, larger-window tuning or production
+adoption is made; inference quality, latency, memory and hardware cost remain null.
+
 ### Bounded release-download freshness (#83)
 
 The 0.15.1 source candidate requests fresh npm metadata for the already-selected

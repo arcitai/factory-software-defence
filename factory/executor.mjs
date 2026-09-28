@@ -110,6 +110,8 @@ async function container(mode, input, command, options = {}) {
       mkdirSync(localDirectory, { mode: 0o700 });
       const { reference, ...binding } = config.localBinding;
       writeFileSync(join(localDirectory, 'launch.mjs'), readFileSync(join(ROOT, 'factory/pi-local-launch.mjs')), { mode: 0o600, flag: 'wx' });
+      for (const file of ['pi-context-extension.mjs', 'pi-context-budget.mjs'])
+        writeFileSync(join(localDirectory, file), readFileSync(join(ROOT, 'factory', file)), { mode: 0o600, flag: 'wx' });
       writeFileSync(join(localDirectory, 'models.json'), JSON.stringify(localRegistry(binding)), { mode: 0o600, flag: 'wx' });
       args.push('--mount', `type=bind,source=${localDirectory},target=${LOCAL_AGENT_DIR},readonly`,
         '--env', `PI_CODING_AGENT_DIR=${LOCAL_AGENT_DIR}`);

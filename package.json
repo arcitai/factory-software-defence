@@ -1,6 +1,6 @@
 {
   "name": "software-defence-factory",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "description": "Factory: scoped software delivery and defence investigations with isolated jobs, evidence and review",
   "type": "module",
   "license": "MIT",
@@ -57,7 +57,8 @@
     "test": "node --test tests/*.test.mjs",
     "check": "node scripts/check.mjs && node --test tests/*.test.mjs && npm run test:dashboard",
     "build:dashboard": "npm --prefix dashboard ci --ignore-scripts && npm --prefix dashboard run build",
-    "test:dashboard": "npm --prefix dashboard test"
+    "test:dashboard": "npm --prefix dashboard test",
+    "qualify:pi": "FACTORY_REQUIRE_PI=1 node --test tests/pi-local-adapter.test.mjs tests/pi-context.test.mjs tests/pi-context-batch.test.mjs"
   },
   "dependencies": {
     "yaml": "2.9.1"

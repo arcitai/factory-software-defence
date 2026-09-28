@@ -116,8 +116,8 @@ installation or retained attempt needs them.
 
 ## Protected evidence compatibility
 
-Factory 0.15.1 recognizes version-1 execution profiles emitted by native
-**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2, 0.12.0, 0.13.0, 0.13.1, 0.14.0, 0.15.0 and 0.15.1**. This is an exact allowlist in
+Factory 0.15.2 recognizes version-1 execution profiles emitted by native
+**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2, 0.12.0, 0.13.0, 0.13.1, 0.14.0, 0.15.0, 0.15.1 and 0.15.2**. This is an exact allowlist in
 `factory/execution-profile.mjs`, independent of the installed package version;
 it is not a semver range or an automatic promise for later releases. Unknown
 runtime strings, unknown profile formats and incomplete legacy acceptance
@@ -184,7 +184,7 @@ Verify evidence and cannot authorize acceptance or publication.
 
 Version 0.14.0 preserves the v1 writer only for unchanged inherited installations:
 policy bytes, candidate/check/review/acceptance bindings, mounts and credential
-rules stay compatible. Adopted role overrides use **v2 from 0.14.0, 0.15.0 and 0.15.1**, recording
+rules stay compatible. Adopted role overrides use **v2 from 0.14.0, 0.15.0, 0.15.1 and 0.15.2**, recording
 role/provider/effort and an exact selection digest. The executor verifies the
 frozen common configuration before phase selection; continuation and both delivery
 validation paths require matching protected v2 evidence and private frozen config.
@@ -254,7 +254,7 @@ The 0.15.0 compatibility audit preserves unchanged v1/v2 policy construction,
 protected checks, candidate reconstruction, read-only review and acceptance guards.
 Historical 0.14.0 v2 validation compares its actual writer version rather than
 relabeling it as the installed version. Local registry selection is a new execution
-contract: every phase of a local/hybrid attempt requires **v3 from 0.15.0 or 0.15.1** and its
+contract: every phase of a local/hybrid attempt requires **v3 from 0.15.0, 0.15.1 or 0.15.2** and its
 exact protected frozen configuration. v1/v2 cannot attest local binding fields,
 providers or a common policy containing a selected local role. A selected endpoint,
 model, limit or compatibility change invalidates the current policy; explicit
@@ -268,3 +268,17 @@ writers, frozen configuration and policy bytes. The explicit allowlists include
 both patch versions; supported v3 readback retains the original writer version
 while still comparing every execution selection, phase and policy field. It does
 not rewrite historical evidence or allow v1/v2 to attest local bindings.
+
+
+The 0.15.2 compatibility audit adds that exact writer to the v1/v2/v3 allowlists.
+It changes the local launcher's interpretation of explicit recovery/completion
+and the standard image recipe, without changing the admitted command, binding
+schema, frozen config/image/selection/policy hashes, protected checks, candidate
+reconstruction or independent review/acceptance guards. Historical 0.15.0 and
+0.15.1 evidence remains readable with its original bytes and writer version;
+readability does not qualify those images for long local tasks. Regression cases
+exercise inherited, cloud-role, hybrid and local profiles through all phases,
+reject tampered selections/images/policies and unsupported future writers, and
+verify that readback does not rewrite retained evidence. Image adoption is a
+separate idle operator action; existing attempt images are not migrated by a CLI
+update. See [the migration/rollback recipe](setup.md#local-context-budget-and-worker-image-0152-100).
