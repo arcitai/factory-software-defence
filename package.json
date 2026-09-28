@@ -37,6 +37,8 @@
     "scripts/retained-source-fixture.mjs",
     "docs/npm.md",
     "docs/setup.md",
+    "docs/architecture.md",
+    "docs/diagrams/",
     "docs/services.md",
     "docs/recovery.md",
     "docs/quickstart.md",

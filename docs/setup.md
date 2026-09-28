@@ -15,8 +15,8 @@ retaining Foundation, `adlc/`, the current Inbox design and a small npm/npx
 launcher. The migration remains in progress; native setup flow and dashboard
 integration are future work. After installing the package, run
 `factory probe codex`. From a Factory package root, use
-`npm run probe:codex`. It searches absolute PATH entries outside the working directory and its
-descendants, runs only
+`npm run probe:codex`. It searches absolute PATH entries outside the containing repository (or the working directory
+and its descendants when there is no Git repository), runs only
 `codex --version` without a shell, and reports authentication, protocol and task
 readiness as unknown. On Windows it supports `codex.exe`; `.cmd`
 and `.ps1` shims are reported unsupported. The probe does not log in, install

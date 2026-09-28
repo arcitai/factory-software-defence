@@ -1,7 +1,7 @@
-import { accessSync, constants, lstatSync, realpathSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, lstatSync, realpathSync, statSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
-import { delimiter, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PROBE_TIMEOUT_MS = 2000;
@@ -23,6 +23,11 @@ function trustedPathEntries(environment, cwd) {
   try { canonicalCwd = realpathSync(cwd); }
   catch { canonicalCwd = resolve(cwd); }
 
+  // A launch from repo/src must not trust repo/node_modules/.bin either.
+  for (let parent = canonicalCwd; ; parent = dirname(parent)) {
+    if (existsSync(join(parent, ".git"))) { canonicalCwd = parent; break; }
+    if (dirname(parent) === parent) break;
+  }
   const entries = [];
   const seen = new Set();
   for (const entry of pathValue(environment).split(delimiter)) {
@@ -30,7 +35,7 @@ function trustedPathEntries(environment, cwd) {
     let canonicalEntry;
     try { canonicalEntry = realpathSync(entry); }
     catch { continue; }
-    // Skip the working directory and its descendants, even when PATH spells
+    // Skip the containing repository (or working directory) and descendants, even when PATH spells
     // them absolutely or reaches them through a symlink.
     if (isWithin(canonicalCwd, canonicalEntry) || seen.has(canonicalEntry)) continue;
     seen.add(canonicalEntry);

@@ -69,22 +69,22 @@ test('npm artifact installs without a checkout, keeps state outside the package,
   assert.match(run(['help']), /state\/software-defence-factory\/platform/);
   assert.ok(run(['help']).includes(join(packageRoot, 'docs/setup.md')));
   assert.match(run(['foundation']), /# Factory Foundation/);
-  const codexBin = join(dir, 'codex probe bin'); mkdirSync(codexBin);
-  const fakeCodex = join(codexBin, 'codex');
-  writeFileSync(fakeCodex, "#!/bin/sh\nprintf 'codex-cli 1.2.3\\n'\n"); chmodSync(fakeCodex, 0o755);
-  const codexProbe = JSON.parse(command('npm', ['run', 'probe:codex', '--silent'], {
-    cwd: packageRoot, env: { ...environment, PATH: [codexBin, process.env.PATH].join(delimiter) },
-  }));
-  assert.equal(codexProbe.state, 'found'); assert.equal(codexProbe.version, '1.2.3');
-  const cliCodexProbe = JSON.parse(command(bins[0], ['probe', 'codex'], {
-    cwd: dir, env: { ...environment, PATH: [codexBin, process.env.PATH].join(delimiter) },
-  }));
-  assert.equal(cliCodexProbe.state, 'found'); assert.equal(cliCodexProbe.version, '1.2.3');
   assert.equal(run(['--help']), run(['help']));
   assert.equal(run(['-h']), run(['help']));
   const repo = join(dir, 'app'); mkdirSync(repo);
   command('git', ['init', '-q', repo]);
   command('git', ['-C', repo, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@localhost', 'commit', '--allow-empty', '-qm', 'fixture']);
+  const codexBin = join(dir, 'codex probe bin'); mkdirSync(codexBin);
+  const fakeCodex = join(codexBin, 'codex');
+  writeFileSync(fakeCodex, "#!/bin/sh\nprintf 'codex-cli 1.2.3\\n'\n"); chmodSync(fakeCodex, 0o755);
+  const codexProbe = JSON.parse(command(process.execPath, [join(packageRoot, 'scripts/probe-harness.mjs')], {
+    cwd: repo, env: { ...environment, PATH: [codexBin, process.env.PATH].join(delimiter) },
+  }));
+  assert.equal(codexProbe.state, 'found'); assert.equal(codexProbe.version, '1.2.3');
+  const cliCodexProbe = JSON.parse(command(bins[0], ['probe', 'codex'], {
+    cwd: repo, env: { ...environment, PATH: [codexBin, process.env.PATH].join(delimiter) },
+  }));
+  assert.equal(cliCodexProbe.state, 'found'); assert.equal(cliCodexProbe.version, '1.2.3');
   run(['init', '--repo', repo, '--agent', 'mock', '--check', 'true', '--source-ref', 'main']);
   const state = join(environment.XDG_STATE_HOME, 'software-defence-factory/platform');
   const configured=JSON.parse(readFileSync(join(state, 'factory.json')));
@@ -94,6 +94,17 @@ test('npm artifact installs without a checkout, keeps state outside the package,
   const definition = JSON.parse(originalDefinition);
   assert.deepEqual(JSON.parse(run(['skills'])), { agents: definition.skills, operators: definition.operator_skills });
   assert.deepEqual(definition.skills.map(skill => skill.id).sort(), runtimeIDs);
+  // Service snapshots must carry the same catalog as the installed package.
+  // This only stages files under the fixture data home; no OS service is created.
+  const retainedRoot = command(process.execPath, ['--input-type=module', '-e',
+    `import { retainRuntime } from ${JSON.stringify(pathToFileURL(join(packageRoot, 'factory/services.mjs')).href)}; console.log(retainRuntime());`],
+    { cwd: repo, env: environment }).trim();
+  const retainedSkills = JSON.parse(command(process.execPath,
+    [join(retainedRoot, 'bin/software-defence-factory.mjs'), 'skills', '--state', state],
+    { cwd: repo, env: environment }));
+  assert.deepEqual(retainedSkills, { agents: definition.skills, operators: definition.operator_skills });
+  assert.equal(readFileSync(join(retainedRoot, 'adlc/policy.md'), 'utf8'), readFileSync(join(packageRoot, 'adlc/policy.md'), 'utf8'));
+
   assert.equal(definition.operator_skills.length, 1);
   for (const skill of [...definition.skills, ...definition.operator_skills]) {
     assert.equal(skill.path, `${skill.id === 'factory-foundation' ? '.agents' : 'adlc'}/skills/${skill.id}/SKILL.md`);

@@ -30,7 +30,7 @@ test('installed CLI, controller and queue share the same phase/skill contract fo
   assert.equal(execFileSync(process.execPath,[join(ROOT,'bin/software-defence-factory.mjs'),'foundation'],{encoding:'utf8'}).trim(),api.operator_skills[0].content.trim());assert(!JSON.stringify(api).includes('secret-command-argument'));
   assert.deepEqual(api.skills.map(skill => skill.id).sort(), ['factory-evaluate','factory-implement','factory-review','factory-security','factory-spec','factory-triage']);
   for (const skill of [...api.skills, ...api.operator_skills]) {
-    assert.equal(skill.path, `${skill.id === 'factory-foundation' ? '.agents' : 'kit'}/skills/${skill.id}/SKILL.md`);
+    assert.equal(skill.path, `${skill.id === 'factory-foundation' ? '.agents' : 'adlc'}/skills/${skill.id}/SKILL.md`);
     assert.equal(skill.content, readFileSync(join(ROOT, skill.path), 'utf8'));
     assert.equal(skill.sha256, digest(skill.content));
   }

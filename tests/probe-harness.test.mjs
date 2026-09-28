@@ -132,3 +132,17 @@ test("probe deadline also stops a wrapper with inherited child pipes", async () 
     assert.ok(Date.now() - started < 7000);
   } finally { rmSync(base, { recursive: true, force: true }); }
 });
+
+test("nested project launches cannot execute repository-local PATH binaries", async () => {
+  const { base, cwd } = sandbox();
+  try {
+    mkdirSync(join(cwd, ".git"));
+    const nested = join(cwd, "src"); mkdirSync(nested);
+    const bin = join(cwd, "node_modules/.bin"); mkdirSync(bin, { recursive: true });
+    const marker = join(base, "impostor-ran");
+    executable(join(bin, "codex"), "#!/bin/sh\nprintf started > \"$PROBE_MARKER\"\nprintf 'codex-cli 1.2.3\\n'\n");
+    const result = await probe(nested, bin, { PROBE_MARKER: marker });
+    assert.equal(result.state, "missing");
+    assert.equal(existsSync(marker), false);
+  } finally { rmSync(base, { recursive: true, force: true }); }
+});
