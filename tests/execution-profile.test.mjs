@@ -80,7 +80,7 @@ test('A-profile failure and B-profile retry remain distinct through controller r
   const {id}=controller.queue.submit({workflow:'software',repository:'app',spec:'Fixture'});
   async function wait(wanted){for(let i=0;i<100;i++){if(controller.queue.get(id).state===wanted&&!controller.queue.active)return;await new Promise(r=>setTimeout(r,5));}throw new Error('Timed out');}
   await wait('failed');const first=(await snapshot()).jobs[0].runs[0];assert.equal(first.executor,'pi');assert.equal(first.model,'model-a');
-  assert.deepEqual(first.usage,{status:'unknown',source:'unsupported_executor',coverage:'unknown'});assert.equal(first.token_usage,null);
+  assert.deepEqual(first.usage,{status:'unknown',source:'pi_jsonl',coverage:'unknown'});assert.equal(first.token_usage,null);
   await controller.close();controller=null;save({...initial,agent:'codex',model:'model-b'});origin=await start();
   assert.deepEqual((await snapshot()).jobs[0].runs[0],first);
   failing=false;await controller.queue.action(id,'retry',{run_id:first.id});await wait('awaiting_approval');

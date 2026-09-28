@@ -68,7 +68,7 @@ test('missing evidence and deterministic work remain distinct from unreported Co
     usage: { status: 'unknown', source: 'codex_jsonl', coverage: 'unknown' }, token_usage: null,
   });
   assert.deepEqual(usageFields(null, { executor: 'pi' }, 'review'), {
-    usage: { status: 'unknown', source: 'unsupported_executor', coverage: 'unknown' }, token_usage: null,
+    usage: { status: 'unknown', source: 'pi_jsonl', coverage: 'unknown' }, token_usage: null,
   });
   assert.deepEqual(usageFields(null, { executor: 'deterministic' }, 'verify'), {
     usage: { status: 'not_applicable', source: 'not_applicable', coverage: 'not_applicable' }, token_usage: null,

@@ -6,6 +6,7 @@ import { mkdtempSync, mkdirSync, chmodSync, writeFileSync, readFileSync, existsS
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { localRegistry, localRoleCommand } from '../factory/local-inference.mjs';
+import { PiUsageParser } from '../factory/pi-usage.mjs';
 import { ROOT } from '../factory/lib.mjs';
 import { PiCompletion } from '../factory/pi-local-launch.mjs';
 
@@ -33,6 +34,7 @@ for (const scenario of (process.env.FACTORY_PI_BASELINE === '1' ? ['complete']
     const targetReads = scenario === 'aggregate' ? 24 : 7;
     const requestLimit = scenario === 'aggregate' ? 40 : 24;
     const requests = [], violations = [];
+    let expectedInput = 0, expectedOutput = 0;
     let reads = 0, summaries = 0, injected = false, lastSummaryReads = 0;
     const report = join(workspace, 'agent-report.md');
     // Every read stays below Pi's 50 KB tool truncation ceiling; cumulative
@@ -101,6 +103,7 @@ for (const scenario of (process.env.FACTORY_PI_BASELINE === '1' ? ['complete']
           } }] }); chunk({}, 'tool_calls');
         } else { chunk({ role: 'assistant', content: 'Synthetic transport completed.' }); chunk({}, 'stop'); }
         const usageTokens = baseline ? tokens : 6000 + (reads - lastSummaryReads) * 14000;
+        if (!summary) { expectedInput += usageTokens; expectedOutput += 64; }
         chunk({}, null, { prompt_tokens: usageTokens, completion_tokens: 64, total_tokens: usageTokens + 64 });
         res.end('data: [DONE]\n\n');
       } catch (error) { violations.push(error.message); res.destroy(); }
@@ -117,16 +120,21 @@ for (const scenario of (process.env.FACTORY_PI_BASELINE === '1' ? ['complete']
     const args = [launcher, ...localRoleCommand(binding).slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'kit/skills') : arg)];
     const result = await new Promise((resolve, reject) => {
       const child = spawn(baseline ? 'pi' : process.execPath, baseline ? args.slice(1) : args, { env, cwd: workspace, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      const usageParser = new PiUsageParser();
       let stdout = '', stderr = '', timedOut = false;
       const timer = setTimeout(() => { timedOut = true; process.kill(-child.pid, 'SIGKILL'); }, 45000);
-      child.stdout.on('data', b => stdout += b); child.stderr.on('data', b => stderr += b);
+      child.stdout.on('data', b => { usageParser.write(b); stdout += b; }); child.stderr.on('data', b => stderr += b);
       child.on('error', reject); child.on('close', code => {
         clearTimeout(timer);
         const completion = new PiCompletion(); completion.write(stdout);
-        resolve({ code: baseline && code === 0 && !completion.finish() ? 1 : code, stdout, stderr, timedOut });
+        resolve({ code: baseline && code === 0 && !completion.finish() ? 1 : code, stdout, stderr, timedOut, usage: usageParser.finish() });
       });
       child.stdin.end(`${marker}: Read payload.txt ${targetReads} times with tools, then write ${report} and finish. Synthetic transport only.`);
     });
+    if (!baseline) {
+      if (expectedInput) assert.deepEqual(result.usage, {input_tokens:String(expectedInput),output_tokens:String(expectedOutput),cached_input_tokens:'0',cache_write_input_tokens:'0',source:'pi_jsonl',coverage:'partial'});
+      else assert.equal(result.usage, null, 'failed requests with no reported tokens remain unknown');
+    }
     assert.equal(result.timedOut, false, 'bounded CLI must terminate itself');
     assert.deepEqual(violations, []);
     assert(requests.length <= requestLimit);
