@@ -20,6 +20,7 @@ test('user systemd manifest pins an installed release and a loopback serve comma
   assert.match(manifest.definition,/NoNewPrivileges=true/);
   assert.equal(manifest.runtime,join(state,'runtime','0.18.0'));
   assert.match(manifest.definition,/ExecStartPre=/);
+  assert.ok(manifest.definition.includes('$${relative}'),'systemd must receive literal JS template interpolation, not an environment expansion');
   pinInstalledRuntime(state,{root:installed,version:'0.18.0'});
   const verify=()=>spawnSync(manifest.verification[0],manifest.verification.slice(1),{encoding:'utf8'});
   assert.equal(verify().status,0);
