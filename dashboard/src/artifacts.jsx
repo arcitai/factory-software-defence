@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 export function useTaskArtifacts(job, csrfToken) {
   const [state, setState] = useState({ jobID: null, byRun: {}, error: "" });
   useEffect(() => {
-    if (!job?.task) return;
+    if (!job?.task || job.native) return;
     const controller = new AbortController();
     fetch(`/api/v1/jobs/${encodeURIComponent(job.id)}/artifacts`, { headers: { "X-Factory-Session": csrfToken }, signal: controller.signal })
       .then(async r => { if (!r.ok) throw new Error("Could not load outputs"); return r.json(); })

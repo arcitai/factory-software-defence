@@ -29,6 +29,23 @@ const issue=n=>({number:n,title:`Repository request ${n}`,url:`https://github.co
 const page=(n,issues)=>({page:n,state:'open',issues,loaded_count:issues.length,next_page:n===1?2:null,total:null});
 const context=n=>({...issue(n),body:'Literal <script>untrusted</script> context',spec:'Accepted bounded context',recommendation:{workflow:'defence',reason:'Investigate supplied evidence'}});
 
+test('native Inbox preserves issue detail but hides unsupported controls and blocks unready starts',async t=>{
+  let start;
+  const ui=await setup(t,async(path,options)=>{
+    if(path==='/api/v1/issues/start'){start=JSON.parse(options.body);return response({id:'job_native'});}
+    return response(path==='/api/v1/issues/preview'?context(42):page(1,[issue(42)]));
+  });
+  await ui.render({native:true,nativeReadiness:{ready:false,gaps:['login required']},onLocalRequest:null,onNewIssue:null});
+  assert.equal(document.querySelectorAll('.task-row').length,1);
+  await ui.open();
+  assert.equal(ui.button('Start work').disabled,true);
+  assert.equal(document.querySelector('.inbox-start select'),null);
+  assert.equal(document.querySelector('input[maxlength="128"]'),null);
+  await ui.render({nativeReadiness:{ready:true,gaps:[]}});
+  await ui.click('Start work');
+  assert.equal(start.workflow,'software');assert.equal(start.model,undefined);assert.equal(start.source_ref,undefined);
+});
+
 test('unlabelled issues omit label spacing in list and context while labels and linked work remain visible',async t=>{
   const unlabelled={...issue(42),labels:[]},execution={id:'job_active',state:'running',workflow:'software',phase:'build'};
   const ui=await setup(t,async path=>response(path==='/api/v1/issues/preview'?{...context(42),labels:[]}:page(1,[unlabelled,issue(43)])),[{...unlabelled,key:unlabelled.identity.key,executions:[execution],active_execution:execution,latest_execution:execution}]);

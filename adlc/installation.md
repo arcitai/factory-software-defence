@@ -6,6 +6,7 @@
 | --- | --- |
 | Repository, owner and main branch | Unselected |
 | Existing instructions, product brief, architecture and non-goals | Reference existing sources |
+| Vision owner and proposal fit | Existing VISION.md or equivalent brief; aligned, unclear or out of scope; stage template only if missing |
 | Observable user/API behavior and design source | Name representative checks and fixtures |
 | Control surface | Existing issue/check/PR workflow unless otherwise selected |
 | Harness, version, model/provider and billing | Unselected |

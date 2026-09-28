@@ -8,8 +8,8 @@ The target product is Factory Foundation, the portable `adlc/` method and
 skills, the current Inbox UI, and minimal native-harness integration. GitHub
 owns issues, PRs and CI. Native Codex owns its sessions, execution, context,
 permissions and supported schedules. Retain a small npm/npx setup, discovery
-and dashboard launcher. The setup and dashboard integration described here are
-future work until implemented and qualified.
+and dashboard launcher. The first opt-in Codex setup and Inbox slice is
+[implemented in source](native-codex.md), pending live host qualification.
 
 Codex comes first; Claude follows. Pi/local tuning and other providers are
 deferred. Do not add a Factory scheduler or custom context/retry engine. Keep
@@ -175,6 +175,7 @@ The npm CLI keeps runtime state outside node_modules. The updater installs immut
 | Host details | `factory/machine.mjs` | Infrastructure API and dashboard |
 | Job instructions | `adlc/skills/`, `adlc/policy.md` | Read-only execution mounts and staged method export |
 | Setup guidance | `.agents/skills/factory-foundation/`, `docs/setup.md` | Explicit operator CLI/Skills view |
+| Native issue/thread identity | Private JSON receipt plus Codex history | Native Inbox; Codex remains the session source of truth |
 
 `workflows.mjs` is a compatibility re-export, not another definition. Stored
 identifiers and compatibility API fields are documented in [concepts](concepts.md).

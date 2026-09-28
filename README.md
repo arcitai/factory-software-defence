@@ -30,6 +30,7 @@ Choose the part you need:
 | Set up an operator, worker and application | [Setup plan and acceptance checklist](docs/setup.md) |
 | Use the method with your existing agent | `factory kit --output ./factory-kit` — exports a new staging directory |
 | Discover installed Codex | `factory probe codex` — read-only version probe; readiness remains unknown |
+| Try the opt-in native Codex path | [Native setup and limits](docs/native-codex.md) |
 | Try the runtime without inference | `factory demo` — Docker required; synthetic sample only |
 | Connect an existing repository | [Runtime quickstart](docs/quickstart.md) |
 | Understand installation and updates | [npm and npx](docs/npm.md) |
@@ -47,6 +48,8 @@ Cursor and Grok evaluated separately later. The currently shipped controller
 remains available while its replacement is qualified. See the
 [migration contract](docs/architecture.md#migration-contract) for ownership,
 project-specific access and the gates for removing replaced runtime code.
+The first opt-in Codex route is `factory native setup|login|doctor|serve`;
+[its guide](docs/native-codex.md) distinguishes implemented behavior from live qualification.
 
 ## How the factory works
 

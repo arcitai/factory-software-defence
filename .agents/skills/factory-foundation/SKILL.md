@@ -26,6 +26,16 @@ provider or particular harness. Inspect the configured remote and actual provide
 capabilities. GitHub is one adapter; an unsupported host keeps local execution
 without guessed API calls. Use [integration ownership](../../../docs/integrations.md).
 
+Find the project's owner-approved VISION.md or equivalent product brief and
+record that canonical source in its instructions. Preserve existing decisions;
+do not add a competing vision document. If none exists, stage a short draft from
+[the vision template](../../../adlc/vision-template.md), using accepted owner
+context and marking unresolved choices. A draft does not authorize new scope.
+Self-improvement proposals must identify the observed problem, classify alignment
+with that brief, and define an observable check. Unclear or out-of-scope proposals
+need an owner decision; agents cannot approve their own scope or access expansion.
+Ordinary fixes within accepted scope continue under existing authority.
+
 Use the existing task/issue record for missing obligations and evidence. Avoid a
 second project registry or a template conversion of an existing application.
 Continue authorized repairs; ask only for decisions or authority actually missing.
@@ -64,9 +74,11 @@ steps below describe the currently shipped optional runtime.
   the exact candidate, run real checks, obtain separate review and verify the
   authorized delivery. A synthetic success is not application qualification.
 
-Skills guide agents. The controller owns execution order, isolation and approval
-gates. Remote issues stay in the selected provider; SQLite owns execution and
-external-write receipts. Creating an issue or assigning a label does not start work.
+Skills guide agents; the selected native harness owns sessions, tools,
+permissions and execution. Remote issues stay in the selected provider. The
+legacy optional runtime still uses its controller and SQLite for retained jobs;
+do not introduce those into a native installation. Creating an issue or assigning
+a label does not start work.
 Optional schedules belong to the selected harness and call Factory CLI/API; do
 not install a parallel cron module or enable schedules during ordinary setup.
 Verify each requested provider action separately from job/inference access.

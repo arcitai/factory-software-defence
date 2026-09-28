@@ -8,7 +8,7 @@ interaction and optional project identity. No global project hub is planned.
 ## Native harness migration
 
 - [ ] [#113 — simplify the ownership model](https://github.com/arcitai/software-and-defence-factory/issues/113): Foundation, `adlc/`, the accepted Inbox and a small setup/maintenance CLI. Follow the [migration contract](docs/architecture.md#migration-contract); remove replaced runtime code only after qualification.
-- [ ] [#114 — Codex first](https://github.com/arcitai/software-and-defence-factory/issues/114): prove issue/session/Inbox/review/PR flow and project-specific configuration/connections without recurring approvals. Native app visibility remains unqualified.
+- [ ] [#114 — Codex first](https://github.com/arcitai/software-and-defence-factory/issues/114): opt-in native setup, JSONL session start/read/resume/interrupt, issue receipts and existing Inbox integration implemented in source; [mock protocol evidence and host gaps](docs/native-codex.md). Lead still owns live login, private-file/app denial, inference, Inbox interaction, independent review and PR flow before qualification. Native app visibility remains unqualified.
 - [ ] Later native harnesses: [Claude Code #115](https://github.com/arcitai/software-and-defence-factory/issues/115), [Cursor #116](https://github.com/arcitai/software-and-defence-factory/issues/116), [Grok #117](https://github.com/arcitai/software-and-defence-factory/issues/117).
 
 The Pi/local-inference work below is deferred under this direction. Retain its
