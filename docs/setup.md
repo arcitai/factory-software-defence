@@ -393,43 +393,67 @@ local requests still use `issue start --file` or `--draft` without `--brief-file
 
 ## Optional keyless local or hybrid inference
 
-Use the [local binding recipe](definition.md#opt-in-local-bindings-0150-69) to adopt
-an explicit private endpoint/model map and portable Pi role references. Keep the
-working default and a stopped private-state backup; preview, apply while idle and
-use revision-guarded rollback. A local Implement role can be paired with an existing
-cloud Review role. No downloads, service restarts, port changes or jobs occur during
-configuration. Authenticated endpoints, sampling overrides and custom thinking
-maps are unsupported. Local bindings may request OpenAI-style `reasoningEffort`:
-`default` (or omitted), `none`, `low`, `medium` or `high`. Default omits the request;
-it does not disable server thinking. Qualify the endpoint's actual semantics before
-using a request as a thinking-budget control. Unsupported requests fail without
-fallback when the endpoint rejects them; transport success alone cannot prove a
-server honored the request. Existing omitted choices remain unchanged.
+Local profiles are opt-in. Follow the [local binding contract](definition.md#opt-in-local-bindings-0150-69)
+for supported fields and commands; configuration is not qualification and starts
+no jobs, downloads or inference services.
 
-Qualify the actual installed image and endpoint from an isolated job before using
-it for application work. Record server/harness versions, exact model ID and digest,
-quantization, GPU/backend and actual offload, available and peak memory, endpoint
-reachability, tool-call/result compatibility and report/check/review outcomes.
-Keep host inference access separate from controller/forge credentials. Unknown
-values stay unknown; registry discovery only proves client capability.
+1. **Keep the working configuration.** Export portable roles with
+   `factory definition export --state PATH > factory-roles.json`. Export omits
+   private bindings: also retain the selected immutable image ID and a complete
+   stopped private-state backup using [recovery](recovery.md).
+2. **Qualify the inference path.** From a disposable container using the selected
+   job image and network, verify the exact endpoint/model, tool calls/results and
+   report compatibility. Record server/harness versions, model digest and
+   quantization, GPU/backend and actual offload, available/peak memory and actual
+   context allocation, including request/model overrides. Host loopback is not
+   container loopback. Keep inference access separate from forge/controller
+   credentials; missing models/providers must fail without silent cloud fallback.
+3. **Preview and explicitly apply roles.** Use the linked binding recipe to select
+   local Pi Implement and an independently chosen local or cloud Review. Preview
+   with `factory definition diff`, then use `factory definition apply` with the
+   same `--state`, `--file`, `--bindings-file` and the preview's `--expected-revision`.
+   Apply requires the
+   running controller to be idle and reconciled. Agents/Definition uses the same
+   diff/apply contract. Inspect the effective selections; each attempt freezes
+   them with its resource, timeout and skill policy. CLI upgrades and worker-image
+   selection are separate; use the [image procedure below](#local-context-budget-and-worker-image-0152-100)
+   if the selected image needs changing.
+4. **Qualify bounded representative work before a real repository issue.** Use
+   pinned fixture bases, observable decisive tests independent of Implement, and
+   separate Review contexts. For a comparison, use two small software fixtures,
+   comparable prompts/contexts/trials, a measured local baseline and one selected
+   local/hybrid alternative. Build returns to Factory's checks, independent Review
+   and operator handoff; it does not launch another review pipeline. Set explicit
+   deadlines/resource budgets and exercise tool use, context recovery and reports.
+5. **Inspect history and usage.** Use `factory status --state PATH` and the
+   dashboard's attempt history/Analytics. Retain raw failures, diagnostics,
+   unfinished work and repairs under [recovery](recovery.md). Record wall time,
+   observable prefill/decode throughput, memory/offload, token observations,
+   tool/report failures, checks/review outcomes and human time, including cloud
+   Review usage in hybrid totals. Unknown measurements stay unknown; see
+   [qualification evidence and limits](proof.md) before generalizing a result.
+6. **Roll back explicitly when needed.** With the running controller idle,
+   `factory definition rollback --state PATH` previews the previous roles/bindings;
+   add `--expected-revision` from that preview to apply it. Image rollback is a
+   separate stopped-installation operation described below. Preserve attempts and
+   backups; rollback does not rewrite failed history or retry work.
 
-Reconcile the client's configured context with the server's actual allocation and
-per-request/model overrides. Do not infer a 65k allocation from a remembered agent
-setting or a server default. A bounded 64k/128k allocation experiment, where
-supported, must record KV-cache and Flash Attention settings, memory and allocation
-success separately from long-context task quality. This worker supplies no such
-measurements or driver/kernel advice. Do not recommend larger windows from the
-schema's upper limit.
+Fresh Pi completed-message observations have **partial** coverage: input includes
+cache reads/writes, with cached input, cache-write input and output shown separately;
+cache subsets are not added again. Absent or old usage remains unknown, with no Pi
+historical backfill. Summary and unreported error/retry usage remains unreported,
+even when the attempt succeeds. See [Pi usage semantics](usage.md#pi-stdout-measurements-0154).
+These observations establish neither total cost nor speed or quality. Local
+inference avoids provider token billing, not electricity, hardware or operator cost.
 
-The operator still owns #69's matched two-fixture comparison: pinned bases,
-comparable prompts/contexts/trials, a measured existing local baseline and one
-selected alternative, decisive independent checks and separate Review contexts.
-Retain failures, repairs and human time. Record wall time, observable prefill/decode,
-input/cached/output tokens, memory/offload and all reviewer usage. Factory currently
-leaves Pi usage unknown; controlled protocol fixtures are not token or quality
-benchmarks. Include cloud Review in hybrid totals. No provider token billing for
-local inference does not mean zero electricity, hardware or operator cost. Only
-then qualify a suitable real Factory issue; no customer jobs are part of this slice.
+Set context/output limits against actual allocation with headroom as described
+below. Before recommending larger windows, test a bounded 64k/128k allocation
+where supported, recording KV-cache/Flash Attention settings and memory separately from
+long-context task quality. An advertised window or successful short prompt is
+insufficient. Authenticated local endpoints, sampling overrides and custom thinking
+maps are unsupported; supported reasoning-effort requests still need endpoint
+qualification and do not prove a server honored them. No model/provider is chosen
+automatically. Broader local/hybrid qualification remains open in #69.
 
 
 ## Local Pi project resources (0.15.3, #103)
@@ -455,13 +479,12 @@ extensions/packages and automatically discovered repository skills are not a
 supported configuration path. Explicit task-driven file reads are still possible
 within the sandbox and grant no additional authority.
 
-Before accepting this repair, the lead must qualify the exact installed 0.15.3
-package/image through CLI/API, representative native local Build and separate
-read-only Review, and one actual local-model run. `npm run qualify:pi` uses actual
-Pi with **synthetic HTTP inference**, not model judgment. See [trust-store
-proof and limits](proof.md#pi-project-trust-startup-0153-103). Retain the failed
-#51 attempt unchanged and unaccepted; retry only through a newly authorized
-attempt after qualification. Do not modify private installations from a job.
+Qualify native local Build and separate read-only Review with the exact selected
+image and model. `npm run qualify:pi` exercises actual Pi with **synthetic HTTP
+inference**, not model judgment. See [trust-store proof and limits](proof.md#pi-project-trust-startup-0153-103)
+and the later qualification records in [proof](proof.md). Preserve failed attempts
+and use [recovery](recovery.md) before retrying; jobs must not modify private
+installations.
 
 ## Local context budget and worker image (0.15.2, #100)
 
@@ -509,9 +532,8 @@ guessed or silently rewritten. Do not add project Pi settings to bypass
 the admitted binding or rely on custom tuning that has not been qualified.
 See [pinned compaction behavior](https://github.com/earendil-works/pi/blob/v0.87.1/packages/coding-agent/docs/compaction.md).
 
-Starting with the **0.15.5 candidate (#105)**, the local adapter also checks
-history pressure at Pi's completed-tool-turn boundary. This conservative byte
-signal counts the system/task/tool envelope once, call arguments, non-tool text
+The local adapter also checks history pressure at Pi's completed-tool-turn
+boundary. This conservative byte signal counts the system/task/tool envelope once, call arguments, non-tool text
 and capped tool excerpts, separately from provider-reported usage. At 65% of the
 input budget it considers Pi's supported summary generator and append-only
 compaction entry. The newest complete tool group is retained; up to three older
@@ -541,7 +563,7 @@ output on pinned Pi). `factory_context_recovery` JSONL events record only
 pressure, envelope/floor sizes, group counts and recovery progress, without
 prompts/content. Pi token accounting stays partial; this summary path is not
 added to ordinary assistant usage totals. See
-[source measurements, rejected real trial and pending qualification](proof.md#short-local-pi-history-recovery-0155-candidate-105).
+[context-recovery measurements, retained failures and qualification limits](proof.md#short-local-pi-history-recovery-0155-candidate-105).
 
 Before adoption, stop and reconcile all work, retain the old immutable image ID
 and a stopped private-state backup. Build/qualify the exact candidate image, then
@@ -556,7 +578,7 @@ readable and cloud profiles keep their existing wrapper. Roll back with the reta
 path and restore the previously working role definition through revision-guarded
 rollback. Do not change frozen attempts or relabel old failed results.
 
-Lead's bounded actual-inference fixture must include enough tool results to trigger
+A bounded actual-inference fixture must include enough tool results to trigger
 summarization, resumed useful tool work, the required report, checks and independent
 Review. Record the exact image/model digest, harness/server versions, allocated
 window, output/reasoning request, tool growth, compaction ordering, elapsed time,
@@ -564,6 +586,6 @@ quality outcome and peak memory; unknown measurements remain null. Set an explic
 job deadline/resource budget and preserve any unfinished checkout and diagnostic
 artifacts. A short successful prompt is insufficient. A larger actually allocated
 window is a later measured comparison only if this evidence warrants it; do not
-switch model or cloud provider automatically. The failed #83 local attempt is not
-local delivery. An operator-selected fresh cloud retry and unfinished-checkpoint
-recovery remain governed by [recovery](recovery.md) and #42.
+switch model or cloud provider automatically. An operator-selected fresh cloud
+retry and unfinished-checkpoint recovery remain governed by [recovery](recovery.md); neither converts failed local work into local
+delivery.

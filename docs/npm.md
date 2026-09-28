@@ -116,8 +116,8 @@ installation or retained attempt needs them.
 
 ## Protected evidence compatibility
 
-Factory 0.15.2 recognizes version-1 execution profiles emitted by native
-**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2, 0.12.0, 0.13.0, 0.13.1, 0.14.0, 0.15.0, 0.15.1 and 0.15.2**. This is an exact allowlist in
+Factory 0.15.6 recognizes version-1 execution profiles emitted by native
+**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2, 0.12.0, 0.13.0, 0.13.1, 0.14.0, 0.15.0, 0.15.1, 0.15.2, 0.15.3, 0.15.4, 0.15.5 and 0.15.6**. This is an exact allowlist in
 `factory/execution-profile.mjs`, independent of the installed package version;
 it is not a semver range or an automatic promise for later releases. Unknown
 runtime strings, unknown profile formats and incomplete legacy acceptance
@@ -185,7 +185,8 @@ Verify evidence and cannot authorize acceptance or publication.
 Version 0.14.0 preserves the v1 writer only for unchanged inherited installations:
 policy bytes, candidate/check/review/acceptance bindings, mounts and credential
 rules stay compatible. Adopted role overrides use **v2 from 0.14.0, 0.15.0, 0.15.1 and 0.15.2**, recording
-role/provider/effort and an exact selection digest. The executor verifies the
+role/provider/effort and an exact selection digest. Later audited v2 writers are
+**0.15.3, 0.15.4, 0.15.5 and 0.15.6**. The executor verifies the
 frozen common configuration before phase selection; continuation and both delivery
 validation paths require matching protected v2 evidence and private frozen config.
 V1 cannot attest an override. Mixed roles share one policy across deterministic
@@ -220,9 +221,29 @@ that the release is not yet downloadable, retain the prior runtime and retry the
 update later. This does not establish whether a particular delay came from a
 local cache or registry propagation.
 
-For a release, update both manifests with `npm version patch --no-git-tag-version`,
-review the change, and push through the project's normal review flow. A code
-push without a version bump is tested but does not overwrite a published package.
+Before shipping any version, including a documentation-only patch:
+
+1. Audit the diff from the previous release across profile/evidence writers,
+   schemas, isolation, frozen selection and policy hashes, checks, candidate
+   reconstruction, review and acceptance. Add only the exact audited writer to
+   the applicable v1/v2/v3 lists in `factory/execution-profile.mjs`. Never derive
+   compatibility from package `VERSION` or a semver range; an incompatible writer
+   blocks release until its evidence contract is resolved.
+2. Align `package.json`, the lockfile root and `packages[""]` versions (for
+   example with `npm version patch --no-git-tag-version`). Run
+   `npm ci --ignore-scripts`, `npm run build:dashboard` and `npm run check` on the
+   final candidate, then inspect the packed artifact. Exercise the native current
+   writer, retained evidence, continuation and protected-evidence rejection
+   checks. Keep unknown-writer fixtures clearly unaudited (for example `99.0.0`),
+   and preserve historical bytes and every current-policy guard.
+3. Obtain independent review of that exact candidate and qualify the installed
+   CLI/API with retained evidence. Deliver through the protected PR/main CI flow,
+   verify the public npm artifact against the reviewed package, then adopt only
+   while idle and reconciled with private configuration, history and rollback
+   data preserved. Source tests alone do not establish these delivery gates.
+
+A code push without a version bump is tested but does not overwrite a published
+package.
 
 The current trusted-publisher identity is npm package `software-defence-factory`,
 GitHub owner `arcitai`, repository `software-and-defence-factory`,
@@ -254,7 +275,7 @@ The 0.15.0 compatibility audit preserves unchanged v1/v2 policy construction,
 protected checks, candidate reconstruction, read-only review and acceptance guards.
 Historical 0.14.0 v2 validation compares its actual writer version rather than
 relabeling it as the installed version. Local registry selection is a new execution
-contract: every phase of a local/hybrid attempt requires **v3 from 0.15.0, 0.15.1 or 0.15.2** and its
+contract: every phase of a local/hybrid attempt requires **v3 from 0.15.0, 0.15.1, 0.15.2, 0.15.3, 0.15.4, 0.15.5 or 0.15.6** and its
 exact protected frozen configuration. v1/v2 cannot attest local binding fields,
 providers or a common policy containing a selected local role. A selected endpoint,
 model, limit or compatibility change invalidates the current policy; explicit
@@ -292,3 +313,12 @@ remain unchanged from 0.15.4. Profile tests exercise all phases and inherited,
 cloud, hybrid and local definitions, reject changed selections and future writers,
 and verify immutable readback. This does not upgrade or qualify historical local
 attempts; installed image adoption and actual inference remain separate gates.
+
+The 0.15.6 audit adds only that exact writer to the explicit v1/v2/v3 lists for
+the packaged setup-guide correction. Compared with 0.15.5, profile/evidence
+writers and schemas, isolation, frozen selection/policy hashes, checks,
+reconstruction, review and acceptance are unchanged. The runtime emits its new
+version even for a documentation-only release, so changing package metadata
+alone is insufficient. Retained evidence keeps its original version and bytes;
+unknown writers/schemas and altered selections remain blocked. This audit does
+not qualify local model productivity or upgrade failed attempts.
