@@ -53,6 +53,27 @@ export function TaskDetail({
         {error && <p role="alert">{error}</p>}
       </div>
     );
+  if (job.native) return <div className="task-detail-layout">
+    <div className="task-detail-main">
+      <DetailToolbar item={source || {id:job.id,href:`#/runs/${encodeURIComponent(job.id)}`}} navigation={navigation} />
+      <header className="task-detail-heading"><TaskStateIcon value={job.state} /><h2>{source?.title || job.task?.title}</h2></header>
+      {source?.panel}
+      <Card className="task-result space-y-4 p-5 sm:p-6" aria-label="Native Codex session">
+        <h2 className="text-lg font-semibold">Native Codex · {stateLabel(job.state)}</h2>
+        <p>Codex owns this session and its history. Completion here means the native turn ended; checks, review and delivery still need their own evidence.</p>
+        <p>Thread: <code>{job.thread_id || 'Unconfirmed after start'}</code></p>
+        <p>Turn: <code>{job.turn_id || 'Unconfirmed after start'}</code></p>
+        {job.native_result?.completed_at && <p>Native completion: {new Date(job.native_result.completed_at * 1000).toLocaleString()}</p>}
+        {job.state === 'needs_review' && <p>Inspect the Codex session, verify the candidate and arrange independent review. The GitHub issue remains open.</p>}
+        <p>Reconnect loads this Codex thread only. Start any follow-up turn in the native Codex CLI.</p>
+        {job.state === 'unknown' && <p role="alert">Native state unavailable or admission outcome unresolved. Inspect Codex history before further work.</p>}
+        {actionError && <p role="alert">{actionError}</p>}
+        {job.thread_id && job.state !== 'running' && <Button variant="outline" onClick={()=>onWorkflowAction?.(job,'resume')}>Reconnect native session</Button>}
+        {job.state === 'running' && <Button variant="outline" onClick={()=>onWorkflowAction?.(job,'cancel')}>Interrupt native turn</Button>}
+      </Card>
+    </div>
+    <aside className="task-metadata" aria-label="Issue details"><h3><FileText size={15} />Metadata</h3>{source?.metadata || <dl><div><dt>Status</dt><dd><State value={job.state} /></dd></div><div><dt>Issue</dt><dd><a href={job.task?.source_url} target="_blank" rel="noreferrer">View on GitHub ↗</a></dd></div></dl>}</aside>
+  </div>;
   const usage = tokenUsageSummary(job.runs || []);
   const terminal = ["succeeded", "failed", "cancelled"].includes(job.state);
   const latest = job.runs.at(-1);

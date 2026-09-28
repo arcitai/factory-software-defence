@@ -196,17 +196,17 @@ function App() {
           <a href="#/runs" className="brand-wordmark" aria-label="Factory home"><span>factory<span className="brand-period">.</span></span><span className="brand-descriptor">Software &amp; Defence</span></a>
         </div>
         <nav className="desktop-nav" aria-label="Primary">
-          <PrimaryLinks view={view} />
+          <PrimaryLinks view={view} native={status.native} />
         </nav>
         <details className="mobile-nav">
           <summary aria-label="Open navigation"><Menu className="size-4" /><span>Menu</span></summary>
           <nav aria-label="Primary mobile">
-            <PrimaryLinks view={view} mobile />
-            <div className="mobile-settings"><DefinitionLink view={view} mobile /></div>
+            <PrimaryLinks view={view} mobile native={status.native} />
+            {!status.native && <div className="mobile-settings"><DefinitionLink view={view} mobile /></div>}
           </nav>
         </details>
         <div className="sidebar-bottom">
-          <nav aria-label="Settings"><DefinitionLink view={view} /></nav>
+          {!status.native && <nav aria-label="Settings"><DefinitionLink view={view} /></nav>}
           <button onClick={() => setDark((value) => !value)} className="nav-item theme-switch" aria-label={`Switch to ${dark ? "light" : "dark"} theme`}>
             {dark ? <Moon className="size-4" /> : <Sun className="size-4" />}<span>{dark ? "Dark" : "Light"} theme</span>
           </button>
@@ -217,7 +217,7 @@ function App() {
       </aside>
 
       <main className="workshop min-w-0 flex-1">
-        <ProjectContext identity={identity} links={status.project_links} compact={view === "task" || view === "issue"} loaded={statusLoaded} error={statusError} showNewTask={view === "runs"} onNewTask={() => (setComposerLocal(false), setSubmitError(""), setComposerOpen(true))} />
+        <ProjectContext identity={identity} links={status.project_links} compact={view === "task" || view === "issue"} loaded={statusLoaded} error={statusError} showNewTask={view === "runs" && (!status.native || status.issue_provider?.capabilities?.create)} onNewTask={() => (setComposerLocal(false), setSubmitError(""), setComposerOpen(true))} />
         {view === "task" ? <TaskDetail identity={identity} links={status.project_links} navigation={workNavigation} csrfToken={status.csrf_token} job={selectedJob} loaded={statusLoaded} error={statusError} actionError={taskActionError} removalError={removalError} deliveryActionError={deliveryActionError} deleting={deletingJob === route.jobID} onDelete={deleteJob} onWorkflowAction={workflowAction} />
           : view === "analytics" ? <Analytics jobs={status.jobs} workflows={status.workflows || []} loaded={statusLoaded} error={statusError} />
             : view === "infrastructure" ? <InfrastructurePage infrastructure={status.infrastructure} workers={status.workers} identity={identity} loaded={statusLoaded} error={statusError} />
@@ -227,8 +227,9 @@ function App() {
         <div hidden={view !== "runs" && view !== "issue"}>
           <Inbox jobs={status.jobs} loaded={statusLoaded} active={view === "runs" || view === "issue"} issueKey={route.issueKey} identity={identity} links={status.project_links} onNavigation={setWorkNavigation}
             detailProps={{ actionError:taskActionError, removalError, deliveryActionError, deleting:Boolean(deletingJob), onDelete:deleteJob, onWorkflowAction:workflowAction }}
-            onLocalRequest={()=>{setComposerLocal(true);setSubmitError("");setComposerOpen(true);}}
-            onNewIssue={()=>{setComposerLocal(false);setSubmitError("");setComposerOpen(true);}}
+            onLocalRequest={status.native ? null : ()=>{setComposerLocal(true);setSubmitError("");setComposerOpen(true);}}
+            onNewIssue={status.native && !status.issue_provider?.capabilities?.create ? null : ()=>{setComposerLocal(false);setSubmitError("");setComposerOpen(true);}}
+            native={status.native} nativeReadiness={status.native_readiness}
             token={status.csrf_token} provider={status.issue_provider} statusError={statusError} refreshKey={inboxRefresh}
             refreshStatus={()=>statusLoader.current.refresh()} synthetic={(status.harness ?? status.agent) === "mock"}
             onStarted={async created=>{await statusLoader.current.refresh();window.location.hash=`#/runs/${created.id}`;}} />
@@ -243,17 +244,19 @@ function DefinitionLink({ view, mobile = false }) {
   return <a href="#/definition" title="Factory settings and definition" aria-current={view === "definition" ? "page" : undefined} className={cn("nav-item", view === "definition" && "nav-item-active")} onClick={event => { if (mobile) event.currentTarget.closest("details")?.removeAttribute("open"); }}><Settings2 className="size-4" /><span>Definition</span></a>;
 }
 
-function PrimaryLinks({ view, mobile = false }) {
+function PrimaryLinks({ view, mobile = false, native = false }) {
   const link = (href, Icon, label, active) => <a href={href} aria-current={active ? "page" : undefined} className={cn("nav-item", active && "nav-item-active")} onClick={(event) => { if (mobile) event.currentTarget.closest("details")?.removeAttribute("open"); }}>
     <Icon className="size-4" /><span>{label}</span>
   </a>;
   return <>
     {link("#/inbox", Activity, "Inbox", view === "runs" || view === "task" || view === "issue")}
+    {!native && <>
     {link("#/analytics", BarChart3, "Analytics", view === "analytics")}
     {link("#/agents", Bot, "Agents", view === "agents")}
     {link("#/skills", BookOpen, "Skills", view === "skills")}
     {link("#/automations", TimerReset, "Automations", view === "automations")}
     {link("#/infrastructure", Server, "Infrastructure", view === "infrastructure")}
+    </>}
   </>;
 }
 

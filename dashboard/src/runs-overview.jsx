@@ -16,6 +16,7 @@ const filterOptions = [
   { id: "running", label: "Running", count: "running" },
   { id: "cancelling", label: "Cancelling", count: "cancelling" },
   { id: "needs_attention", label: "Needs attention", count: "needsAttention" },
+  { id: "needs_review", label: "Native turn needs review", count: "needsReview" },
   { id: "failed", label: "Failed work", count: "failed" },
   { id: "failed_review", label: "Failed review", count: "reviewFailed" },
   { id: "review_changes", label: "Review changes available", count: "reviewChanges" },
@@ -139,7 +140,7 @@ function EmptyRuns({ filtered, clearFilters, openComposer }) {
   return <div className="empty-tasks" role="status">
     <h3>{filtered ? "No matching work" : "No loaded work yet"}</h3>
     <p>{filtered ? "Try another state or search term." : "Start work explicitly from a repository issue or a local execution request."}</p>
-    {filtered ? <Button variant="outline" size="sm" onClick={clearFilters}>Clear filters</Button> : <Button variant="outline" size="sm" onClick={openComposer}><Plus className="size-3.5" />New issue</Button>}
+    {filtered ? <Button variant="outline" size="sm" onClick={clearFilters}>Clear filters</Button> : openComposer && <Button variant="outline" size="sm" onClick={openComposer}><Plus className="size-3.5" />New issue</Button>}
   </div>;
 }
 

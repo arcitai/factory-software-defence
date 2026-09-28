@@ -24,6 +24,7 @@ if (args.length === 1 && args[0] === "--help") {
       sources.set(path, `adlc/skills/factory-${role}/SKILL.md`);
     }
     sources.set(".factory-kit/LICENSE", "LICENSE");
+    sources.set(".factory-kit/VISION.template.md", "adlc/vision-template.md");
     sources.set(".factory-kit/labels.json", "config/labels.json");
     for (const name of ["factory-task.yml", "bug-report.yml", "feature-request.yml"])
       sources.set(`.github/ISSUE_TEMPLATE/${name}`, `.github/ISSUE_TEMPLATE/${name}`);

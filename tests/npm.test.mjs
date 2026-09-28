@@ -27,7 +27,7 @@ test('npm artifact installs without a checkout, keeps state outside the package,
   const environment = { ...process.env, XDG_STATE_HOME: join(dir, 'state'), XDG_DATA_HOME: join(dir, 'data'), SDF_AUTO_UPDATE: '0', SDF_BOOTSTRAPPED: '0', npm_config_cache: join(dir, 'npm-cache') };
   const packed = JSON.parse(command('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', dir]))[0];
   const names = packed.files.map(file => file.path);
-  for (const required of ['bin/software-defence-factory.mjs', 'factory/updates.mjs', 'factory/issue-templates.mjs', 'factory/intake.mjs', 'factory/definition.mjs', 'factory/terminology.json', '.agents/skills/factory-foundation/SKILL.md', 'docs/concepts.md', 'factory/paths.mjs', 'factory/image/Dockerfile', 'adlc/README.md', 'adlc/policy.md', 'docs/setup.md', 'docs/services.md', 'docs/architecture.md', 'docs/hybrid.md', 'docs/proof.md', 'adlc/skills/factory-implement/SKILL.md', 'scripts/export-kit.mjs', 'scripts/probe-harness.mjs', 'scripts/retained-source-fixture.mjs', 'LICENSE']) assert.ok(names.includes(required), required);
+  for (const required of ['bin/software-defence-factory.mjs', 'bin/legacy.mjs', 'factory/native/cli.mjs', 'factory/native/app-server.mjs', 'factory/native/server.mjs', 'factory/native/engine.mjs', 'factory/updates.mjs', 'factory/issue-templates.mjs', 'factory/intake.mjs', 'factory/definition.mjs', 'factory/terminology.json', '.agents/skills/factory-foundation/SKILL.md', 'docs/concepts.md', 'factory/paths.mjs', 'factory/image/Dockerfile', 'VISION.md', 'adlc/README.md', 'adlc/vision-template.md', 'adlc/policy.md', 'docs/setup.md', 'docs/services.md', 'docs/native-codex.md', 'docs/architecture.md', 'docs/hybrid.md', 'docs/proof.md', 'adlc/skills/factory-implement/SKILL.md', 'scripts/export-kit.mjs', 'scripts/probe-harness.mjs', 'scripts/retained-source-fixture.mjs', 'LICENSE']) assert.ok(names.includes(required), required);
   assert(!names.some(path => path.startsWith('kit/')));
   assert.ok(names.every(path => !/^(?:\.factory|\.git\/|tests\/|experiments\/|evals\/|node_modules\/)|(?:^|\/)\.env(?:\.|$)/.test(path)));
   const runtimeIDs = ['factory-evaluate', 'factory-implement', 'factory-review', 'factory-security', 'factory-spec', 'factory-triage'];
@@ -85,6 +85,17 @@ test('npm artifact installs without a checkout, keeps state outside the package,
     cwd: repo, env: { ...environment, PATH: [codexBin, process.env.PATH].join(delimiter) },
   }));
   assert.equal(cliCodexProbe.state, 'found'); assert.equal(cliCodexProbe.version, '1.2.3');
+  const nativeBin=join(dir,'native-toolchain/codex/bin/codex');mkdirSync(dirname(nativeBin),{recursive:true});
+  writeFileSync(nativeBin,`#!${realpathSync(process.execPath)}\nconsole.log('codex-cli 0.155.1');\n`,{mode:0o755});
+  const nativeState=join(dir,'native-state');
+  const nativeSetup=JSON.parse(run(['native','setup','--repo',repo,'--state',nativeState,'--codex',nativeBin]));
+  assert.equal(nativeSetup.repo,realpathSync(repo));
+  assert.equal(nativeSetup.login,'required');
+  assert.ok(existsSync(join(nativeState,'home/.codex/config.toml')));
+  assert.equal(existsSync(join(nativeState,'jobs.sqlite')),false);
+  const repeated=spawnSync(bins[0],['native','setup','--repo',repo,'--state',nativeState,'--codex',nativeBin],{cwd:dir,env:environment,encoding:'utf8'});
+  assert.equal(repeated.status,1);
+  assert.match(repeated.stderr,/already exists/);
   run(['init', '--repo', repo, '--agent', 'mock', '--check', 'true', '--source-ref', 'main']);
   const state = join(environment.XDG_STATE_HOME, 'software-defence-factory/platform');
   const configured=JSON.parse(readFileSync(join(state, 'factory.json')));

@@ -20,6 +20,7 @@ test("kit exports portable instructions and verifiable provenance without an act
     assert.ok(existsSync(join(output, "START-HERE.md")));
     assert.equal(readdirSync(join(output, ".agents/skills")).length, 6);
     assert.ok(existsSync(join(output, ".factory-kit/examples/github-checks.yml.example")));
+    assert.ok(existsSync(join(output, ".factory-kit/VISION.template.md")));
     for (const forbidden of ["AGENTS.md", "package.json", "src", ".factory", ".github/workflows"])
       assert.equal(existsSync(join(output, forbidden)), false, forbidden);
     for (const { path, sha256 } of manifest.files) {

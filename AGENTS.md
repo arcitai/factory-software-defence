@@ -8,6 +8,15 @@ The shipped package owns a portable delivery method in `adlc/`, six focused skil
 
 The shipped Node/SQLite controller currently owns execution. Jobs use bounded Docker containers and independent checkouts. Issue #113 changes the target ownership model; see the migration contract below. Model quality, browser availability and live provider access require actual qualification; a configured skill does not install those capabilities. Keep incident investigation distinct from production recovery authority.
 
+## Product scope
+
+[VISION.md](VISION.md) owns the accepted product boundary. Before expanding
+behavior, identify the in-scope problem, prefer the native harness or a skill,
+and specify an observable check. Self-improvement may propose scope changes;
+only the owner can authorize them. Do not revise the vision to justify a proposal.
+Foundation carries the same discipline into adopting projects using their own
+canonical vision or product brief, without duplicating it.
+
 ## Migration contract
 
 Follow the [ownership and deletion gates](docs/architecture.md#migration-contract)

@@ -5,6 +5,12 @@ an installed npm package without a source checkout. Its canonical source is
 [.agents/skills/factory-foundation/SKILL.md](../.agents/skills/factory-foundation/SKILL.md).
 Use it explicitly for adoption. Repository/operator
 guidance stays outside the runtime catalog at `adlc/skills/`.
+Foundation discovers a project's VISION.md or equivalent explicit product brief
+and preserves owner decisions. If none exists, stage the exported minimal vision
+template for owner review; do not install a duplicate brief or redefine goals.
+Classify proposals as aligned, unclear or out of scope. Scope change needs an
+explicit owner decision; admit only proven in-scope problems with a native,
+configuration or skill preference, minimal maintenance and an observable check.
 See [Factory concepts](concepts.md) for host, worker, harness and agent roles.
 The [setup/deployment view](architecture.md#setup-and-deployment) shows operator
 access, the private execution host and the separate application delivery boundary.
@@ -12,8 +18,8 @@ access, the private execution host and the separate application delivery boundar
 This plan documents the currently shipped optional controller. The accepted
 #113 target moves session and execution ownership to native harnesses while
 retaining Foundation, `adlc/`, the current Inbox design and a small npm/npx
-launcher. The migration remains in progress; native setup flow and dashboard
-integration are future work. After installing the package, run
+launcher. The migration remains in progress; the opt-in native Codex setup and
+Inbox slice are described in [the native pilot](native-codex.md). After installing the package, run
 `factory probe codex`. From a Factory package root, use
 `npm run probe:codex`. It searches absolute PATH entries outside the containing repository (or the working directory
 and its descendants when there is no Git repository), runs only

@@ -9,11 +9,12 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { existsSync, writeFileSync, rmSync } from 'node:fs';
 import { usageFields } from './usage.mjs';
+import { QueueError } from './error.mjs';
+export { QueueError } from './error.mjs';
 
 import { WORKFLOWS as workflows } from './definition.mjs';
 const id = prefix => prefix + '_' + randomBytes(12).toString('hex');
 const now = () => new Date().toISOString();
-export class QueueError extends Error { constructor(message, status = 409) { super(message); this.status = status; } }
 
 // One controller owns this database and one executor at a time. Each transition
 // is committed before execution starts; a restart never assumes a result.

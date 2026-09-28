@@ -10,7 +10,7 @@ import { filterJobs, searchJobs, jobsByRecentActivity, jobCounts } from './runs-
 import { filterTaskFacets } from './task-filters.jsx';
 
 const issueHref = key => `#/issues/${encodeURIComponent(key)}`;
-export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarted, onLocalRequest, onNewIssue, statusError, refreshStatus, synthetic, issueKey, active = true, identity, links, onNavigation, detailProps = {} }) {
+export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarted, onLocalRequest, onNewIssue, statusError, refreshStatus, synthetic, native = false, nativeReadiness, issueKey, active = true, identity, links, onNavigation, detailProps = {} }) {
   const [state,setState] = useState('open');
   const [snapshot,setSnapshot] = useState(null), [loading,setLoading] = useState(false), [error,setError] = useState('');
   const [drafts,setDrafts] = useState({}), [previewBusy,setPreviewBusy] = useState(false), [previewError,setPreviewError] = useState(''), [starting,setStarting] = useState(false);
@@ -60,19 +60,20 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
     return()=>{previewPending.current?.abort();};
   },[issueKey,active,token]);
   const draft=selected && drafts[issueKey], context=draft?.context;
-  const blocked=selected?.active_execution ? 'An execution is active or unresolved. Open its history to continue or cancel it.' : context?.start_block_reason;
+  const blocked=selected?.active_execution ? 'An execution is active or unresolved. Open its history to inspect it.' : context?.start_block_reason || (native && jobs.some(job=>['running','unknown'].includes(job.state)) ? 'Native workspace has active or unresolved work. Inspect its Codex thread first.' : null) || (native && !nativeReadiness?.ready ? `Native Codex unavailable: ${(nativeReadiness?.gaps || ['readiness unknown']).join('; ')}` : null);
   async function start(event) {
     event.preventDefault();if(starting || !context || blocked || previewError || statusError)return;setStarting(true);setPreviewError('');
-    try {const created=await api('/api/v1/issues/start',{url:context.url,expected_spec:context.spec,brief:draft.brief,workflow:draft.workflow,...(draft.sourceRef.trim()?{source_ref:draft.sourceRef.trim()}:{}),model:draft.model.trim()});
+    try {const created=await api('/api/v1/issues/start',native?{url:context.url,expected_spec:context.spec,brief:draft.brief,workflow:'software'}:{url:context.url,expected_spec:context.spec,brief:draft.brief,workflow:draft.workflow,...(draft.sourceRef.trim()?{source_ref:draft.sourceRef.trim()}:{}),model:draft.model.trim()});
       if(alive.current){await onStarted(created);load(snapshot?.page || 1);}
     } catch(e) {if(alive.current)setPreviewError(e.message);}
     finally {if(alive.current)setStarting(false);}
   }
   const sourceControls=<RepositoryControls snapshot={snapshot} state={state} setState={setState} loading={loading} token={token} load={load} onLocalRequest={onLocalRequest} records={records} />;
   const sourceNotice=<>
-    {!provider?.supported && provider && <p className="source-boundary">Remote issues unsupported on this host. Local execution requests remain available.</p>}
+    {!provider?.supported && provider && <p className="source-boundary">{native?'Remote issues unsupported for native start in this repository.':'Remote issues unsupported on this host. Local execution requests remain available.'}</p>}
     {error && <p role="alert" className="form-error">{snapshot?'Repository data stale. ':'Repository issues unavailable. '}{error}</p>}
     {loading && <p role="status" className="source-boundary">Loading repository issues…</p>}
+    {native && !nativeReadiness?.ready && <p role="alert" className="source-boundary">Native Codex unavailable: {(nativeReadiness?.gaps || ['readiness unknown']).join('; ')}</p>}
     {snapshot && !snapshot.issues?.length && !error && !loading && <p className="source-boundary">No issues on this page. Other pages or states may contain issues.</p>}
   </>;
   const panel=selected && <section className="issue-context" aria-label="Repository issue context">
@@ -85,12 +86,12 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
       <details open={!selected.execution_id}><summary>Start work · explicit scope and options</summary>
         <form onSubmit={start} className="inbox-start">
           <p className="work-help">Suggested: {friendlyName(context.recommendation.workflow)}. {context.recommendation.reason}</p>
-          <label><span className="field-label">Work type</span><select className="field-control" value={draft.workflow} onChange={event=>edit({workflow:event.target.value})}><option value="software">Software</option><option value="defence">Defence</option></select></label>
-          <p className="work-help">{draft.workflow==='defence'?'Investigates supplied, non-sensitive evidence and produces a private draft. Private security reports use incident --file, never public issues.':'Implements scoped changes, runs checks and requests independent review. Security remediation can be Software work.'}</p>
+          {!native && <><label><span className="field-label">Work type</span><select className="field-control" value={draft.workflow} onChange={event=>edit({workflow:event.target.value})}><option value="software">Software</option><option value="defence">Defence</option></select></label>
+          <p className="work-help">{draft.workflow==='defence'?'Investigates supplied, non-sensitive evidence and produces a private draft. Private security reports use incident --file, never public issues.':'Implements scoped changes, runs checks and requests independent review. Security remediation can be Software work.'}</p></>}
           <details><summary>Operator brief and additional options</summary>
             <label><span className="field-label">Operator brief · optional</span><textarea className="field-control" maxLength={16000} value={draft.brief} onChange={event=>edit({brief:event.target.value})} /></label>
-            <label><span className="field-label">Source ref · optional</span><input className="field-control" maxLength={256} value={draft.sourceRef} onChange={event=>edit({sourceRef:event.target.value})} /></label>
-            <label><span className="field-label">Model override · optional</span><input className="field-control" maxLength={128} value={draft.model} onChange={event=>edit({model:event.target.value})} /></label>
+            {!native && <><label><span className="field-label">Source ref · optional</span><input className="field-control" maxLength={256} value={draft.sourceRef} onChange={event=>edit({sourceRef:event.target.value})} /></label>
+            <label><span className="field-label">Model override · optional</span><input className="field-control" maxLength={128} value={draft.model} onChange={event=>edit({model:event.target.value})} /></label></>}
           </details>
           {blocked && <p className="work-help">{blocked}</p>}
           <Button disabled={starting || previewBusy || !loaded || Boolean(previewError) || Boolean(statusError) || Boolean(blocked)}>{starting?'Starting…':'Start work'}</Button>

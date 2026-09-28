@@ -33,7 +33,7 @@ Docker or prove a model's judgment, browser behavior or production access.
 
 UI changes need a real browser walkthrough at desktop and narrow sizes, in
 both themes, exercising the changed interaction and its failure states.
-Runtime isolation/recovery changes need relevant synthetic Docker qualification
+Legacy runtime isolation/recovery changes need relevant synthetic Docker qualification; native harness changes need actual native permission and session checks,
 as described in [proof](docs/proof.md) and [recovery](docs/recovery.md). Never run
 `demo` or `qualify` against an application installation.
 

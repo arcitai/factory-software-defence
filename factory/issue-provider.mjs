@@ -1,6 +1,6 @@
 import { githubIssueProvider } from './providers/github.mjs';
 import { readProjectLinks } from './project-links.mjs';
-import { QueueError } from './queue.mjs';
+import { QueueError } from './error.mjs';
 import { runHostGit } from './git-environment.mjs';
 
 // Selection is local and capability-based. Unknown hosts never receive a GitHub

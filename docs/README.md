@@ -2,6 +2,7 @@
 
 - [Contributing](../CONTRIBUTING.md): source setup, checks and PR/release policy.
 - [Factory development](development.md): use the released runtime to develop this project on a worker.
+- [Native Codex pilot](native-codex.md): opt-in setup, permission boundary, Inbox integration and qualification gaps.
 - [Development queue](../todo.md): ordered, issue-backed work and dependencies.
 - [Repository readiness](../adlc/repository.md): GitHub labels/forms, explicit issue admission and reviewed delivery.
 - [Dashboard design](../DESIGN.md): accepted project-focused visual direction and interface boundaries.
@@ -41,6 +42,7 @@ use the linked guides for details rather than copying their specifications.
 | --- | --- | --- |
 | Prepare a repository | Staged method, preserved project contracts, explicit setup | [Foundation](setup.md), [kit export](../scripts/export-kit.mjs), [package tests](../tests/npm.test.mjs) |
 | Browse issues and explicitly admit execution | Provider-backed Inbox, creation-only templates/blank form, canonical linked history and atomic duplicate-active rejection; no background backlog polling | [Intake](workflows.md), [server](../factory/server.mjs), [issue tests](../tests/issue-intake.test.mjs) |
+| Opt into native Codex | Dedicated state/profile, app-server JSONL, issue-to-thread receipt and existing Inbox; live host qualification pending | [Native guide](native-codex.md), [engine](../factory/native/engine.mjs), [protocol fixtures](../tests/native-protocol.test.mjs) |
 | Execute Software or Defence | One queue; isolated roles/checks; Defence produces a private draft | [Architecture](architecture.md), [executor](../factory/executor.mjs), [controller tests](../tests/controller.test.mjs) |
 | Verify a web candidate in a browser | Optional operator policy; pinned Playwright/Chromium in separate loopback-isolated preview/browser containers; bounded traces and screenshots bound to candidate and policy | [Browser setup and contract](web-verification.md), [runner](../factory/web/runner.mjs), [regressions](../tests/web-verification.test.mjs) |
 | Review, revise and accept | Explicit fresh start, reviewed-candidate continuation or source replacement; evidence belongs to the complete candidate and policy; acceptance does not publish | [Recovery](recovery.md), [queue](../factory/queue.mjs), [review tests](../tests/review-evidence.test.mjs) |

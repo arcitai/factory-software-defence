@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { githubRead, listIssues, readIssue } from '../issue-intake.mjs';
 import { readTemplates, draftFromTemplate } from '../issue-templates.mjs';
 import { readProjectLinks } from '../project-links.mjs';
-import { QueueError } from '../queue.mjs';
+import { QueueError } from '../error.mjs';
 const marker = record => `<!-- factory-issue:${record.correlation_id} -->`;
 const apiArgs = path => ['api', '--hostname', 'github.com', path];
 export function githubWrite(path, payload) {

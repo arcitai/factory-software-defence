@@ -1,7 +1,7 @@
 # Install and update the CLI
 
-Requires Node 22.13 or later. The method export needs no Docker. Running jobs
-also requires Git and a running Docker Engine or Docker Desktop on Linux/macOS.
+Requires Node 22.13 or later. The method export needs no Docker. The retained legacy job runner also requires Git and Docker on Linux/macOS.
+The opt-in [native Codex pilot](native-codex.md) requires Git and Codex on Linux, without Docker.
 
 ```sh
 npm install --global software-defence-factory@latest
@@ -116,8 +116,8 @@ installation or retained attempt needs them.
 
 ## Protected evidence compatibility
 
-Factory 0.16.0 recognizes version-1 execution profiles emitted by native
-**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2, 0.12.0, 0.13.0, 0.13.1, 0.14.0, 0.15.0, 0.15.1, 0.15.2, 0.15.3, 0.15.4, 0.15.5, 0.15.6 and 0.16.0**. This is an exact allowlist in
+Factory 0.17.0 recognizes version-1 execution profiles emitted by the retained legacy runtime
+**0.8.0, 0.9.0, 0.9.1, 0.10.0, 0.11.0, 0.11.1, 0.11.2, 0.12.0, 0.13.0, 0.13.1, 0.14.0, 0.15.0, 0.15.1, 0.15.2, 0.15.3, 0.15.4, 0.15.5, 0.15.6, 0.16.0 and 0.17.0**. This is an exact allowlist in
 `factory/execution-profile.mjs`, independent of the installed package version;
 it is not a semver range or an automatic promise for later releases. Unknown
 runtime strings, unknown profile formats and incomplete legacy acceptance
@@ -186,7 +186,7 @@ Version 0.14.0 preserves the v1 writer only for unchanged inherited installation
 policy bytes, candidate/check/review/acceptance bindings, mounts and credential
 rules stay compatible. Adopted role overrides use **v2 from 0.14.0, 0.15.0, 0.15.1 and 0.15.2**, recording
 role/provider/effort and an exact selection digest. Later audited v2 writers are
-**0.15.3, 0.15.4, 0.15.5, 0.15.6 and 0.16.0**. The executor verifies the
+**0.15.3, 0.15.4, 0.15.5, 0.15.6, 0.16.0 and 0.17.0**. The executor verifies the
 frozen common configuration before phase selection; continuation and both delivery
 validation paths require matching protected v2 evidence and private frozen config.
 V1 cannot attest an override. Mixed roles share one policy across deterministic
@@ -339,3 +339,8 @@ attempt or a live installation. No image, mounted kit/skill or Pi launcher code
 changed, so this capability does not require a new worker image. Qualification
 must use the operator's actually selected image; no image adoption is performed
 by this source change.
+
+Version 0.17.0 adds the opt-in native Codex bridge. Retained legacy evidence writers,
+selection hashes, isolation, reconstruction and acceptance contracts are unchanged.
+Native receipts are a separate status association and never legacy acceptance evidence.
+Regression checks retain 0.16.0 profiles and reject unknown future/prerelease writers.

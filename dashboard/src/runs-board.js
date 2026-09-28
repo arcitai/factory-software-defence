@@ -2,7 +2,7 @@
 export const statusGroups = [
   { id: "not_started", label: "Not started", count: "notStarted", tone: "neutral", states: ["not_started"] },
   { id: "in_progress", label: "In progress", count: "active", tone: "violet", states: ["queued", "running", "cancelling"], children: [["queued", "Queued", "queued"], ["running", "Running", "running"], ["cancelling", "Cancelling", "cancelling"]] },
-  { id: "needs_attention", label: "Needs attention", count: "needsAttention", tone: "amber", states: ["failed", "timed_out", "blocked", "interrupted"], children: [["failed", "Failed", "failed"], ["blocked", "Blocked", "blocked"], ["interrupted", "Interrupted", "interrupted"], ["review_changes", "Revisions available · subset", "reviewChanges"]] },
+  { id: "needs_attention", label: "Needs attention", count: "needsAttention", tone: "amber", states: ["failed", "timed_out", "blocked", "interrupted", "needs_review"], children: [["needs_review", "Native turn needs review", "needsReview"], ["failed", "Failed", "failed"], ["blocked", "Blocked", "blocked"], ["interrupted", "Interrupted", "interrupted"], ["review_changes", "Revisions available · subset", "reviewChanges"]] },
   { id: "awaiting_approval", label: "Awaiting acceptance", count: "awaitingApproval", tone: "pink", states: ["awaiting_approval"] },
   { id: "succeeded", label: "Completed", count: "succeeded", tone: "green", states: ["succeeded"] },
   { id: "cancelled", label: "Cancelled", count: "cancelled", tone: "neutral", states: ["cancelled"] },
@@ -12,10 +12,10 @@ export const boardColumns = statusGroups.map(group => ({ ...group, title: group.
 
 const activeStates = new Set(["queued", "running", "cancelling"]);
 const failedStates = new Set(["failed", "timed_out"]);
-const attentionStates = new Set(["failed", "timed_out", "blocked", "interrupted"]);
+const attentionStates = new Set(["failed", "timed_out", "blocked", "interrupted", "needs_review"]);
 const knownStates = new Set([
   "not_started", "queued", "running", "cancelling", "failed", "timed_out", "blocked",
-  "interrupted", "awaiting_approval", "succeeded", "cancelled",
+  "interrupted", "needs_review", "awaiting_approval", "succeeded", "cancelled",
 ]);
 
 export function boardColumnForState(state) {
@@ -49,6 +49,8 @@ export function filterJobs(jobs, filter) {
         return job.state === "blocked";
       case "interrupted":
         return job.state === "interrupted";
+      case "needs_review":
+        return job.state === "needs_review";
       case "failed_review":
         return job.state === "failed" && job.runs?.at(-1)?.command === "review";
       case "review_changes":
@@ -96,6 +98,7 @@ export function jobCounts(jobs) {
     active: 0,
     failed: 0,
     needsAttention: 0,
+    needsReview: 0,
     reviewFailed: 0,
     reviewChanges: 0,
     queued: 0,
@@ -113,6 +116,7 @@ export function jobCounts(jobs) {
     if (activeStates.has(job.state)) result.active += 1;
     if (failedStates.has(job.state)) result.failed += 1;
     if (attentionStates.has(job.state)) result.needsAttention += 1;
+    if (job.state === "needs_review") result.needsReview += 1;
     if (job.state === "queued") result.queued += 1;
     if (job.state === "running") result.running += 1;
     if (job.state === "cancelling") result.cancelling += 1;
@@ -150,6 +154,8 @@ export function taskPhase(job) {
 export function nextOperatorAction(job) {
   const latest = job.runs?.at(-1);
   switch (job.state) {
+    case "needs_review":
+      return "Review Codex changes and checks";
     case "not_started":
       return "Open context to start work";
     case "queued":

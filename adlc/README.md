@@ -13,6 +13,10 @@ Export a new staging directory with `factory kit --output NEW_DIRECTORY`. The ex
 > Read the app's instructions, architecture, tests and CI first. Apply the supplied factory method within its existing authority. Fill the installation record from the repository and known choices, merge intentionally, preserve existing files and report what was connected, tested or still missing. Start manually. Accounts, publishing and deployment follow my existing mandate.
 
 The agent can reference the staged instructions or intentionally adopt relevant files. If copying is appropriate, review `.factory-kit/` and the needed `.agents/skills/factory-*` folders; merge naming conflicts and preserve AGENTS.md. Add a local route only when needed. The optional issue form and CI example are inactive until deliberately adapted. No secret belongs in the installation record.
+Discover the project's existing VISION.md or equivalent explicit product brief. Preserve it. If none exists, the staged `.factory-kit/VISION.template.md` is a starting point for owner review, not an automatic replacement or mandatory duplicate.
+Treat unclear scope as needing an owner decision before implementation; a completed task or agent turn does not change that boundary.
+
+Example: if an owner-approved `docs/product.md` promises CSV import, fixing a bug that rejects a valid CSV is aligned; add a regression check. Moving the app to a hosted platform is unrelated to that brief and needs owner direction before changing scope. The approved `docs/product.md` is sufficient even when no file is named `VISION.md`.
 
 The six skills cover triage, specification, implementation, review, security and evaluation. Use the ones needed; six instructions do not imply six concurrent agents. See [policy](policy.md), [installation](installation.md) and [delivery](delivery.md).
 

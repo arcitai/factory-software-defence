@@ -6,6 +6,7 @@ description: Review a factory result against its accepted scope and exact delive
 # factory-review
 
 Read the accepted scope, diff and actual check artifacts. Use a distinct review context from implementation; preferably a separate verifier process or human. A different model name by itself does not establish independence.
+Compare new behavior with VISION.md or the equivalent owner brief. Report aligned, unclear or out-of-scope proposals; do not silently revise the vision or expand authority. Missing vision needs owner review of the staged template, not a fabricated project goal.
 
 Assess two questions separately: does the candidate satisfy the accepted task,
 and does it conform to the project’s documented code/design standards? Cite a
