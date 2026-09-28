@@ -220,6 +220,10 @@ if (command === 'run') {
       state.symlinkCreated = true; save();
     }
   }
+  if (state.mode === 'codex-activity') {
+    process.stdout.write(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'PRIVATE_ACTIVITY_SENTINEL'}})+'\\n');
+    process.stdout.write(JSON.stringify({type:'item.completed',item:{type:'command_execution',command:'PRIVATE_ACTIVITY_SENTINEL'}})+'\\n');
+  }
   if (state.mode.startsWith('pi-usage')) {
     const message = {role:'assistant',stopReason:'stop',content:[{type:'text',text:'private synthetic content'}],usage:{input:10,cacheRead:20,cacheWrite:5,output:3,totalTokens:38}};
     process.stderr.write(JSON.stringify({type:'message_end',message})+'\\n');
@@ -1109,4 +1113,32 @@ test('Pi usage checkpoint survives an executor killed before its result file', a
   } finally { try {process.kill(-child.pid,'SIGKILL');} catch {} await closed; }
   const checkpoint=JSON.parse(readFileSync(join(f.attemptFolder,'usage.json'),'utf8'));
   assert.equal(checkpoint.usage.output_tokens,'3');
+});
+
+
+test('native Codex executor stdout seam records ordered categories without raw contents', t => {
+  const f=fixture(t,'codex-activity','review','codex');
+  const result=runExecutor(f);assert.equal(result.status,0,result.stderr);
+  const activity=JSON.parse(readFileSync(join(f.attemptFolder,'activity.json'),'utf8'));
+  assert.deepEqual(activity.events.map(e=>e.kind),['phase_started','process_started','message_completed','tool_completed','process_exited','phase_completed']);
+  assert.equal(activity.events[3].tool,'command');assert.equal(activity.phase,'review');
+  assert(!JSON.stringify(activity).includes('PRIVATE_ACTIVITY_SENTINEL'));
+  assert.equal(JSON.parse(readFileSync(join(f.output,'result.json'))).usage.status,'unknown');
+  assert(!stateOf(f).jobArgs.some(arg=>arg.includes('activity.json')));
+});
+
+test('no-client native Pi activity checkpoint survives killed stdout owner without a fabricated end', async t => {
+  const f=fixture(t,'pi-usage-interrupt','review','pi');
+  const child=spawn(process.execPath,[join(root,'factory/executor.mjs'),f.state,f.phase],{env:f.executorEnv,detached:true,stdio:['pipe','ignore','ignore']});
+  const closed=new Promise(resolve=>child.on('close',resolve));child.stdin.end('Synthetic activity interruption');
+  const path=join(f.attemptFolder,'activity.json');
+  try {
+    for(let i=0;i<600 && !existsSync(path);i++)await new Promise(resolve=>setTimeout(resolve,5));
+    assert(existsSync(path));
+    const activity=JSON.parse(readFileSync(path,'utf8'));
+    assert.deepEqual(activity.events.map(e=>e.kind),['phase_started','process_started','message_completed']);
+    assert.equal(activity.rejected,1);assert(activity.last_received_at);
+    assert.equal(existsSync(join(f.output,'result.json')),false);
+  } finally {try {process.kill(-child.pid,'SIGKILL');}catch{}await closed;}
+  assert.equal(JSON.parse(readFileSync(path)).cursor,3);
 });

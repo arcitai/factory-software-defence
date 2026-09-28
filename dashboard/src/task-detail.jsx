@@ -1,3 +1,4 @@
+import { Activity } from "./activity.jsx";
 import { canonicalIssue } from "../../factory/issue-lifecycle.mjs";
 import React, { useEffect, useState } from "react";
 import { ArrowRight, Check, ChevronUp, ChevronDown, Link2, X, FileText, GitBranch, Coins } from "lucide-react";
@@ -55,6 +56,10 @@ export function TaskDetail({
   const usage = tokenUsageSummary(job.runs || []);
   const terminal = ["succeeded", "failed", "cancelled"].includes(job.state);
   const latest = job.runs.at(-1);
+  // Approval/queued placeholders have no execution to observe. Keep the last
+  // started attempt visible until the next phase actually runs.
+  const activityRun = job.runs.findLast(run => run.state === "running")
+    || job.runs.findLast(run => run.started_at);
   const showDelivery = job.workflow?.name === "software" && job.delivery_status
     && (job.state === "succeeded" || job.delivery_status.candidate_sha || job.delivery_removal_blocked);
   const lastCompleted = job.runs.findLast((run) => run.outcome === "complete");
@@ -135,7 +140,7 @@ export function TaskDetail({
                     <p className="line-clamp-3 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
                       {result.summary}
                     </p>
-                    <p className="text-xs text-muted-foreground">Agent-reported text. The workflow state and its evidence determine acceptance.</p>
+                    <p className="text-xs text-muted-foreground">Run summary, including executor diagnostics. Agent-authored results are in the report files; workflow evidence determines acceptance.</p>
                   </div>
                 )}
                 {result?.error && result.error !== result.summary && (
@@ -146,6 +151,8 @@ export function TaskDetail({
                     {result.error}
                   </p>
                 )}
+                {activityRun ? <Activity jobID={job.id} run={activityRun} csrfToken={csrfToken} />
+                  : <p className="text-xs text-muted-foreground">No attempt has started.</p>}
                 <BrowserVerification evidence={result?.web_verification} />
                 {showDelivery && <DeliveryDetails delivery={job.delivery_status} />}
                 {result && job.task && (
@@ -226,6 +233,7 @@ export function TaskDetail({
                               csrfToken={csrfToken}
                             />
                           )}
+                          <Activity jobID={job.id} run={run} csrfToken={csrfToken} />
                           <ExecutionDetails run={run} />
                         </li>
                       ))}
@@ -307,7 +315,7 @@ export function TaskDetail({
           <div><dt>Project</dt><dd>{identity?.name || job.repository}</dd></div>
           <div><dt>Workflow</dt><dd>{friendlyName(job.workflow?.name || job.command)}</dd></div>
           <div><dt>Created</dt><dd>{formatTimestamp(job.created_at)}</dd></div>
-          <div><dt>Last activity</dt><dd>{formatTimestamp(job.updated_at)}</dd></div>
+          <div><dt>Workflow updated</dt><dd>{formatTimestamp(job.updated_at)}</dd></div>
           <div><dt>Requested models</dt><dd>{[...new Set((job.runs || []).map(run => run.model || run.execution?.requestedModel).filter(Boolean))].join(", ") || job.model || "Not recorded"}</dd></div>
           <div><dt>Recorded duration</dt><dd>{formatDurationMillis(taskDurationMillis(job.runs || []))}</dd></div>
           <div className="task-usage"><dt><Coins size={13} />Reported tokens</dt><dd>{formatTaskTokenUsage(usage)}</dd><dd className="metadata-hint">{formatReportingCoverage(usage)}</dd></div>

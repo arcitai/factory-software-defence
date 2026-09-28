@@ -1,3 +1,4 @@
+import { activityQuery, readActivity } from './activity.mjs';
 import { inspectDefinition, previewDefinition, previewRollback, changeDefinition } from './definition-store.mjs';
 import { associateIssue, backlogHistory, readinessMapping, workRecords } from './issue-lifecycle.mjs';
 import { harnessOf } from './lib.mjs';
@@ -129,6 +130,13 @@ export function createController(state, adapter = executors(state), integrations
       if (request.method === 'GET' && ['/api/v1/issue-connection','/api/v1/issue-submissions'].includes(url.pathname)) {
         if (!authenticated) throw new QueueError('Session required', 403);
         return send(200, url.pathname.endsWith('issue-submissions') ? submissions.list() : { ...providerInfo(provider), ...(provider.supported ? await provider.context() : {}) });
+      }
+      const activity = url.pathname.match(/^\/api\/v1\/jobs\/(job_[a-f0-9]+)\/runs\/(run_[a-f0-9]+)\/activity$/);
+      if (request.method === 'GET' && activity) {
+        if (!authenticated) throw new QueueError('Session required', 403);
+        const job = queue.get(activity[1]), attempt = job.runs.find(run => run.id === activity[2]);
+        if (!attempt) throw new QueueError('Attempt not found for this job', 404);
+        return send(200, readActivity(state, job, attempt, activityQuery(url.searchParams.get('after'), url.searchParams.get('limit') ?? '50')));
       }
       const content = url.pathname.match(/^\/api\/v1\/artifacts\/(job_[a-f0-9]+)~(run_[a-f0-9]+)~([\w.-]+)\/content$/);
       const artifactList = url.pathname.match(/^\/api\/v1\/jobs\/(job_[a-f0-9]+)\/artifacts$/);

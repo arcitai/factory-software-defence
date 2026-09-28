@@ -1095,3 +1095,90 @@ calls, downloads, publication or acceptance were performed.
   on the actual installation. Skills alone supply neither tools nor authority.
 - Unknown usage/cost stays unknown. Defence supports private scoped investigation,
   not production monitoring or autonomous recovery.
+
+## Bounded execution activity first slice (0.16.0, #32)
+
+Implemented against admitted source `16a47cd7905ba7dc320cd521f7525fbbdac1c7b1`
+(0.15.6), with root package/lock metadata aligned at 0.16.0 and no dependency,
+image, mounted policy/skill or Pi launcher changes. The existing executor's
+stdout consumption now feeds a separate strict enum-only observer, a capped
+host-owned checkpoint and authenticated cursor reads. CLI tail/follow and the
+accepted current detail/history use that same attempt identity and ordering.
+Workflow updates, stdout receipt, last observed Docker-client state and reader
+refresh are separate facts. Container health stays unknown. Preview files are
+labelled snapshots with refresh; run summaries no longer label executor errors
+as agent-authored text. Canonical usage/evidence/acceptance paths are unchanged.
+
+Worker verification on Node 22.23.3: `npm ci --ignore-scripts`,
+`npm run build:dashboard`, and `npm run check` passed; **516 runtime/package tests
+and 66 dashboard tests, no failures or skips**. New regressions use fixed event
+sequences/cursors and cover split multibyte UTF-8, malformed/oversized/trailing
+input, no-client bursts, slow-reader rollover, failed storage, strict saved-file
+validation, credential/path/HTML sentinels, missing/foreign history, terminal and
+interrupted states, cursor reconnect and controller restart. The real executor
+module was exercised with controlled Docker command fixtures for Codex/Pi stdout;
+a killed Pi executor retained a checkpoint without a fabricated end. These are
+synthetic runner/transport observations, not real Docker/model qualification.
+
+The npm regression packs/installs the actual artifact in a disposable private
+prefix, imports its actual controller/reader and invokes its installed `factory
+activity ... --after 1 --follow`. It verifies exact API/CLI event equality and
+terminal follow exit using synthetic retained observations. Source CLI tests also
+exercise authentication/Host/Origin, invalid/foreign cursors and restart. UI DOM
+checks cover stale async responses after attempt selection, safe enum mapping,
+refresh failure and abort cleanup; DOM tests are not visual browser inspection.
+The compatibility audit/tests retain byte-identical historical records and reject
+future writers and changed phase/policy/selection/target bindings.
+
+Two test-fixture corrections were needed during implementation: use the HTTP
+client capable of transmitting an explicit Host override, and restore the npm
+fixture's original config bytes after setting its ephemeral API port (the port
+correctly changes Definition's revision). The failing run and final logs remain
+in ephemeral `/tmp`, not published source or report contents. Earlier incident
+and local-model failure evidence was not removed or relabelled.
+
+**#32 remains open.** This worker has no Docker CLI or browser executable/tool;
+no live Z13 installation, selected image or actual inference was accessed or
+qualified. Independent lead/Review must inspect desktop and narrow detail in
+both themes, exercise installed native Codex/Pi streaming, actual follow/outage
+reconnect and no-client operation on Z13, and qualify the selected existing image.
+No external main refresh, live installation update, model call, image rebuild,
+push, publication or deployment was performed. The admitted base is the release
+comparison point; the lead must reconcile later main changes before release.
+
+Remaining contract limits are explicit: only supported completed JSONL categories
+are observed; custom harness categories and container health are unknown; records
+are not reconstructed for old attempts; a killed executor may lose its final
+uncheckpointed interval; persistent storage failure cannot report unsaved events.
+Activity is untrusted telemetry, never measured application/security evidence,
+acceptance or billing. Deadline/OOM/cancellation classification remains #42;
+analytics and production telemetry remain outside this slice.
+
+### Result activity at the Handoff approval boundary
+
+The follow-up to reviewed checkpoint `37478229851284dab89e5ee403910acb1feacf89`
+keeps its compact disclosures and wrapping repair. Result activity now selects
+the running attempt or the latest recorded started attempt, with a visible phase
+and state label. Unstarted Handoff/queued placeholders cannot hide completed
+Review activity; initial work reports that no attempt has started. History keeps
+its exact attempt identities. Report/artifact and workflow action bindings are
+unchanged.
+
+The focused DOM regression failed before the fix by observing `run_handoff`
+instead of `run_review`, then passed. It covers completed Review awaiting Handoff,
+active phase transitions, failed/cancelled/interrupted executions before a queued
+retry, initial queued work and cancellation before start, plus History identity.
+On Node 22.23.3, the dashboard build and full `npm run check` passed: **516
+runtime/package tests and 68 dashboard tests, zero failures or skips**.
+
+Exactly three dashboard source/test files changed relative to that checkpoint:
+`dashboard/src/task-detail.jsx`, `dashboard/src/activity.jsx`, and
+`dashboard/src/task-detail-view.test.js`. Documentation changes are limited to
+this proof entry and the interface selection contract. Runtime/parser/API/CLI,
+CSS, policy/skills, dependencies and 0.16.0 metadata remain byte-identical to the
+checkpoint. Prior failure evidence remains intact. This worker has no browser
+tool/executable; these are DOM checks, not fresh desktop/narrow/theme inspection
+or installed native qualification. The lead-reported Pi and Local Build/Cloud
+Review observations are prior external evidence, not rerun here. Factory owns
+independent Review and lead visual/live qualification of the accumulated candidate;
+#32 remains open for the broader limitations above.

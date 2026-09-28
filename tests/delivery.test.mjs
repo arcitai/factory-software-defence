@@ -493,7 +493,7 @@ test('saved delivery intent rechecks workflow evidence after its earlier qualifi
 });
 
 // These are controlled retained-record/provider fixtures, not production or model proof.
-for (const runtimeVersion of ['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1', '0.11.2', '0.12.0', '0.13.0', '0.13.1']) {
+for (const runtimeVersion of ['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1', '0.11.2', '0.12.0', '0.13.0', '0.13.1', '0.14.0', '0.15.0', '0.15.1', '0.15.2', '0.15.3', '0.15.4', '0.15.5', '0.15.6', '0.16.0']) {
   test(`retained ${runtimeVersion} evidence is recognized without rewriting its provenance`, async t => {
     const f = testFixture(t, { runtimeVersion }), gh = fakeGitHub(f), manager = service(f, gh.provider);
     const jobBefore = structuredClone(f.queue.get(jobID));

@@ -9,6 +9,7 @@ import { ROOT, run, save, json, digest, instanceLabel, stopContainers } from './
 import { incidentFor, validateReport } from './incident.mjs';
 import { BoundedLog } from './bounded-log.mjs';
 import { CodexUsageParser, emptyUsage, usageFields } from './usage.mjs';
+import { ActivityWriter } from './activity.mjs';
 import { PiUsageParser } from './pi-usage.mjs';
 import { assertRetainedSource, publicSourceAdmission, publicContinuation, restoreBuildCheckout } from './source-admission.mjs';
 import { runCandidateGit, runCandidateGitRaw } from './git-environment.mjs';
@@ -43,6 +44,8 @@ const lock = join(folder, 'active.json');
 // A killed executor leaves this fence. Recovery must establish stopped processes/containers.
 writeFileSync(lock, JSON.stringify({ pid: process.pid, pgid:Number(run('ps',['-p',String(process.pid),'-o','pgid='])), attempt, phase }), { flag: 'wx', mode: 0o600 });
 const started = Date.now();
+const activity = new ActivityWriter(join(folder, attempt), { job, attempt, phase,
+  harness: ['build', 'review', 'defence'].includes(phase) ? execution.executor : null });
 let prompt = '';
 for await (const part of process.stdin) {
   prompt += part;
@@ -130,7 +133,9 @@ async function container(mode, input, command, options = {}) {
     console.log(JSON.stringify({ phase: mode, event: 'started', synthetic: harnessOf(config) === 'mock' }));
     code = await new Promise((ok, fail) => {
       const child = spawn('docker', args, { stdio: ['pipe','pipe','pipe'] });
+      child.once('spawn', () => activity.emit('process_started'));
       child.stdout.on('data', bytes => {
+        activity.parser.write(bytes);
         usageParser?.write(bytes);
         // Controller-owned metadata, outside the worker's /output mount. Atomic
         // checkpoints survive cancellation without consulting mixed log tails.
@@ -143,7 +148,7 @@ async function container(mode, input, command, options = {}) {
       });
       child.stderr.on('data', bytes => log.write('stderr', bytes));
       child.stdin.on('error',error => { if (error.code !== 'EPIPE') fail(error); });
-      child.on('error',fail); child.on('close',(code,signal) => { exitSignal=signal; ok(code); }); child.stdin.end(input);
+      child.on('error',fail); child.on('close',(code,signal) => { exitSignal=signal; activity.emit('process_exited'); ok(code); }); child.stdin.end(input);
     });
     const parsedUsage = usageParser?.finish();
     if (parsedUsage) observedUsage = parsedUsage;
@@ -407,6 +412,7 @@ try {
   save(result,{outcome:'blocked', ...usageFields(observedUsage, execution, phase), ...(reviewVerdict ? {review_verdict:reviewVerdict} : {}), ...(webVerificationResult ? { web_verification: webVerificationResult } : {}), summary:error.message});
   process.exitCode=1;
 } finally {
+  await activity.finish(completed);
   const measurement = { job, attempt, phase, policyHash, execution, ...usageFields(observedUsage, execution, phase), completed, durationMs: Date.now()-started, requestedModel: execution.requestedModel, directCost: null, humanTime: null, synthetic: harnessOf(config) === 'mock' };
   save(join(folder,`measurement-${attempt}.json`),measurement);save(join(output,`measurement-${attempt}.json`),measurement);
   // If cleanup cannot be confirmed, retain the lock and require explicit recovery.

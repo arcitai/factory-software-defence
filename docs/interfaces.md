@@ -10,6 +10,7 @@ shell endpoint or a second scheduler.
 | Capability | CLI | Shared API | Dashboard | Remaining work |
 | --- | --- | --- | --- | --- |
 | Project/queue/attempt state | `status`, `inbox --source factory` JSON | `GET /api/v1/status` | Project, tasks, details/history | Stable versioned agent result/error contract |
+| Bounded phase activity | `activity JOB RUN`, tail/follow and cursor reconnect | Authenticated `GET /jobs/:job/runs/:run/activity` | Current detail and History; refresh/stale state | First slice; native/installed/browser qualification and health coverage remain open (#32) |
 | Start local work | `issue start --file --title` or `--draft`, explicit `--workflow`, optional `--model` | `POST /api/v1/jobs` | Local execution only → review → Create & start locally | Persistent unstarted drafts and typed incident intake remain separate |
 | Browse repository Inbox | `inbox [--page N] [--issue-state open/closed/all]` (also `issue list --source inbox`), `issue preview --url URL` via controller provider | Authenticated `GET /api/v1/issues`, `POST /api/v1/issues/preview` using shared readers | Primary list/Board with shared status/search/workflow/model/label filters, compact Repository tools/loaded scope, item count with secondary issue/execution totals and progressive linked detail; explicit Start work for either type | Issue → execution links retained; no implicit polling |
 | Start repository work | `issue start --url URL --workflow software/defence [--brief-file operator.md]` | `POST /api/v1/issues/start` | Issue context → explicit Start work with operator brief | Rechecks current content and active admission |
@@ -177,3 +178,79 @@ observations of delivered-commit checks, not proof of required-check completion,
 branch protection, mergeability, deployment or model quality. Protected Verify,
 independent Review and explicit acceptance remain unchanged. #37 remains open
 for the other parity gaps above; no role/profile or workflow redesign is included.
+
+## Bounded execution activity (0.16.0, #32 first slice)
+
+`factory activity JOB_ID RUN_ID [--after CURSOR] [--limit 1..128] [--follow]
+[--poll-ms 1000..30000] --state PATH` reads the same authenticated
+`GET /api/v1/jobs/:job/runs/:run/activity?after=CURSOR&limit=N` contract as the
+issue detail. Discover identities with `status`. Without `after`, the default is
+the last 50 events; with it, return up to the limit after that cursor in ascending
+order. CLI output is one JSON page per line. Follow polls sequentially (default
+2 seconds, 5-second request timeout), preserves the cursor on transport/server
+failure, reports unavailability on stderr, reconnects to that exact attempt and
+stops after a terminal attempt's retained pages are drained. SIGINT/SIGTERM abort
+both a request and the polling delay. Invalid requests/identity/cursors are errors,
+not indefinite reconnects. Retry/revision creates another run: select it explicitly.
+
+Result activity selects the running attempt, otherwise the latest attempt with a
+recorded start, including failed, cancelled or interrupted execution. An unstarted
+Handoff approval or queued retry does not hide the previous execution. The card
+labels its phase and state; Observation details retains the full attempt identity.
+Initial work without a started attempt says so without inventing observations.
+History activity remains bound to each historical attempt.
+
+The version-1 response identifies job, attempt and phase. `next_cursor` is the
+last delivered event; `latest_cursor`, `oldest_cursor`, `has_more`, `truncated`
+and `dropped` make paging, tail omission and ring rollover explicit. Cursors are
+nonnegative safe integers scoped to the exact job/run URL; never carry one to a
+different attempt. Ahead-of-history cursors return 409; malformed cursor/limit
+returns 400; an unknown job or foreign run returns 404. Reads require the existing
+operator token or dashboard session, with unchanged Host/Origin protections.
+`status` is available, unavailable (including pre-feature history) or error
+(invalid/inaccessible storage). No raw logs are consulted or backfilled.
+
+`attempt_state`/`terminal` come from the queue; `completion_observed` only records
+an executor end event. Interrupted/cancelled attempts may lack the end and final
+unflushed observations. `phase_started_at` is the queue start, `last_received_at`
+is the latest stdout chunk received by the existing executor, and `saved_at` is
+the record checkpoint time. The most recent event carries its own receive-time
+`at`. `process_observation`/`process_observed_at` retain the last Docker **client**
+start/exit even after ring rollover; neither attests current process/container
+health. `container_health` is explicitly unknown. API `refreshed_at` and the UI's
+last successful read are reader facts, never worker heartbeats. Silence has no
+failure threshold. A failed UI refresh retains a stale-labelled view; refresh
+starts a new tail read. History reads remain tied to their original attempts.
+
+The stdout owner records phase start/end and client start/exit. Codex
+`item.completed` maps agent messages and command/file/search/MCP tool categories;
+Pi maps assistant `message_end` and `tool_execution_end`. Tool completion does not
+mean successful work. Reasoning, deltas, final aggregate message replay and nested
+events do not become activity. Unknown/custom/deterministic harnesses report
+unsupported event categories and retain only executor observations plus stdout
+receive times. Mapped tool categories are read, edit, command, search and other.
+Only fixed enums, timestamps, identities and bounded counters are returned.
+
+All input text is excluded: prompts, messages, reasoning, commands, arguments,
+results, paths, raw errors, arbitrary names and provider/credential data are never
+copied to activity. This is an allowlist, not heuristic string redaction. Native
+JSONL lines are capped at 64 KiB with strict UTF-8; malformed, oversized or trailing
+incomplete lines increment `rejected`, then parsing resumes at the next newline.
+Activity does not change canonical completion usage parsers or cost provenance.
+
+The host executor owns `jobs/JOB/RUN/activity.json`, outside worker mounts. A
+128-event ring and one fixed temporary file bound storage; at most one async
+atomic checkpoint is in flight, throttled to once per second during execution,
+with a final flush. Input buffers are fixed-size; readers cannot create queues,
+trigger writes or backpressure stdout. Readback caps bytes at 64 KiB and revalidates
+identity, schema, ordering, categories, timestamps and private regular-file paths.
+No activity is included in the main status payload. Checkpoint write failures do
+not abort the worker; `write_errors` reports them if storage recovers. If storage
+never recovers, missing/stale checkpoints cannot reveal the lost interval. A killed
+executor may lose the final uncheckpointed interval. Existing private logs and
+reports retain their separate bounded artifact rules; previews are labelled
+snapshots with explicit refresh. Observations grant no acceptance/action authority.
+
+This first slice leaves #32 open for independent installed/native Z13 and visual
+browser qualification, richer genuinely observed health, and broader provider
+coverage. See the actual evidence and limits in [proof](proof.md).
