@@ -430,3 +430,75 @@ leaves Pi usage unknown; controlled protocol fixtures are not token or quality
 benchmarks. Include cloud Review in hybrid totals. No provider token billing for
 local inference does not mean zero electricity, hardware or operator cost. Only
 then qualify a suitable real Factory issue; no customer jobs are part of this slice.
+
+
+## Local context budget and worker image (0.15.2, #100)
+
+The standard worker recipe pins **`@earendil-works/pi-coding-agent@0.87.1`** from
+[earendil-works/pi](https://github.com/earendil-works/pi/tree/v0.87.1), replacing
+`@mariozechner/pi-coding-agent@0.73.1`. Pi requires **Node >=22.19.0**; the image
+installation enforces dependency engines. Factory's controller Node requirement
+is unchanged. The separate Codex pin remains **0.156.1**. A CLI upgrade does not
+rebuild or replace an admitted job image. Source transport proof is documented in
+[proof](proof.md#pi-context-boundary-first-slice-0152-100); installed image and real
+local-model qualification are separate acceptance gates.
+
+Set the selected private binding's `contextWindow` no higher than the server's
+**actually allocated** context for that exact model/request, and set `maxTokens`
+within both endpoint support and available headroom. These existing fields have
+the same CLI/API/dashboard validation and frozen policy. An advertised registry
+window allocates no server memory. For Ollama, configure allocation through its
+supported server/model controls and inspect the running allocation with
+`ollama ps`; see [Ollama context length](https://docs.ollama.com/context-length).
+Factory does not pass an undocumented `num_ctx`, patch a model template or tune
+the host. Unsupported endpoint controls require an explicit capability limit.
+
+Pi 0.87.1's upstream defaults reserve 16,384 tokens and keep approximately 20,000
+recent tokens. At a declared 65,536, its threshold is 49,152, checked **after tool
+results and before the next assistant request in the same run**. This repairs a
+missing check in 0.73.1; increasing its reserve alone cannot add that check. Output
+reservation, tool-result growth, system/tools overhead and summarization must all
+fit the allocation. Prefix compaction alone cannot shrink one large retained
+assistant/tool-result group. The bundled local adapter therefore projects tool
+text into a conservative byte budget before generation and summarization, keeping
+the exact task and tool identities/order. Truncation notices tell the model to
+re-read with offset/limit or narrower queries; raw events/files stay independent
+of this projection. Every request reserves the full configured output, includes
+schemas/arguments and adds template headroom. This is conservative estimation,
+not measured token usage or an allocation/completion guarantee. Unshrinkable
+instructions/arguments fail explicitly rather than being silently removed.
+Pi estimates native history before the wire projection and can reduce output to
+one token. The adapter restores the selected generation allowance only with a
+fitting final payload; explicit upstream summary caps stay bounded separately.
+Both admitted `max_tokens` and `max_completion_tokens` compatibility fields are
+supported. The existing OpenAI `reasoning_effort` selection remains inside that
+total output ceiling; no extra reasoning allowance is added. Numeric/nested
+thinking-budget formats are unsupported and fail explicitly instead of being
+guessed or silently rewritten. Do not add project Pi settings to bypass
+the admitted binding or rely on custom tuning that has not been qualified.
+See [pinned compaction behavior](https://github.com/earendil-works/pi/blob/v0.87.1/packages/coding-agent/docs/compaction.md).
+
+Before adoption, stop and reconcile all work, retain the old immutable image ID
+and a stopped private-state backup. Build/qualify the exact candidate image, then
+explicitly select it with `factory install --image LOCAL_IMAGE_REF --state PRIVATE_STATE`
+while idle. The normal install path retains the previously selected image. Plain
+`factory install` builds the standard recipe, now tagged `software-defence-factory-job:0.4.0`;
+updating the CLI alone does neither. Confirm the selected image ID and `pi --version`
+in that image. The protected local launcher requires exactly 0.87.1 and loads only
+its bundled read-only adapter with automatic extension discovery disabled. Missing
+adapter files or an older worker image fail explicitly; old evidence remains
+readable and cloud profiles keep their existing wrapper. Roll back with the retained old image through the same idle install
+path and restore the previously working role definition through revision-guarded
+rollback. Do not change frozen attempts or relabel old failed results.
+
+Lead's bounded actual-inference fixture must include enough tool results to trigger
+summarization, resumed useful tool work, the required report, checks and independent
+Review. Record the exact image/model digest, harness/server versions, allocated
+window, output/reasoning request, tool growth, compaction ordering, elapsed time,
+quality outcome and peak memory; unknown measurements remain null. Set an explicit
+job deadline/resource budget and preserve any unfinished checkout and diagnostic
+artifacts. A short successful prompt is insufficient. A larger actually allocated
+window is a later measured comparison only if this evidence warrants it; do not
+switch model or cloud provider automatically. The failed #83 local attempt is not
+local delivery. An operator-selected fresh cloud retry and unfinished-checkpoint
+recovery remain governed by [recovery](recovery.md) and #42.

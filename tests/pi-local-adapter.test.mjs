@@ -16,7 +16,11 @@ test('pinned Pi consumes the generated registry, calls a tool, returns its resul
   t.after(() => { if (existsSync(join(temp, 'agent'))) chmodSync(join(temp, 'agent'), 0o700); rmSync(temp, { recursive: true, force: true }); });
   const env = { PATH: process.env.PATH, HOME: temp, PI_CODING_AGENT_DIR: join(temp, 'agent') };
   const version = spawnSync('pi', ['--version'], { env, encoding: 'utf8', timeout: 10000 });
-  if (version.status !== 0 || (version.stdout + version.stderr).trim() !== '0.73.1') return t.skip('Requires installed pinned Pi 0.73.1; no install or live inference performed');
+  const expectedVersion = '0.87.1';
+  if (version.status !== 0 || (version.stdout + version.stderr).trim() !== expectedVersion) {
+    assert.notEqual(process.env.FACTORY_REQUIRE_PI, '1', `Qualification requires pinned Pi ${expectedVersion} on PATH`);
+    return t.skip(`Requires installed pinned Pi ${expectedVersion}; no install or live inference performed`);
+  }
   mkdirSync(env.PI_CODING_AGENT_DIR); const workspace = join(temp, 'workspace'); mkdirSync(workspace);
   const report = join(workspace, 'agent-report.md'), requests = [];
   let missing = false, unsupported = false;
@@ -40,6 +44,8 @@ test('pinned Pi consumes the generated registry, calls a tool, returns its resul
   writeFileSync(registryPath, JSON.stringify(localRegistry(binding)));
   const launcher = join(env.PI_CODING_AGENT_DIR, 'launch.mjs');
   writeFileSync(launcher, readFileSync(join(ROOT, 'factory/pi-local-launch.mjs')));
+  for (const file of ['pi-context-extension.mjs', 'pi-context-budget.mjs'])
+    writeFileSync(join(env.PI_CODING_AGENT_DIR, file), readFileSync(join(ROOT, 'factory', file)));
   const args = [launcher, ...localRoleCommand(binding).slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'kit/skills') : arg)];
   async function run(argsOverride = args) {
     return await new Promise((resolve, reject) => {
@@ -55,6 +61,7 @@ test('pinned Pi consumes the generated registry, calls a tool, returns its resul
   assert.equal(result.code, 0, result.stderr + result.stdout);
   assert.equal(readFileSync(report, 'utf8'), 'Synthetic tool/report compatibility only.\n');
   assert.equal(requests.length, 2);
+  assert.equal(existsSync(join(env.PI_CODING_AGENT_DIR, 'auth.json')), false, 'read-only registry needs no credential store');
   for (const { path, headers, body } of requests) {
     assert.equal(path, '/v1/chat/completions'); assert.equal(body.model, binding.model);
     assert.equal(body.max_tokens, 1024); assert.equal(body.reasoning_effort, undefined);
@@ -109,6 +116,9 @@ test('pinned Pi consumes the generated registry, calls a tool, returns its resul
   chmodSync(env.PI_CODING_AGENT_DIR, 0o700);
   writeFileSync(registryPath, JSON.stringify(localRegistry({ ...binding, model: 'different' })));
   const mismatch = await run(); assert.notEqual(mismatch.code, 0); assert.equal(requests.length, count);
+  writeFileSync(registryPath, JSON.stringify(localRegistry(binding)));
+  rmSync(join(env.PI_CODING_AGENT_DIR, 'pi-context-extension.mjs'));
+  const missingAdapter = await run(); assert.notEqual(missingAdapter.code, 0); assert.equal(requests.length, count, 'missing protection fails before transport');
   rmSync(registryPath);
   const absent = await run(); assert.notEqual(absent.code, 0); assert.equal(requests.length, count, 'no fallback on missing registry');
 });

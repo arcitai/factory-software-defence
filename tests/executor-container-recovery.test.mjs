@@ -183,6 +183,7 @@ if (command === 'run') {
   if (state.localDirectory) {
     state.localRegistry = JSON.parse(readFileSync(state.localDirectory + '/models.json', 'utf8'));
     state.localLauncher = readFileSync(state.localDirectory + '/launch.mjs', 'utf8');
+    state.localAdapter = ['pi-context-extension.mjs', 'pi-context-budget.mjs'].map(file => readFileSync(state.localDirectory + '/' + file, 'utf8'));
     state.localMode = statSync(state.localDirectory + '/models.json').mode & 0o777;
     state.localReadOnly = localMount.endsWith(',readonly');
   }
@@ -992,6 +993,7 @@ for (const phase of ['build', 'review', 'defence', 'verify']) {
       assert.equal(registry.baseUrl, binding.endpoint); assert.equal(registry.models[0].contextWindow, 131072);
       assert.equal(registry.models.length, 1); assert.equal(registry.models[0].id, binding.model);
       assert.equal(launched.localLauncher, readFileSync(join(root, 'factory/pi-local-launch.mjs'), 'utf8'));
+      assert.deepEqual(launched.localAdapter, ['pi-context-extension.mjs', 'pi-context-budget.mjs'].map(file => readFileSync(join(root, 'factory', file), 'utf8')));
       assert(argv.includes('PI_CODING_AGENT_DIR=/factory-local'));
       const command = argv.slice(argv.lastIndexOf('factory') + 1);
       assert.deepEqual(command, common.resolvedRoleProfiles[role].command);
