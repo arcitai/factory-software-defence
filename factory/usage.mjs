@@ -1,5 +1,5 @@
-// Codex emits JSONL, but only the top-level turn.completed usage record is
-// evidence for token totals. Never retain the event body or any other event.
+// Shared inclusive-input contract plus Codex's top-level turn.completed
+// adapter. Pi's stdout adapter lives in pi-usage.mjs. Never retain event bodies.
 export const MAX_USAGE_LINE_BYTES = 64 * 1024;
 export const MAX_USAGE_COUNT_DIGITS = 128;
 export const MAX_USAGE_EVENTS = 2048;
@@ -8,7 +8,7 @@ const DECIMAL_COUNT = new RegExp(`^\\d{1,${MAX_USAGE_COUNT_DIGITS}}$`);
 const own = (value, key) => Object.hasOwn(value, key);
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
-function count(value) {
+export function tokenCount(value) {
   if (typeof value === 'number') {
     if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) throw new Error('Invalid token count');
     return BigInt(value);
@@ -55,27 +55,22 @@ function eventCounts(event) {
   if (!record(event.usage)) throw new Error('Missing token usage');
   const usage = event.usage;
   if (!own(usage, 'input_tokens') || !own(usage, 'output_tokens') || !own(usage, 'cached_input_tokens')) throw new Error('Incomplete token usage');
-  const input = count(usage.input_tokens), output = count(usage.output_tokens), cached = count(usage.cached_input_tokens);
+  const input = tokenCount(usage.input_tokens), output = tokenCount(usage.output_tokens), cached = tokenCount(usage.cached_input_tokens);
   if (cached > input) throw new Error('Cached input exceeds input tokens');
   // These known values are subsets. Validate their bounds, but never add them.
-  if (own(usage, 'cache_write_input_tokens') && count(usage.cache_write_input_tokens) > input) throw new Error('Cache write input exceeds input tokens');
-  if (own(usage, 'reasoning_output_tokens') && count(usage.reasoning_output_tokens) > output) throw new Error('Reasoning output exceeds output tokens');
+  if (own(usage, 'cache_write_input_tokens') && tokenCount(usage.cache_write_input_tokens) > input) throw new Error('Cache write input exceeds input tokens');
+  if (own(usage, 'reasoning_output_tokens') && tokenCount(usage.reasoning_output_tokens) > output) throw new Error('Reasoning output exceeds output tokens');
   return { input, output, cached };
 }
 
-export class CodexUsageParser {
-  constructor() {
-    this.line = Buffer.alloc(MAX_USAGE_LINE_BYTES);
+// Fixed byte buffer shared by the two stdout adapters. Event objects are transient.
+export class UsageLineParser {
+  constructor(limit) {
+    this.line = Buffer.alloc(limit);
     this.length = 0;
     this.overflow = false;
     this.incomplete = false;
-    this.pendingTurn = false;
-    this.events = 0;
-    this.input = 0n;
-    this.output = 0n;
-    this.cached = 0n;
   }
-
   write(chunk) {
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     for (const byte of bytes) {
@@ -91,8 +86,21 @@ export class CodexUsageParser {
   lineComplete() {
     if (this.overflow) this.incomplete = true;
     else this.parseLine();
+    this.line.fill(0, 0, this.length);
     this.length = 0;
     this.overflow = false;
+  }
+}
+
+export class CodexUsageParser extends UsageLineParser {
+  constructor() {
+    super(MAX_USAGE_LINE_BYTES);
+    this.incomplete = false;
+    this.pendingTurn = false;
+    this.events = 0;
+    this.input = 0n;
+    this.output = 0n;
+    this.cached = 0n;
   }
 
   parseLine() {
@@ -141,18 +149,21 @@ export function parseCodexJsonl(chunks, options) {
 function normalizeUsage(value) {
   if (!record(value)) return null;
   if (value.status === 'unknown') {
-    if (!['codex_jsonl', 'unsupported_executor'].includes(value.source) || value.coverage !== 'unknown') return null;
+    if (!['codex_jsonl', 'pi_jsonl', 'unsupported_executor'].includes(value.source) || value.coverage !== 'unknown') return null;
     return { status: 'unknown', source: value.source, coverage: 'unknown' };
   }
   if (value.status === 'not_applicable') {
     if (value.source !== 'not_applicable' || value.coverage !== 'not_applicable') return null;
     return { status: 'not_applicable', source: 'not_applicable', coverage: 'not_applicable' };
   }
-  if (!['codex_jsonl', 'legacy_codex_log'].includes(value.source) || !['complete', 'partial'].includes(value.coverage)) return null;
+  if (!['codex_jsonl', 'legacy_codex_log', 'pi_jsonl'].includes(value.source) || !['complete', 'partial'].includes(value.coverage)) return null;
   try {
-    const input = count(value.input_tokens), output = count(value.output_tokens), cached = count(value.cached_input_tokens);
+    const input = tokenCount(value.input_tokens), output = tokenCount(value.output_tokens), cached = tokenCount(value.cached_input_tokens);
     if (cached > input) return null;
-    return { input_tokens: input.toString(), output_tokens: output.toString(), cached_input_tokens: cached.toString(), source: value.source, coverage: value.coverage };
+    const writes = own(value, 'cache_write_input_tokens') ? tokenCount(value.cache_write_input_tokens) : null;
+    if (writes !== null && (writes > input || (value.source === 'pi_jsonl' && cached + writes > input))) return null;
+    if (value.source === 'pi_jsonl' && (writes === null || value.coverage !== 'partial')) return null;
+    return { input_tokens: input.toString(), output_tokens: output.toString(), cached_input_tokens: cached.toString(), ...(writes !== null ? { cache_write_input_tokens: writes.toString() } : {}), source: value.source, coverage: value.coverage };
   } catch { return null; }
 }
 
@@ -161,13 +172,14 @@ export function emptyUsage(execution, phase) {
     return { status: 'not_applicable', source: 'not_applicable', coverage: 'not_applicable' };
   return {
     status: 'unknown',
-    source: execution?.executor === 'codex' ? 'codex_jsonl' : 'unsupported_executor',
+    source: execution?.executor === 'codex' ? 'codex_jsonl' : execution?.executor === 'pi' ? 'pi_jsonl' : 'unsupported_executor',
     coverage: 'unknown',
   };
 }
 
 export function usageFields(value, execution, phase) {
-  const usage = normalizeUsage(value) || emptyUsage(execution, phase);
+  const usage = ['verify', 'handoff'].includes(phase) || execution?.executor === 'mock'
+    ? emptyUsage(execution, phase) : normalizeUsage(value) || emptyUsage(execution, phase);
   const token_usage = usage.status ? null : (BigInt(usage.input_tokens) + BigInt(usage.output_tokens)).toString();
   return { usage, token_usage };
 }

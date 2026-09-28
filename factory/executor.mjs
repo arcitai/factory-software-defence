@@ -9,6 +9,7 @@ import { ROOT, run, save, json, digest, instanceLabel, stopContainers } from './
 import { incidentFor, validateReport } from './incident.mjs';
 import { BoundedLog } from './bounded-log.mjs';
 import { CodexUsageParser, emptyUsage, usageFields } from './usage.mjs';
+import { PiUsageParser } from './pi-usage.mjs';
 import { assertRetainedSource, publicSourceAdmission, publicContinuation, restoreBuildCheckout } from './source-admission.mjs';
 import { runCandidateGit, runCandidateGitRaw } from './git-environment.mjs';
 import { selectedInferenceSecrets, writeSelectedModelEnvironment } from './model-environment.mjs';
@@ -103,7 +104,9 @@ async function container(mode, input, command, options = {}) {
   if (scratch) args.push('--mount',`type=bind,source=${scratch},target=/scratch`);
   if (mode === 'verify') args.push('--env',`FACTORY_BASE_REVISION=${git('rev-parse',`${metadata().base}^{commit}`)}`);
   const logPath = join(folder, attempt, `${mode}.log`);
-  const log = new BoundedLog(), usageParser = execution.executor === 'codex' ? new CodexUsageParser() : null;
+  const log = new BoundedLog(), usageParser = mode === 'verify' ? null
+    : execution.executor === 'codex' ? new CodexUsageParser() : execution.executor === 'pi' ? new PiUsageParser() : null;
+  let savedObservations = 0;
   let exitSignal, selectedModelEnvironment = false, inferenceSecrets = [], code, cleanupError, reportError;
   try {
     if (localDirectory) {
@@ -127,7 +130,17 @@ async function container(mode, input, command, options = {}) {
     console.log(JSON.stringify({ phase: mode, event: 'started', synthetic: harnessOf(config) === 'mock' }));
     code = await new Promise((ok, fail) => {
       const child = spawn('docker', args, { stdio: ['pipe','pipe','pipe'] });
-      child.stdout.on('data', bytes => { log.write('stdout', bytes); usageParser?.write(bytes); });
+      child.stdout.on('data', bytes => {
+        usageParser?.write(bytes);
+        // Controller-owned metadata, outside the worker's /output mount. Atomic
+        // checkpoints survive cancellation without consulting mixed log tails.
+        if (usageParser instanceof PiUsageParser && usageParser.observed !== savedObservations) {
+          observedUsage = usageParser.snapshot();
+          save(join(folder, attempt, 'usage.json'), { version: 1, job, attempt, phase, execution, usage: observedUsage });
+          savedObservations = usageParser.observed;
+        }
+        log.write('stdout', bytes);
+      });
       child.stderr.on('data', bytes => log.write('stderr', bytes));
       child.stdin.on('error',error => { if (error.code !== 'EPIPE') fail(error); });
       child.on('error',fail); child.on('close',(code,signal) => { exitSignal=signal; ok(code); }); child.stdin.end(input);

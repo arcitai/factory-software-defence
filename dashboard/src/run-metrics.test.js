@@ -159,3 +159,15 @@ test("structured usage preserves partial coverage and excludes deterministic pha
   assert.equal(formatRunTokenUsage({command:"handoff"}),"Not applicable");
   assert.equal(formatRunTokenUsage({command:"review",usage:{status:"unknown"}}),"Unavailable");
 });
+
+test('mixed Pi and cloud usage preserves inclusive totals, partial coverage and explicitly reported cache writes', () => {
+  const completed_at='2026-09-28T12:00:00Z';
+  const pi={completed_at,command:'build',state:'failed',executor:'pi',token_usage:'38',usage:{source:'pi_jsonl',coverage:'partial',input_tokens:'35',output_tokens:'3',cached_input_tokens:'20',cache_write_input_tokens:'5'}};
+  const cloud={completed_at,command:'review',executor:'codex',token_usage:'12',usage:{source:'codex_jsonl',coverage:'complete',input_tokens:'10',output_tokens:'2',cached_input_tokens:'4'}};
+  const summary=tokenUsageSummary([pi,cloud]);
+  assert.equal(summary.total,'50');assert.equal(summary.input,'45');assert.equal(summary.output,'5');assert.equal(summary.cached,'24');
+  assert.equal(summary.cacheWrites,'5');assert.equal(summary.cacheWriteReported,1);
+  assert.equal(formatReportingCoverage(summary),'2 of 2 AI runs · 1 partial');
+  assert.equal(formatRunTokenUsage(pi),'38 · partial');
+  assert.equal(tokenUsageSummary([cloud]).cacheWrites,undefined,'missing cache-write attribution stays unknown');
+});

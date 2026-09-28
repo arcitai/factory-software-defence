@@ -220,6 +220,18 @@ if (command === 'run') {
       state.symlinkCreated = true; save();
     }
   }
+  if (state.mode.startsWith('pi-usage')) {
+    const message = {role:'assistant',stopReason:'stop',content:[{type:'text',text:'private synthetic content'}],usage:{input:10,cacheRead:20,cacheWrite:5,output:3,totalTokens:38}};
+    process.stderr.write(JSON.stringify({type:'message_end',message})+'\\n');
+    process.stdout.write(JSON.stringify({type:'tool_execution_end',result:{type:'message_end',message}})+'\\n');
+    if (state.mode !== 'pi-usage-stderr') {
+      process.stdout.write(JSON.stringify({type:'message_end',message})+'\\n');
+      await new Promise(resolve => process.stdout.write('x'.repeat(1024*1024)+'\\n', resolve));
+      await new Promise(resolve => process.stdout.write(JSON.stringify({type:'agent_end',messages:[message]})+'\\n', resolve));
+    }
+    if (state.mode === 'pi-usage-interrupt') await delay(60000);
+    if (state.mode === 'pi-usage-failure') { save(); process.exit(42); }
+  }
   if (state.mode.startsWith('redaction-')) {
     process.stdout.write('Useful stdout before inert-executor-auth-');
     await delay(15);
@@ -1057,4 +1069,44 @@ test('local registry stays fenced on uncertain shutdown and ordinary recovery re
   const recovered = runOrdinaryRecovery(f); assert.equal(recovered.status, 0, recovered.stderr);
   assert.equal(existsSync(join(f.attemptFolder, '.local-review')), false);
   assert.equal(existsSync(f.lock), false);
+});
+
+
+test('native Pi stdout seam persists metadata before log truncation and excludes stderr/tool bodies', t => {
+  for (const mode of ['pi-usage', 'pi-usage-failure', 'pi-usage-stderr']) {
+    const f=fixture(t,mode,'review','pi');
+    const result=runExecutor(f);
+    assert.equal(result.status, mode==='pi-usage-failure'?1:0, result.stderr);
+    const retained=JSON.parse(readFileSync(join(f.output,'result.json'),'utf8'));
+    if(mode==='pi-usage-stderr') {
+      assert.equal(retained.usage.status,'unknown');
+      assert.equal(existsSync(join(f.attemptFolder,'usage.json')),false);
+    } else {
+      assert.equal(retained.token_usage,'38');assert.equal(retained.usage.coverage,'partial');
+      const checkpoint=JSON.parse(readFileSync(join(f.attemptFolder,'usage.json'),'utf8'));
+      assert.deepEqual(checkpoint.usage,retained.usage);
+      assert(!JSON.stringify(checkpoint).includes('private synthetic content'));
+      assert.match(readFileSync(join(f.attemptFolder,'review.log'),'utf8'),/log truncated/);
+      assert.equal(retained.outcome,mode==='pi-usage-failure'?'blocked':'complete');
+    }
+  }
+});
+
+
+test('Pi usage checkpoint survives an executor killed before its result file', async t => {
+  const f=fixture(t,'pi-usage-interrupt','review','pi');
+  const child=spawn(process.execPath,[join(root,'factory/executor.mjs'),f.state,f.phase],{env:f.executorEnv,detached:true,stdio:['pipe','ignore','ignore']});
+  const closed=new Promise(resolve=>child.on('close',resolve));
+  child.stdin.end('Synthetic interruption fixture');
+  try {
+    const path=join(f.attemptFolder,'usage.json');
+    for(let i=0;i<400 && !existsSync(path);i++)await new Promise(resolve=>setTimeout(resolve,5));
+    assert(existsSync(path),'usage is durable before completion');
+    const checkpoint=JSON.parse(readFileSync(path,'utf8'));
+    assert.equal(checkpoint.usage.input_tokens,'35');
+    assert.equal(checkpoint.usage.coverage,'partial');
+    assert.equal(existsSync(join(f.output,'result.json')),false);
+  } finally { try {process.kill(-child.pid,'SIGKILL');} catch {} await closed; }
+  const checkpoint=JSON.parse(readFileSync(join(f.attemptFolder,'usage.json'),'utf8'));
+  assert.equal(checkpoint.usage.output_tokens,'3');
 });

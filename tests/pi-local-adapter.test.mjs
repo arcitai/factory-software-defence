@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { localRegistry, localRoleCommand } from '../factory/local-inference.mjs';
 import { resolveRoleProfiles } from '../factory/role-definition.mjs';
+import { PiUsageParser } from '../factory/pi-usage.mjs';
 import { ROOT } from '../factory/lib.mjs';
 
 // Native pinned adapter + controlled loopback responses, never live inference.
@@ -35,6 +36,7 @@ test('pinned Pi consumes the generated registry, calls a tool, returns its resul
       chunk({ role: 'assistant', tool_calls: [{ index: 0, id: 'call_fixture', type: 'function', function: { name: 'write', arguments: JSON.stringify({ path: report, content: 'Synthetic tool/report compatibility only.\n' }) } }] });
       chunk({}, 'tool_calls');
     } else { chunk({ role: 'assistant', content: 'Synthetic fixture complete.' }); chunk({}, 'stop'); }
+    res.write(`data: ${JSON.stringify({ choices: [], usage: {prompt_tokens:123,completion_tokens:9,total_tokens:132,prompt_tokens_details:{cached_tokens:40,cache_write_tokens:7}} })}\n\n`);
     res.end('data: [DONE]\n\n');
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -51,8 +53,9 @@ test('pinned Pi consumes the generated registry, calls a tool, returns its resul
     return await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, argsOverride, { cwd: workspace, env, stdio: ['pipe', 'pipe', 'pipe'] });
       const timer = setTimeout(() => child.kill('SIGKILL'), 15000);
-      let stdout = '', stderr = ''; child.stdout.on('data', b => stdout += b); child.stderr.on('data', b => stderr += b);
-      child.on('error', reject); child.on('close', code => { clearTimeout(timer); resolve({ code, stdout, stderr }); });
+      const usageParser = new PiUsageParser();
+      let stdout = '', stderr = ''; child.stdout.on('data', b => { usageParser.write(b); stdout += b; }); child.stderr.on('data', b => stderr += b);
+      child.on('error', reject); child.on('close', code => { clearTimeout(timer); resolve({ code, stdout, stderr, usage: usageParser.finish() }); });
       child.stdin.end('Synthetic fixture: use the write tool and return.');
     });
   }
@@ -61,6 +64,12 @@ test('pinned Pi consumes the generated registry, calls a tool, returns its resul
   assert.equal(result.code, 0, result.stderr + result.stdout);
   assert.equal(readFileSync(report, 'utf8'), 'Synthetic tool/report compatibility only.\n');
   assert.equal(requests.length, 2);
+  // Independent fixed provider totals: two calls, each 123 inclusive input + 9 output.
+  assert.deepEqual(result.usage, {input_tokens:'246',output_tokens:'18',cached_input_tokens:'80',cache_write_input_tokens:'14',source:'pi_jsonl',coverage:'partial'});
+  const aggregateOnly = new PiUsageParser();
+  for (const event of result.stdout.split('\n').filter(Boolean).map(line => JSON.parse(line)))
+    if (event.type === 'agent_end') aggregateOnly.write(JSON.stringify(event)+'\n');
+  assert.deepEqual(aggregateOnly.finish(), result.usage);
   assert.equal(existsSync(join(env.PI_CODING_AGENT_DIR, 'auth.json')), false, 'read-only registry needs no credential store');
   for (const { path, headers, body } of requests) {
     assert.equal(path, '/v1/chat/completions'); assert.equal(body.model, binding.model);

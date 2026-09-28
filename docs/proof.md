@@ -30,6 +30,101 @@ adoption preserved histories. Those results apply to 0.11.0, not later revisions
 | [Profile](../tests/execution-profile.test.mjs) and [delivery tests](../tests/delivery.test.mjs) | Exact writer versions, unchanged retained records, current provenance/policy/revision guards and unsupported writer rejection | Controlled records/providers do not prove live account writes. |
 | [Service](../tests/services.test.mjs) and [source admission tests](../tests/source-admission.test.mjs) | Stable launch/update contracts and retained-source behavior | Does not prove a running installation's service/image/history preservation. |
 
+### Pi token measurements (0.15.4 candidate, bounded #51 slice)
+
+Implemented from protected 0.15.3 base `c138b6b1669637635ba738646a7a1d5d5886c92d`.
+The complete #51 issue/comments confirm #103 release/adoption preceded this
+new admission. Previous failed attempts remain unchanged; this is not a claim
+that a local model delivered #83 or that broader #51 is complete.
+
+Installed official Pi 0.87.1 was inspected read-only: `pi-ai/dist/api/openai-completions.js`
+subtracts cache reads/writes from prompt tokens and sums them in `totalTokens`;
+`pi-agent-core/dist/agent-loop.js` emits ordered `message_end` and per-run
+`agent_end.messages`; print mode forwards these as JSONL. Provider retries and
+summary calls have no independent complete usage contract, so Pi measurements
+remain partial. See [usage semantics and bounds](usage.md).
+
+Source evidence uses sanitized fixtures, not private real logs:
+
+- `tests/pi-usage.test.mjs`: chunking, aggregate reconciliation, equal-count
+  messages/turns, cache subsets, malformed/oversized/truncated evidence, exact
+  large counts and bounds, cancellation checkpoints, API/CLI equality and
+  SQLite/controller restart without historical mutation.
+- `tests/pi-local-adapter.test.mjs`: actual pinned Pi CLI and Factory launcher
+  against controlled loopback provider responses. Two calls independently emit
+  246 inclusive input, 18 output, 80 cache-read and 14 cache-write tokens: 264
+  total in streamed and aggregate-only parsing. This is transport evidence.
+- `tests/pi-context.test.mjs`: actual Pi compaction/retry/failure scenarios;
+  observed tokens match independently accumulated non-summary provider counts,
+  with partial coverage and unknown failed-request zero placeholders.
+- `tests/executor-container-recovery.test.mjs`: controlled Docker executable
+  exercises native stdout collection before truncation, stderr/tool exclusion,
+  failure retention and executor termination before final-result creation.
+  This is process integration, not Docker isolation qualification.
+- Existing Codex usage regression tests retain their totals and coverage.
+
+Checkpoint source verification passed: `npm run build:dashboard`, `npm run check` (464
+runtime/package tests and 65 dashboard tests). The installed-Pi cases ran
+without skips.
+The worker's earlier browser attempt lacked shared libraries; DOM assertions
+alone were not visual proof. The operator qualification below supersedes the
+pending installed/browser/local-extraction gates **for that checkpoint only**.
+
+#### Exact-checkpoint operator qualification (2026-09-28)
+
+The operator attests to qualification on Z13 at 03:46–03:57 UTC of packed and
+installed **0.15.4**, head `84980db4bf089ef1e22c2b09714520315eab46f5`, tree
+`a22e146f9feeeb2add7c9f68b6984f5aedfb8e0f`. Prior independent cloud Review
+`run_d83ccefe8ac93a82f6d1c5c0` had zero code findings and blocked only on the
+then-pending external evidence. These are supplied operator observations, not
+external tests rerun by this documentation worker.
+
+- Standard image `sha256:c52202965107d6e13b68884a6e529252e85600213d6031b47b6eb01e0766f555`,
+  actual Pi 0.87.1 and Node 22.23.3: **90 image regressions passed**, none failed
+  or skipped, including actual context/compaction/retry, parsing, Codex accounting
+  and interruption/container recovery. Earlier external runner attempts failed
+  on read-only/noexec fixture mounts; source was unchanged and logs retained.
+- Controlled actual-Pi transport, `job_c1c756a9731e10705827c7bb`: three calls per
+  AI phase, including distinct equal-count calls and a repeated final aggregate.
+  Independent 223 uncached + 100 cached + 47 output = **370 total** agrees with
+  native 323 inclusive input / 100 cached / 47 output. Coverage remains partial;
+  CLI/API agree through restart. The 0.15.3 unknown baseline remains preserved.
+- Actual Qwen instruct local inference, `job_9c75179ed2e625fa5f387da7`, used
+  65,536 context / 8,192 output with no cloud fallback. Build (2m32), Verify and
+  separate local Review (4m29) passed; six independent semantic probes and
+  immutable acceptance / `.agents` / `.pi` preservation passed, with no review
+  findings. Ten completed assistant messages per phase independently match
+  native Build **54,361 inclusive input / 48,400 cached / 2,058 output = 56,419**
+  and Review **59,774 / 53,578 / 3,236 = 63,010**. No truncation, compaction or
+  retry occurred. Coverage stays partial and cost unknown. This small fixture
+  is not a locally delivered repository issue or broad model-quality pass;
+  local fixture Review does not replace independent cloud candidate Review.
+- Installed controller/dashboard: six isolated Chromium cases at 1440/390/320px
+  in light/dark passed Analytics (740 total, two partial measurements, unknown
+  cost), Result/History, list/Kanban/search/reset and API parity. Three screenshots
+  were independently inspected: Analytics 1440 light, History 390 dark and Inbox
+  320 light. The accepted layout was preserved.
+
+Private evidence is retained by the operator; public digest references are:
+
+| Evidence | SHA-256 |
+| --- | --- |
+| Image regressions | `1662737c7f1404c9671b82820d28c03402b92fab8fb2953aeef3feb6a5c6a75b` |
+| Controlled transport | `80e3c0a375f47030df10aa0da360130199721626445bcb9eab3fc3290307a3f5` |
+| Local fixture | `cde4988d4d4a0b56be0d1b37100dedaa91a61f8313775b996a5b3b7aa58f415d` |
+| Browser cases | `ca530d1c8d3de3a302cc0bad01378a71407cbd2393175192cdf07a0dec0cea6f` |
+| Visual inspection | `f35a2b5b93fd5c31677efae45e0d151796cb1115d4f56f8e399d0c299fcdaba6` |
+
+This continuation updates proof wording only; runtime, dashboard, package and
+test sources remain byte-identical to the qualified checkpoint. The attestation
+does not claim installation of the new documentation revision. Native Verify and
+independent Review must cover the combined candidate; the lead retains final
+runtime/package asset comparison, final-artifact qualification and protected
+publication/adoption gates. No acceptance or measured currency saving is granted.
+Broader #51 remains open; local long-history repair #105 and #69/#70 remain
+separate. V1/v2/v3 execution evidence schemas and acceptance policy are unchanged;
+0.15.4 remains explicitly listed as a compatible writer.
+
 ### Pi project-trust startup (0.15.3, #103)
 
 The 0.15.2 plain-directory actual-Pi adapter fixture passed, but adding only an

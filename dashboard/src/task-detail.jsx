@@ -311,7 +311,7 @@ export function TaskDetail({
           <div><dt>Requested models</dt><dd>{[...new Set((job.runs || []).map(run => run.model || run.execution?.requestedModel).filter(Boolean))].join(", ") || job.model || "Not recorded"}</dd></div>
           <div><dt>Recorded duration</dt><dd>{formatDurationMillis(taskDurationMillis(job.runs || []))}</dd></div>
           <div className="task-usage"><dt><Coins size={13} />Reported tokens</dt><dd>{formatTaskTokenUsage(usage)}</dd><dd className="metadata-hint">{formatReportingCoverage(usage)}</dd></div>
-          {usage.input !== undefined && <div><dt>Token breakdown</dt><dd>{formatTokenUsage(usage.input)} input<br />{formatTokenUsage(usage.output)} output<br />{formatTokenUsage(usage.cached)} cached input</dd><dd className="metadata-hint">Cached input is a subset of input.</dd></div>}
+          {usage.input !== undefined && <div><dt>Token breakdown</dt><dd>{formatTokenUsage(usage.input)} input<br />{formatTokenUsage(usage.output)} output<br />{formatTokenUsage(usage.cached)} cached input{usage.cacheWrites !== undefined && <><br />{formatTokenUsage(usage.cacheWrites)} cache writes reported ({usage.cacheWriteReported} runs)</>}</dd><dd className="metadata-hint">Cache reads and writes are already included in input.</dd></div>}
           <div><dt>Monetary cost</dt><dd>Not reported</dd><dd className="metadata-hint">Token counts are usage, not a charge.</dd></div>
           <div className="task-source-revision"><dt>Source ref</dt><dd>{sourceAdmission.status === "retained" ? sourceAdmission.requested_ref : "Not recorded (legacy/unknown)"}</dd></div>
           <div className="task-source-revision"><dt>Resolved source commit</dt><dd>{sourceAdmission.status === "retained" ? <code className="source-revision-sha" title={sourceAdmission.resolved_sha}>{sourceAdmission.resolved_sha}</code> : sourceAdmission.note}</dd></div>
@@ -369,6 +369,10 @@ function ExecutionDetails({ run }) {
           label="Tokens"
           value={formatRunTokenUsage(run) === "Unavailable" ? "Not reported" : formatRunTokenUsage(run)}
         />
+        {run.usage?.source === "pi_jsonl" && <>
+          <RunMetric label="Usage source" value="Pi stdout · assistant messages only; summary and failed-request usage may be missing" />
+          <RunMetric label="Cache writes" value={formatTokenUsage(run.usage.cache_write_input_tokens)} />
+        </>}
       </dl>
     </section>
   );

@@ -68,6 +68,7 @@ export function formatSuccessRate(rate) {
 
 export function tokenUsageSummary(runs) {
   let total = 0n, input = 0n, output = 0n, cached = 0n;
+  let cacheWrites = 0n, cacheWriteReported = 0;
   let reported = 0, completed = 0, partial = 0, structured = 0, notApplicable = 0;
   for (const run of runs) {
     if (!validDate(run.completed_at)) continue;
@@ -82,6 +83,10 @@ export function tokenUsageSummary(runs) {
       input += BigInt(run.usage.input_tokens);
       output += BigInt(run.usage.output_tokens);
       cached += BigInt(run.usage.cached_input_tokens);
+      if (validTokenUsage(run.usage.cache_write_input_tokens)) {
+        cacheWrites += BigInt(run.usage.cache_write_input_tokens);
+        cacheWriteReported += 1;
+      }
     }
   }
   return {
@@ -89,6 +94,7 @@ export function tokenUsageSummary(runs) {
     reported, completed, partial, notApplicable,
     unavailable: completed - reported,
     ...(structured && structured === reported ? {input: input.toString(), output: output.toString(), cached: cached.toString()} : {}),
+    ...(cacheWriteReported ? {cacheWrites: cacheWrites.toString(), cacheWriteReported} : {}),
   };
 }
 

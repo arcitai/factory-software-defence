@@ -84,10 +84,35 @@ export function retainedCodexUsage(state, job, attempt) {
   } catch { return null; }
 }
 
+// New Pi measurements are controller-owned metadata, never historical log
+// backfill. A stopped executor may have checkpointed before producing a result.
+export function retainedPiUsage(state, job, attempt) {
+  try {
+    if (!/^job_[a-z0-9]+$/.test(job?.id || '') || !/^run_[a-z0-9]+$/.test(attempt?.id || '')
+      || !['build', 'review', 'defence'].includes(attempt.command) || attempt.execution?.executor !== 'pi') return null;
+    const folder = join(state, 'jobs', job.id), runFolder = join(folder, attempt.id);
+    for (const path of [join(state, 'jobs'), folder, runFolder]) {
+      const stat = lstatSync(path);
+      if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077)) return null;
+    }
+    const path = join(runFolder, 'usage.json'), stat = lstatSync(path);
+    if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) || stat.size > 16384) return null;
+    const saved = JSON.parse(readFileSync(path, 'utf8'));
+    if (saved.version !== 1 || saved.job !== job.id || saved.attempt !== attempt.id || saved.phase !== attempt.command
+      || !isDeepStrictEqual(saved.execution, attempt.execution) || saved.usage?.source !== 'pi_jsonl') return null;
+    const normalized = usageFields(saved.usage, attempt.execution, attempt.command).usage;
+    return normalized.status ? null : normalized;
+  } catch { return null; }
+}
+
+function retainedUsage(state, job, attempt) {
+  return retainedPiUsage(state, job, attempt) || retainedCodexUsage(state, job, attempt);
+}
+
 function usageForAttempt(state, job, attempt) {
   const stored = usageFields(attempt.usage, attempt.execution, attempt.command);
   if (stored.usage.status !== 'unknown') return stored;
-  const recovered = retainedCodexUsage(state, job, attempt);
+  const recovered = retainedUsage(state, job, attempt);
   return recovered ? usageFields(recovered, attempt.execution, attempt.command) : stored;
 }
 
@@ -186,7 +211,7 @@ export function executors(state, recovery = {}) {
     try { exit = await done; }
     finally { clearTimeout(deadline); children.delete(job.id); }
     if (exit.error) throw exit.error;
-    const recovered = retainedCodexUsage(state, job, attempt);
+    const recovered = retainedUsage(state, job, attempt);
     if (!existsSync(resultPath)) return { outcome: 'blocked', ...usageFields(recovered || emptyUsage(attempt.execution, attempt.command), attempt.execution, attempt.command), summary: `Executor exited ${exit.code} without a result` };
     let outcome;
     try { outcome = JSON.parse(readFileSync(resultPath, 'utf8')); }
