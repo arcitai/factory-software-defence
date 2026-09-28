@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { githubRead, listIssues, readIssue } from '../issue-intake.mjs';
 import { readTemplates, draftFromTemplate } from '../issue-templates.mjs';
 import { readProjectLinks } from '../project-links.mjs';
-import { QueueError } from '../error.mjs';
+import { FactoryError } from '../error.mjs';
 const marker = record => `<!-- factory-issue:${record.correlation_id} -->`;
 const apiArgs = path => ['api', '--hostname', 'github.com', path];
 export function githubWrite(path, payload) {
@@ -43,12 +43,12 @@ export function githubIssueProvider(repo, { read = githubRead, write = githubWri
     draft: input => draftFromTemplate(repo, input, read),
     async context() {
     const repository = readProjectLinks(repo)?.repository;
-    if (!repository) throw new QueueError('Configure a GitHub origin for this project.', 400);
+    if (!repository) throw new FactoryError('Configure a GitHub origin for this project.', 400);
     const slug = repository.slice('https://github.com/'.length);
     let user, project;
     try { [user, project] = await Promise.all([read(apiArgs('user')), read(apiArgs(`repos/${slug}`))]); }
-    catch { throw new QueueError('GitHub access unavailable. Check gh authentication on the controller host.', 400); }
-    if (!Number.isSafeInteger(user?.id) || !/^[A-Za-z0-9-]+$/.test(user?.login || '') || project?.full_name?.toLowerCase() !== slug.toLowerCase()) throw new QueueError('GitHub returned an unexpected identity or repository.', 400);
+    catch { throw new FactoryError('GitHub access unavailable. Check the selected project identity and gh authentication.', 400); }
+    if (!Number.isSafeInteger(user?.id) || !/^[A-Za-z0-9-]+$/.test(user?.login || '') || project?.full_name?.toLowerCase() !== slug.toLowerCase()) throw new FactoryError('GitHub returned an unexpected identity or repository.', 400);
     return { repository, actor: user.login, actor_id: user.id, available: !project.archived && project.has_issues === true,
       labels_supported: Boolean(project.permissions?.push || project.permissions?.triage || project.permissions?.maintain || project.permissions?.admin),
       permission: 'GitHub checks Issues write permission when creating. No credentials are sent to the browser or jobs.' };
@@ -70,8 +70,8 @@ export function githubIssueProvider(repo, { read = githubRead, write = githubWri
         if (matches.length === 1) return confirm(record, matches[0]);
         if (result.length < 100) break;
       }
-    } catch { throw new QueueError(`Could not reconcile submission ${record.request_id}. No write was retried. Check GitHub access and retry recovery.`, 409); }
-    throw new QueueError(`Submission ${record.request_id} is still unconfirmed. No write was retried. Inspect GitHub before creating another issue.`, 409);
+    } catch { throw new FactoryError(`Could not reconcile submission ${record.request_id}. No write was retried. Check GitHub access and retry recovery.`, 409); }
+    throw new FactoryError(`Submission ${record.request_id} is still unconfirmed. No write was retried. Inspect GitHub before creating another issue.`, 409);
   }
   };
 }

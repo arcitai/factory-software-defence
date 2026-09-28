@@ -21,7 +21,7 @@ function harness(t) {
   const effective={approval_policy:'never',default_permissions:'factory',cli_auth_credentials_store:'file',web_search:'disabled',
     apps:{_default:{enabled:false}},tools:{},permissions:policy.permissions,features:policy.features,
     shell_environment_policy:policy.shell_environment_policy};
-  const turns=new Map();let starts=0;
+  const turns=new Map();let starts=0,turnStarts=0;
   const client={available:true,unexpectedApproval:false,env,onNotification:()=>{},
     call:async(method,params)=>{
       switch(method) {
@@ -32,7 +32,7 @@ function harness(t) {
         case 'mcpServerStatus/list':return {data:[],nextCursor:null};
         case 'thread/list':return {data:[],nextCursor:null};
         case 'thread/start':starts++;return {thread:{id:`thread-${starts}`},cwd:repo,approvalPolicy:'never',activePermissionProfile:{id:'factory'}};
-        case 'turn/start':assert.equal(Object.hasOwn(params,'environments'),false,'Omitting environments retains native workspace tools');turns.set(params.threadId,[{id:`turn-${starts}`,status:'inProgress',items:[]}]);return {turn:{id:`turn-${starts}`,status:'inProgress',items:[]}};
+        case 'turn/start':assert.equal(Object.hasOwn(params,'environments'),false,'Omitting environments retains native workspace tools');turnStarts++;turns.set(params.threadId,[{id:`turn-${turnStarts}`,status:'inProgress',items:[]},...(turns.get(params.threadId)||[])]);return {turn:{id:`turn-${turnStarts}`,status:'inProgress',items:[]}};
         case 'thread/read':return {thread:{id:params.threadId,cwd:repo}};
         case 'thread/turns/list':return {data:turns.get(params.threadId)||[]};
         case 'thread/resume':return {thread:{id:params.threadId},cwd:repo,approvalPolicy:'never',activePermissionProfile:{id:'factory'}};
@@ -43,7 +43,7 @@ function harness(t) {
   const provider={preview:async url=>({url,title:'A scoped issue',spec:'Check behavior',body:'Check behavior',state:'open',labels:[]})};
   const engine=()=>new NativeEngine(state,config,client,provider);
   const start=(instance,number)=>instance.start({url:`https://github.com/example/project/issues/${number}`,expected_spec:'Check behavior',brief:'',workflow:'software'});
-  return {state,config,env,policy,effective,client,engine,start,turns,get starts(){return starts;}};
+  return {state,config,env,policy,effective,client,engine,start,turns,get starts(){return starts;},get turnStarts(){return turnStarts;}};
 }
 
 test('project writer receipt spans engine instances and distinct issues',async t=>{
@@ -58,7 +58,8 @@ test('project writer receipt spans engine instances and distinct issues',async t
   assert.equal(JSON.stringify(await first.jobs()).includes('private'),false);
   const source=await first.issue({url:'https://github.com/example/project/issues/7'});
   assert.equal(source.state,'open');
-  assert.equal(source.active_execution.state,'needs_review');
+  assert.equal(source.latest_execution.state,'needs_review');
+  assert.equal(source.active_execution,null);
   const next=await h.start(second,9);
   assert.equal(next.state,'running');
   assert.equal(h.starts,2);
@@ -131,4 +132,45 @@ test('native model preferences do not widen access and missing permissions block
   assert.equal((await h.engine().doctor()).ready,true);
   delete h.effective.permissions;
   assert.equal((await h.engine().doctor()).ready,false);
+});
+
+test('explicit continuation reserves one writer, retains turns and rejects stale replay',async t=>{
+  const h=harness(t),engine=h.engine();
+  const initial=await h.start(engine,7);
+  await assert.rejects(engine.continue(initial.id,initial.turn_id,'Improve the result'),/active, stale or ambiguous/);
+  h.turns.get(initial.thread_id)[0].status='completed';
+  const [first,second]=await Promise.allSettled([
+    engine.continue(initial.id,initial.turn_id,'Improve the result'),
+    h.engine().continue(initial.id,initial.turn_id,'Duplicate request')
+  ]);
+  assert.equal([first,second].filter(item=>item.status==='fulfilled').length,1);
+  assert.equal(h.turnStarts,2);
+  const current=await engine.jobs();
+  assert.deepEqual(current[0].native_turns.map(turn=>turn.id),['turn-2','turn-1']);
+  await assert.rejects(engine.continue(initial.id,initial.turn_id,'Stale feedback'),/changed|unresolved/);
+});
+
+test('result requests metadata and only the latest summary; disconnect stays unknown',async t=>{
+  const h=harness(t),engine=h.engine(),job=await h.start(engine,7);
+  h.turns.get(job.thread_id)[0]={id:job.turn_id,status:'completed',items:[{type:'agentMessage',text:'A final answer'}]};
+  const views=[];const original=h.client.call;
+  h.client.call=(method,params)=>{if(method==='thread/turns/list')views.push({view:params.itemsView,limit:params.limit});return original(method,params);};
+  const result=await engine.result(job.id);
+  assert.equal(result.native_result.response,'A final answer');
+  assert.deepEqual(views,[{view:'notLoaded',limit:100},{view:'summary',limit:1}]);
+  h.client.available=false;
+  assert.equal((await engine.result(job.id)).state,'unknown');
+});
+
+test('unreadable session identity never counts as outside the workspace',async t=>{
+  const h=harness(t),engine=h.engine(),original=h.client.call;
+  h.client.call=(method,params)=>method==='thread/list'?Promise.resolve({data:[{id:'unreadable'}],nextCursor:null})
+    :method==='thread/read'?Promise.resolve(null):original(method,params);
+  await assert.rejects(engine.assertWorkspaceIdle(),/identity is unavailable/);
+});
+
+test('interrupt records its request before native side effects and cannot be replayed',async t=>{
+  const h=harness(t),engine=h.engine(),job=await h.start(engine,7);
+  assert.equal((await engine.interrupt(job.id,job.turn_id)).interrupt_requested,true);
+  await assert.rejects(engine.interrupt(job.id,job.turn_id),/already interrupted/);
 });

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, List, Columns3, X, Plus, ChevronDown, CircleHelp, Code2, CircleAlert, ShieldCheck, CheckCircle2, CirclePause } from 'lucide-react';
+import { Search, List, Columns3, X, Plus, ChevronDown, CircleHelp, Code2, CircleAlert, CirclePause } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { Card } from './components/ui/card';
 import { Badge } from './components/ui/badge';
@@ -11,34 +11,28 @@ import { Labels } from './issue-labels.jsx';
 const filterOptions = [
   { id: "not_started", label: "Not started", count: "notStarted" },
   { id: "all", label: "All work", count: "all" },
-  { id: "in_progress", label: "In progress", count: "active" },
-  { id: "queued", label: "Queued", count: "queued" },
   { id: "running", label: "Running", count: "running" },
-  { id: "cancelling", label: "Cancelling", count: "cancelling" },
   { id: "needs_attention", label: "Needs attention", count: "needsAttention" },
-  { id: "needs_review", label: "Native turn needs review", count: "needsReview" },
-  { id: "failed", label: "Failed work", count: "failed" },
-  { id: "failed_review", label: "Failed review", count: "reviewFailed" },
-  { id: "review_changes", label: "Review changes available", count: "reviewChanges" },
-  { id: "blocked", label: "Blocked", count: "blocked" },
+  { id: "needs_review", label: "Needs review", count: "needsReview" },
+  { id: "failed", label: "Failed", count: "failed" },
   { id: "interrupted", label: "Interrupted", count: "interrupted" },
-  { id: "awaiting_approval", label: "Awaiting acceptance", count: "awaitingApproval" },
-  { id: "succeeded", label: "Completed", count: "succeeded" },
-  { id: "cancelled", label: "Cancelled", count: "cancelled" },
-  { id: "other", label: "Other state", count: "other" },
+  { id: "unknown", label: "Unknown", count: "unknown" },
 ];
 
 function formatCount(counts, key) {
   return counts[key] ?? "—";
 }
 
-export function RunsOverview({ visibleJobs, jobs, workflows, counts, loaded, statusError, submitError, synthetic, filter, setFilter, search, setSearch, workflowFilter, setWorkflowFilter, modelFilter, setModelFilter, clearFilters, runsView, setRunsView, refresh, openComposer, composer, labelFilter = [], setLabelFilter, sourceControls, sourceNotice, sourceLoading, sourceUnavailable }) {
-  const filtering = labelFilter.length > 0 || filter.length > 0 || Boolean(search.trim()) || workflowFilter.length > 0 || modelFilter.length > 0;
-  const selectStatus = value => setFilter(value === "all" || filter.length === 1 && filter[0] === value ? [] : [value]);
+export function RunsOverview({ visibleJobs, jobs, workflows, counts, loaded, statusError, filter, setFilter, search, setSearch, workflowFilter, setWorkflowFilter, clearFilters, runsView, setRunsView, refresh, openComposer, composer, labelFilter = [], setLabelFilter, sourceControls, sourceNotice, sourceLoading, sourceUnavailable }) {
+  const filtering = labelFilter.length > 0 || filter.length > 0 || Boolean(search.trim()) || workflowFilter.length > 0;
+  const selectStatus = value => {
+    const states=value==='all'?[]:value==='in_progress'?['running']:value==='needs_attention'?['failed','interrupted','unknown']:[value];
+    setFilter(states.length===1&&filter.length===1&&filter[0]===states[0]?[]:states);
+  };
   return <div className="runs-page">
     <div className="tasks-toolbar">
       <h2 className="sr-only">Inbox work</h2>
-      <TaskFilters jobs={jobs} availableWorkflows={workflows} workflow={workflowFilter} setWorkflow={setWorkflowFilter} model={modelFilter} setModel={setModelFilter} filter={filter} setFilter={setFilter} labels={labelFilter} setLabels={setLabelFilter} options={filterOptions} disabled={!loaded} />
+      <TaskFilters jobs={jobs} availableWorkflows={workflows} workflow={workflowFilter} setWorkflow={setWorkflowFilter} filter={filter} setFilter={setFilter} labels={labelFilter} setLabels={setLabelFilter} options={filterOptions} disabled={!loaded} />
       <div className="tasks-tools">
         <div className="view-toggle" role="group" aria-label="Work view">
           <Button variant="ghost" size="sm" className={cn(runsView === "list" && "view-active")} aria-pressed={runsView === "list"} onClick={() => setRunsView("list")} aria-label="List" title="List view"><List className="size-3.5" /><span className="sr-only">List</span></Button>
@@ -51,7 +45,6 @@ export function RunsOverview({ visibleJobs, jobs, workflows, counts, loaded, sta
         </div>
       </div>
     </div>
-    {synthetic && <p className="synthetic-note">Synthetic installation demo — no model calls.</p>}
     <div className="active-filters"><span role="status">{loaded ? `${visibleJobs.length === jobs.length ? jobs.length : `${visibleJobs.length} of ${jobs.length}`} items` : "Loading work…"}</span>{sourceControls}<div className="task-list-actions"><button onClick={clearFilters} disabled={!filtering}>Clear filters<X size={12} /></button></div></div>
     {sourceNotice}
 
@@ -62,10 +55,10 @@ export function RunsOverview({ visibleJobs, jobs, workflows, counts, loaded, sta
     <div className={cn("run-workspace", runsView === "board" && "is-board")}>
       <TaskFilterRail counts={counts} loaded={loaded} filter={filter} setFilter={selectStatus} />
       <section className="task-results" aria-label="Work results">
-        {!loaded && !statusError ? <TaskMessage kind="loading" title="Loading executions" description="Checking the latest task state." />
-          : !loaded && statusError ? <TaskMessage kind="error" title="Execution status unavailable" description={statusError} action="Retry status" onAction={refresh} />
+        {!loaded && !statusError ? <TaskMessage kind="loading" title="Loading project work" description="Checking GitHub issues and native Codex history." />
+          : !loaded && statusError ? <TaskMessage kind="error" title="Project status unavailable" description={statusError} action="Retry status" onAction={refresh} />
             : !jobs.length && sourceLoading ? <TaskMessage kind="loading" title="Loading repository work" description="Waiting for the requested provider page." />
-            : !jobs.length && sourceUnavailable ? <TaskMessage kind="error" title="Repository work unavailable" description="No retained executions are available. Refresh issues to retry the provider read." />
+            : !jobs.length && sourceUnavailable ? <TaskMessage kind="error" title="Repository issues unavailable" description="No issue snapshot is available. Refresh issues to retry the provider read." />
             : !visibleJobs.length ? <EmptyRuns filtered={filtering} clearFilters={clearFilters} openComposer={openComposer} />
                 : runsView === "board" ? <RunBoard jobs={visibleJobs} /> : <div className="task-list" role="list">{visibleJobs.map((job) => <RunRow key={job.id} job={job} setFilter={selectStatus} />)}</div>}
       </section>
@@ -74,7 +67,7 @@ export function RunsOverview({ visibleJobs, jobs, workflows, counts, loaded, sta
 }
 
 function TaskFilterRail({ counts, loaded, filter, setFilter }) {
-  const icons = { in_progress: Code2, needs_attention: CircleAlert, awaiting_approval: ShieldCheck, succeeded: CheckCircle2, cancelled: CirclePause, not_started: CirclePause, other: CircleHelp };
+  const icons = { in_progress: Code2, needs_attention: CircleAlert, needs_review: CircleHelp, not_started: CirclePause };
   const groups = statusGroups.filter(group => (group.id !== "other" || counts.other) && (group.id !== "not_started" || counts.notStarted)).map(group => ({ ...group, Icon: icons[group.id] }));
   const [expanded, setExpanded] = useState({ in_progress: true, needs_attention: true });
   return <aside className="task-filter-rail" aria-label="Filter work by status">
@@ -139,7 +132,7 @@ function RunRow({ job, setFilter }) {
 function EmptyRuns({ filtered, clearFilters, openComposer }) {
   return <div className="empty-tasks" role="status">
     <h3>{filtered ? "No matching work" : "No loaded work yet"}</h3>
-    <p>{filtered ? "Try another state or search term." : "Start work explicitly from a repository issue or a local execution request."}</p>
+    <p>{filtered ? "Try another state or search term." : "Start work explicitly from an open GitHub issue."}</p>
     {filtered ? <Button variant="outline" size="sm" onClick={clearFilters}>Clear filters</Button> : openComposer && <Button variant="outline" size="sm" onClick={openComposer}><Plus className="size-3.5" />New issue</Button>}
   </div>;
 }

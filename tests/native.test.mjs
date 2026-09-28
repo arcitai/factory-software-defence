@@ -105,12 +105,12 @@ test('different launch HOME values cannot create independent writers for one acc
       console.log(JSON.stringify(readNative(${JSON.stringify(state)}).config));`;
     return JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8',env:{...process.env,HOME:launchHome}}));
   });
-  const client={onNotification:()=>{}}, first=new NativeEngine(states[0],configs[0],client,provider);
-  const release=await first.reserveWriter({id:'home-regression',created_at:new Date().toISOString()});release();
+  const client={available:true,onNotification:()=>{},call:async method=>{assert.equal(method,'thread/list');return {data:[]};}}, first=new NativeEngine(states[0],configs[0],client,provider);
+  await first.withGate(()=>first.replaceWriter({id:'home-regression',created_at:new Date().toISOString()}));
   const {createHash}=await import('node:crypto');
   const key=createHash('sha256').update(f.repo).digest('hex');
   t.after(()=>rmSync(join(configs[0].writer_root,`${key}.lock`),{force:true}));
-  await assert.rejects(new NativeEngine(states[1],configs[1],client,provider).reserveWriter({id:'second'}),/Another native installation owns this repository/);
+  await assert.rejects(new NativeEngine(states[1],configs[1],client,provider).replaceWriter({id:'second'}),/Another native installation owns this repository/);
 });
 
 test('bundle cannot grant the canonical account home when launch HOME is different or aliased', t => {

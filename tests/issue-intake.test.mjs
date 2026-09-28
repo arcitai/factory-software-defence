@@ -39,14 +39,11 @@ test('issue listing stays in the configured repository, excludes PRs and retains
 });
 
 test('recommendations distinguish investigation from fixing security software and never require inference',()=>{
-  assert.deepEqual(recommendWork({spec:'Add navigation.'}),{workflow:'software',basis:'default',reason:'Software is the default for changes to this project. Choose Defence for a scoped security investigation.'});
-  assert.equal(recommendWork({spec:'Investigate suspicious access logs.'}).workflow,'defence');
+  assert.deepEqual(recommendWork({spec:'Add navigation.'}),{workflow:'software',work_type:'software',basis:'default',reason:'Software delivery is the default for changes to this project.'});
+  assert.equal(recommendWork({spec:'Investigate suspicious access logs.'}).workflow,'defensive');
   assert.equal(recommendWork({spec:'Fix a security vulnerability in auth.'}).workflow,'software');
-  assert.equal(recommendWork({spec:'Inspect evidence',labels:['track:security']}).workflow,'defence');
+  assert.equal(recommendWork({spec:'Inspect evidence',labels:['track:security']}).workflow,'defensive');
   assert.equal(recommendWork({spec:'Investigate an incident',labels:['track:software']}).workflow,'software');
   assert.equal(recommendWork({spec:'Inspect',labels:['track:software','track:security']}).basis,'conflicting_labels');
-  assert.throws(()=>recommendWork({spec:''}),/brief/);assert.throws(()=>recommendWork({spec:'x',labels:'security'}),/label/);
-  const root=mkdtempSync(join(tmpdir(),'sdf-recommend-'));
-  try {writeFileSync(join(root,'task.md'),'Investigate the incident.');const output=JSON.parse(execFileSync(process.execPath,['bin/software-defence-factory.mjs','recommend','--file',join(root,'task.md')],{encoding:'utf8',env:{...process.env,SDF_AUTO_UPDATE:'0'}}));assert.equal(output.workflow,'defence');}
-  finally {rmSync(root,{recursive:true,force:true});}
+  assert.throws(()=>recommendWork({spec:''}),/description/);assert.throws(()=>recommendWork({spec:'x',labels:'security'}),/label/);
 });

@@ -1,13 +1,11 @@
 # Contributing to Factory
 
-Start with [AGENTS.md](AGENTS.md), the relevant [documentation](docs/README.md)
-and an accepted issue with observable acceptance criteria. The ordered
-[todo](todo.md) links the current work; GitHub issues own the detailed scope.
+Read [VISION.md](VISION.md), [AGENTS.md](AGENTS.md), the accepted issue and the
+[architecture](docs/architecture.md). Keep one source writer per checkout.
 
-## Local development
+## Develop and check
 
-Use Node 22.13+ and Git. CI checks Node 22 and 24. Dependency lockfiles in the
-root and `dashboard/` are committed; use `npm ci`, not an unconstrained install.
+Use Node22.13+ and Git. Lockfiles in the root and `dashboard/` are committed:
 
 ```sh
 npm ci --ignore-scripts
@@ -15,69 +13,47 @@ npm run build:dashboard
 npm run check
 ```
 
-`build:dashboard` installs the locked frontend dependencies and builds the
-assets into ignored `factory/ui/`. Run it before the package tests, which
-install a real tarball and require those assets. `check` validates JavaScript
-and JSON and runs the runtime/package and dashboard suites. It does not start
-Docker or prove a model's judgment, browser behavior or production access.
+Dashboard assets are generated into ignored `factory/ui/`; edit `dashboard/`.
+Build before packaging. Package checks must exercise an actual installed tarball,
+not merely imports from a source checkout. CI checks Node22 and24.
 
-| Area | Responsibility |
-| --- | --- |
-| `bin/` | CLI entrypoint and operator commands |
-| `factory/` | Controller, queue, executor, services, updates and packaged UI |
-| `dashboard/` | React interface and its tests; edit source here, not generated assets |
-| `adlc/`, `adlc/skills/` | Portable method and the canonical job-mounted specialist instructions |
-| `.agents/skills/` | Repository/operator guidance, including explicit Factory Foundation adoption |
-| `tests/`, `scripts/` | Runtime/package regressions, validation and release helpers |
-| `docs/` | Maintained setup, architecture, operation and proof |
+Native changes require actual Codex lifecycle/permission proof in addition to
+focused tests. UI changes require desktop and narrow browser interaction,
+including relevant empty/failure states and both themes. Mock success does not
+prove native isolation, service recovery or real model execution.
 
-UI changes need a real browser walkthrough at desktop and narrow sizes, in
-both themes, exercising the changed interaction and its failure states.
-Legacy runtime isolation/recovery changes need relevant synthetic Docker qualification; native harness changes need actual native permission and session checks,
-as described in [proof](docs/proof.md) and [recovery](docs/recovery.md). Never run
-`demo` or `qualify` against an application installation.
+## Keep the boundaries small
 
-## Project code standards
+Compose the selected harness and repository provider in the entrypoint. Give the
+HTTP/Inbox layer normalized operations and capabilities. Keep native protocol
+and permission details inside their integration. Prefer plain functions/objects
+to a plugin registry or speculative universal runtime.
 
-This section owns Factory's coding standards; DESIGN.md owns dashboard visuals.
-Keep domain names aligned with `factory/terminology.json`. Add behavior at the
-module that owns its state/policy, with CLI and UI consuming the same contract.
-Prefer a small shared interface over parallel implementations or speculative
-extension layers. Document supported compatibility aliases and their removal
-conditions; never silently rewrite admitted attempt configuration or evidence.
+Codex owns execution, context, tools and history; GitHub owns issues, PRs and CI.
+Factory owns only the connecting method, work surface and necessary receipts.
+Do not recreate native functionality to make it look uniform. Unsupported
+capabilities are explicit. A new harness needs real integration proof before it
+is advertised.
 
-Tests exercise observable outcomes, including relevant failure/recovery paths.
-Use fixed expected results independent of the implementation. A refactor should
-not require replacing assertions solely because private helpers moved. Preserve
-precise user-visible errors, stale-action guards and unknown measurements.
+Follow the project's canonical code standards here and visual rules in
+[DESIGN.md](DESIGN.md). Retain meaningful failure/recovery tests, especially
+uncertain writes, stale actions and duplicate writers. Unknown remains unknown.
+Keep files, routes and docs only when they serve the current product. Git history
+preserves retired implementations; current source is not an archive.
 
-When a failure reveals a reusable lesson, first fix or wire the executable check
-that can catch it. Record judgment-dependent guidance here or in DESIGN.md only
-when it changes future decisions, with its rationale. Correct weak navigation at
-the owning entrypoint, and remove obsolete/duplicate rules. Keep a specific
-incident in its issue/evidence rather than growing a permanent rule for every
-mistake. Review requirement coverage and standard conformance independently.
+## Review and ship
 
-## Issue, candidate and PR
+Checks and independent review apply to the same candidate revision. A completed
+agent turn is not acceptance. Record scope, before/after behavior, relevant tests,
+review disposition, limitations and recovery in the PR. Keep credentials, native
+history and raw private/customer evidence out of public output.
 
-Use a short task branch from `main`, one writer per checkout and a PR back to
-`main`. Keep the issue, source revision, relevant checks and review evidence
-linked in the PR. A passing agent report is not independent acceptance.
-Never commit credentials, operational state or raw model/customer evidence.
+Use a branch and normal PR. Required `check (22)` and `check (24)` checks and
+current-base/conversation protections remain in force. Reconcile the actual
+repository rules if policy changes. Existing authorization governs publishing,
+merging and deployment; a skill or issue cannot grant those rights.
 
-The repository's main protection requires up-to-date GitHub Actions checks
-`check (22)` and `check (24)`, a PR and resolved conversations, including for
-administrators. Force pushes and branch deletion are disabled. The solo-owner
-workflow does not require a second GitHub identity's approval; candidate review
-still happens before handoff. Reconcile the actual branch settings if this
-policy changes; this document does not enforce them.
-
-CI builds/checks PRs and main. Its existing npm release job publishes a new
-version on main only when release configuration permits it; unchanged published
-versions are skipped. Keep package and lockfile versions aligned for a release,
-verify the installed artifact and follow [npm delivery](docs/npm.md).
-Neither issue assignment nor Factory acceptance authorizes autonomous merge,
-release or deployment. Do not replace a running controller from a source checkout.
-
-For development through Factory on a worker, use the
-[self-development recipe](docs/development.md).
+For self-development, use a qualified installed Factory package against a source
+checkout, not the mutable checkout as its own serving runtime. Keep the running
+package stable until the candidate has passed review, installed qualification
+and [release checks](docs/npm.md). Self-improvement must fit the approved vision.

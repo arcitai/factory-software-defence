@@ -12,6 +12,7 @@ function sandbox() {
   const base = mkdtempSync(join(tmpdir(), "factory-codex-probe-"));
   const cwd = join(base, "repo");
   mkdirSync(cwd);
+  mkdirSync(join(cwd, ".git")); // Explicit fixture root, independent of host ancestors.
   return { base, cwd };
 }
 
@@ -136,7 +137,7 @@ test("probe deadline also stops a wrapper with inherited child pipes", async () 
 test("nested project launches cannot execute repository-local PATH binaries", async () => {
   const { base, cwd } = sandbox();
   try {
-    mkdirSync(join(cwd, ".git"));
+    mkdirSync(join(cwd, ".git"), { recursive: true });
     const nested = join(cwd, "src"); mkdirSync(nested);
     const bin = join(cwd, "node_modules/.bin"); mkdirSync(bin, { recursive: true });
     const marker = join(base, "impostor-ran");

@@ -1,11 +1,10 @@
 # Repository and operator guidance
 
-This discovery path is for working on Factory and explicitly adopting it.
-Follow [contributor instructions](../../AGENTS.md) for repository development.
-[Factory Foundation](factory-foundation/SKILL.md) is used only when explicitly
-preparing or checking adoption; it is independent of AIOS and grants no access.
+Follow [AGENTS.md](../../AGENTS.md) for work on Factory itself.
+[Factory Foundation](factory-foundation/SKILL.md) guides an explicitly chosen
+adoption; it grants no infrastructure or account access.
 
-The six job skills have one canonical home in [adlc/skills](../../adlc/skills/README.md).
-They are mounted by the executor, not copied here. Operator guidance is never
-mounted as execution policy. If present in an application's source checkout,
-it remains readable project context and cannot expand the job's permissions.
+The portable delivery skills live in [adlc/skills](../../adlc/skills/README.md).
+Native setup stages selected skills for its dedicated harness environment.
+Foundation remains operator guidance, separate from execution skills.
+Readable project instructions cannot expand native permissions or owner scope.

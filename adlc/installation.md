@@ -11,10 +11,10 @@
 | Control surface | Existing issue/check/PR workflow unless otherwise selected |
 | Harness, version, model/provider and billing | Unselected |
 | Execution environment and necessary tools | Files, Git, shell and tests; browser for UI; other tools as needed |
-| Worker boot and operator login | Disk unlock, SSH/network/Docker/model startup, selected services, timer and observed reboot evidence; not applicable for method-only use |
+| Worker boot and operator login | Disk unlock, private SSH/network access, native harness/service startup and observed reboot evidence; not applicable for method-only use |
 | Start, stop, routing owner and recovery | Manual until automation is qualified; one owner per job |
 | Authority and allowed network/credential references | Identify permissions without key values |
-| Time, concurrency, attempts and actual provider stop limits | Unknown until exercised |
+| Native limits, concurrency and stopping behavior | Unknown until exercised |
 | Setup, dependencies, toolchain and test data | Exact commands and versions |
 | Required checks and tested revision | Real commands/check identifiers |
 | CI runner, allowed code, caches and artifact retention | Unselected |
@@ -32,10 +32,10 @@ Record date, revision, result and artifact for each relevant check:
 - A real bounded app task and its meaningful regression checks work.
 - Failed/missing checks and stale evidence cannot produce acceptance.
 - A representative deliberate failure is detected while the baseline passes.
-- The agent cannot read controller/admin credentials or private evaluator inputs.
+- The agent cannot read host integration/admin credentials or private evaluator inputs.
 - Separate review and any authorized PR workflow function.
 - The chosen cloud job can be revisited after closing its client, if applicable.
-- An automated trigger produces one job; duplicates, cancellation and restart are handled.
+- If native scheduling is selected, demonstrate duplicate protection, interruption and restart behavior before using it unattended.
 - Actual spend/resource stops work before unattended paid use.
 - Release and rollback work in the selected test environment, if connected.
 

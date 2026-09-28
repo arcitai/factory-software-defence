@@ -13,7 +13,7 @@ export async function githubRead(args) {
     });
     return JSON.parse(stdout);
   } catch (cause) {
-    const error = new Error('Could not read GitHub repository data. Check GitHub CLI access on the controller host and try again.');
+    const error = new Error('Could not read GitHub repository data. Check the selected project identity and GitHub CLI access.');
     if (/\(HTTP 404\)/.test(cause.stderr || '')) error.status=404;
     throw error;
   }

@@ -1,146 +1,42 @@
-# Factory development queue
+# Factory — current work
 
-This is the ordering/entrypoint; linked GitHub issues own scope, acceptance and
-current delivery state. Work one accepted slice at a time. The chosen product
-boundary is **one controller/dashboard per project**, with common Factory
-interaction and optional project identity. No global project hub is planned.
+[VISION.md](VISION.md) owns scope. Linked issues own acceptance and delivery state;
+this file preserves order, not a second execution queue. Historical releases and
+retired implementation evidence remain in Git and private installation records.
 
-## Native harness migration
+## Finish the native product
 
-- [ ] [#113 — simplify the ownership model](https://github.com/arcitai/software-and-defence-factory/issues/113): Foundation, `adlc/`, the accepted Inbox and a small setup/maintenance CLI. Follow the [migration contract](docs/architecture.md#migration-contract); remove replaced runtime code only after qualification.
-- [ ] [#114 — Codex first](https://github.com/arcitai/software-and-defence-factory/issues/114): opt-in native setup, JSONL session start/read/resume/interrupt, issue receipts and existing Inbox integration implemented in source; [mock protocol evidence and host gaps](docs/native-codex.md). Lead still owns live login, private-file/app denial, inference, Inbox interaction, independent review and PR flow before qualification. Native app visibility remains unqualified.
-- [ ] Later native harnesses: [Claude Code #115](https://github.com/arcitai/software-and-defence-factory/issues/115), [Cursor #116](https://github.com/arcitai/software-and-defence-factory/issues/116), [Grok #117](https://github.com/arcitai/software-and-defence-factory/issues/117).
+- [ ] [#113](https://github.com/arcitai/software-and-defence-factory/issues/113):
+  remove the old runtime end-to-end; small CLI/bridge, automatic startup, coherent
+  documentation/diagrams and deliberate installed migration.
+- [ ] [#114](https://github.com/arcitai/software-and-defence-factory/issues/114):
+  native Codex continuation, actual result/history, owning-process maintenance,
+  effective isolation and installed lifecycle qualification.
+- [ ] [#37](https://github.com/arcitai/software-and-defence-factory/issues/37):
+  preserve accepted Inbox UX and share operational actions between CLI/API/UI.
+- [ ] [#70](https://github.com/arcitai/software-and-defence-factory/issues/70):
+  verify vision-bounded improvement in reusable method and adopting projects.
 
-The Pi/local-inference work below is deferred under this direction. Retain its
-existing implementation and evidence until its replacement is proven.
+Completion requires independent review, appropriate tests, actual installed
+CLI/API/browser proof, protected PR/CI and verified adoption. Source edits or
+mock tests alone do not complete these items. Keep historical state private;
+never revive obsolete jobs automatically.
 
-## Local context-boundary qualification
+## Later, only for a proven gap
 
-- [ ] [#103 — local Pi trust-store initialization](https://github.com/arcitai/software-and-defence-factory/issues/103): **0.15.3 source repair for independent Review**. Isolated ephemeral Pi state, explicit denial of project resource trust and actual-Pi synthetic Build/Review/adversarial regressions. [Evidence and limits](docs/proof.md#pi-project-trust-startup-0153-103). Exact installed CLI/API/image and actual local-model qualification remain with the lead; failed #51 evidence is retained.
+- Native harness integrations: [Claude Code #115](https://github.com/arcitai/software-and-defence-factory/issues/115),
+  [Cursor #116](https://github.com/arcitai/software-and-defence-factory/issues/116),
+  [Grok #117](https://github.com/arcitai/software-and-defence-factory/issues/117).
+- [#69 Local Build · Cloud Review](https://github.com/arcitai/software-and-defence-factory/issues/69):
+  a qualified native recipe, not a new inference engine.
+- [#6 real-project qualification](https://github.com/arcitai/software-and-defence-factory/issues/6),
+  [#7 scoped defence case](https://github.com/arcitai/software-and-defence-factory/issues/7),
+  [#50 defence method](https://github.com/arcitai/software-and-defence-factory/issues/50).
+- [#27 project accents](https://github.com/arcitai/software-and-defence-factory/issues/27),
+  [#51 evidence-backed measurements](https://github.com/arcitai/software-and-defence-factory/issues/51).
+- Hosting/MCP/isolated desktop proposals stay deferred unless a concrete need fits
+  the vision and cannot be met by the selected harness.
 
-- [ ] [#100 — Pi context budgeting and compaction recovery](https://github.com/arcitai/software-and-defence-factory/issues/100): **0.15.2 revised bounded source slice for independent Review**. Retained-batch candidate also failed actual qualification through output starvation; wire allowance restoration and output-enforcing six-read regressions added, awaiting rebuilt-image and unchanged real-fixture qualification. Maintained Pi 0.87.1 image pin, explicit recovery/fail-closed launcher, actual-CLI controlled transport plus 0.73.1 baseline, and generic allocation/migration guidance. [Evidence and limits](docs/proof.md#pi-output-allowance-revision-0152-100). Lead still owns exact installed CLI/API/Docker proof and one bounded actual local-inference Factory fixture before acceptance; #51 usage, #42 unfinished checkpoints and broader #69/#100 tuning remain open.
-
-## Completed foundation and first slice
-
-- [x] [#26 — contributor and worker development foundation](https://github.com/arcitai/software-and-defence-factory/issues/26).
-- [x] [#25 — visible project identity and task composer label](https://github.com/arcitai/software-and-defence-factory/issues/25). Real worker pilot with separate browser acceptance and reviewed PR delivery; local-model attempts failed and remain qualification evidence, not a qualified profile.
-
-## Completed reliability slice
-
-- [x] [#35 — revise a stopped software review](https://github.com/arcitai/software-and-defence-factory/issues/35): explicit feedback starts fresh implementation/checks/review/approval and preserves failed attempts.
-- [x] [#33 — retain terminal diagnostics](https://github.com/arcitai/software-and-defence-factory/issues/33): bounded beginning/tail logs, honest terminal exits and regression proof.
-- [x] [#34 — per-attempt executor/model provenance](https://github.com/arcitai/software-and-defence-factory/issues/34): immutable effective profiles, honest legacy unknowns and restart proof.
-
-- [x] [#30 — supported local custom job images](https://github.com/arcitai/software-and-defence-factory/issues/30): produced through a real Factory job, checked/reviewed against its exact candidate, and exercised with disposable Docker states. GUI setup controls remain #37.
-
-## Ready for supervised self-development
-
-The readiness threshold is one explicitly admitted issue completed by the released
-Factory runtime against this repository: implementation, configured checks,
-independent review, operator/platform proof and a normal protected PR. The
-operator retains acceptance and delivery. A complete dashboard redesign or an
-autonomous publisher is not a prerequisite for this scoped development path.
-
-- [x] [#40 — repeatable repository readiness](https://github.com/arcitai/software-and-defence-factory/issues/40): issue forms/labels, honest admission guide, queue and a real self-development delivery.
-- [#1 — project-focused dashboard](https://github.com/arcitai/software-and-defence-factory/issues/1): follow [DESIGN.md](DESIGN.md), inspired by Build by Warp. The owner has selected this direction; it supersedes preserving the inherited layout. Preserve working actions and evidence.
-
-## Remove remaining operator work
-
-1. Completed: [#28 — immutable source admission](https://github.com/arcitai/software-and-defence-factory/issues/28): retained source, explicit revisions and honest legacy provenance; 138 tests, independent review, 13 installed Docker paths and browser proof. Delivery: [PR #65](https://github.com/arcitai/software-and-defence-factory/pull/65).
-2. Completed: [#29 — optional trusted PR handoff](https://github.com/arcitai/software-and-defence-factory/issues/29), delivered in 0.8.0 via [PR #80](https://github.com/arcitai/software-and-defence-factory/pull/80). [#12](https://github.com/arcitai/software-and-defence-factory/issues/12) retains the overall source/delivery contract.
-
-## One Factory, two interfaces
-
-[#37](https://github.com/arcitai/software-and-defence-factory/issues/37) owns full
-CLI/API/dashboard parity. Both interfaces must use the same execution owner,
-records, policy and stale-action guards. Deliver vertical slices against an
-explicit [capability matrix](docs/interfaces.md):
-
-1. Read/status/artifacts and machine-readable CLI results, plus the existing
-   task actions through the common API.
-2. GitHub backlog/admission with visible issue-to-job links and explicit scope;
-   labels remain planning metadata; optional harness automations call the shared API/CLI.
-3. Setup, image selection, diagnostics, services and updates through a supported
-   operator boundary, including behavior when a project controller is stopped.
-4. Source and delivery controls from #28/#29 in both interfaces.
-
-Completed: **0.13.1** delivered-commit check readback shipped in
-[PR #97](https://github.com/arcitai/software-and-defence-factory/pull/97).
-[The issue's delivery record](https://github.com/arcitai/software-and-defence-factory/issues/37#issuecomment-5858449096)
-confirms native independent Review, 328 runtime/package and 62 dashboard tests,
-protected Node 22/24 CI, exact installed package, 16 controlled provider cases,
-actual PR96 readback, six browser cases and preserved-state adoption on both
-hosts. Those operator gates are complete; **#37 stays open** for other parity work.
-
-Current gaps are tracked work, not shipped capabilities. Do not hide unsupported
-operations behind decorative buttons or introduce another scheduler for the GUI.
-
-## Next bounded slices
-
-- [x] [#84 — protected execution evidence across runtime upgrades](https://github.com/arcitai/software-and-defence-factory/issues/84): shipped **0.9.1 via [PR #85](https://github.com/arcitai/software-and-defence-factory/pull/85)**; installed qualification passed. The 0.10.0 audit retains the exact compatible v1 writers only with current provenance/policy/browser/delivery guarantees; no record migration.
-- [x] [#71 — optional trusted execution-host web verification](https://github.com/arcitai/software-and-defence-factory/issues/71): shipped **0.9.0 via [PR #81](https://github.com/arcitai/software-and-defence-factory/pull/81)**; installed qualification passed. Earlier failed/timed-out Build histories remain failed evidence.
-- [x] [#42 — reviewed-candidate continuation, first bounded slice](https://github.com/arcitai/software-and-defence-factory/issues/42): delivered in **0.10.0 via [PR #87](https://github.com/arcitai/software-and-defence-factory/pull/87)**. Preserves the original source/delivery baseline and repeats Build/full Verify/independent Review/approval from the selected reviewed candidate. Remaining #42 scope stays open: unfinished/uncommitted Build checkpoints, exit-cause classification, live pending feedback and harness deadline hints. Target refresh stays #72; desktop/VM observation and browser recordings stay #82.
-- [x] [#60 — repository Inbox lifecycle](https://github.com/arcitai/software-and-defence-factory/issues/60): delivered in **0.11.0 via [PR #89](https://github.com/arcitai/software-and-defence-factory/pull/89)**. Provider Inbox, readiness mapping, canonical linked execution history, creation-only New issue and atomic duplicate-active admission share CLI/API/dashboard state. Protected CI, installed provider/native and desktop/narrow browser qualification passed as reported by the lead; both hosts adopted with histories preserved. See [proof](docs/proof.md).
-- [ ] [#61 — Factory naming and release migration](https://github.com/arcitai/software-and-defence-factory/issues/61): first slice delivered **0.11.1 via protected maintainer [PR #92](https://github.com/arcitai/software-and-defence-factory/pull/92)**, preserving the exact qualified naming candidate, both executable names and package/repository identities. Native publication failed safely due to [#91](https://github.com/arcitai/software-and-defence-factory/issues/91); maintainer delivery does not count as native publication. Successor `factory-sd`, repository rename, account/OIDC prerequisites and automated GitHub Release wiring remain separate; this does not close #61.
-- [ ] [#91 — exact Git patch bytes](https://github.com/arcitai/software-and-defence-factory/issues/91): bounded **0.11.2 candidate** prerequisite on native Factory/Z13 before further general unattended delivery; source regression proof is recorded in [proof](docs/proof.md), installed/native qualification remains operator-owned.
-- [ ] [#90 — restore the approved primary Warp Inbox](https://github.com/arcitai/software-and-defence-factory/issues/90): **0.12.0 implementation and qualification complete; protected release/adoption pending**, after the #61 naming slice and #91 prerequisite, before #62/#63. Includes the bounded [#94 fixture publication race](https://github.com/arcitai/software-and-defence-factory/issues/94). Candidate `ed3292ccd079a182ee573d6baf01e2fe1d9c3223` passed source/Verify, native independent aggregate Review, installed read-only CLI/API and desktop/390px/320px light/dark interaction and visual acceptance. Original #60 lifecycle guards remain. See [proof and verification boundaries](docs/proof.md#qualified-primary-inbox-90--94). Refreshed aggregate Review and final installed package comparison remain required for this documentation-only continuation before handoff; no shipped release is claimed.
-- [x] [#62 — operator and runtime skills](https://github.com/arcitai/software-and-defence-factory/issues/62): delivered in **PR #96 / 0.13.0**, as reported by the lead. One runtime catalog, separate operator Foundation, shared installed provenance, staged exports and Codex discovery mount. See [proof](docs/proof.md#skill-ownership-62).
-- [x] [#63 — deployment, architecture and process diagrams](https://github.com/arcitai/software-and-defence-factory/issues/63): delivered in **PR #96 / 0.13.0**, as reported by the lead. Three editable views cover setup, ownership and lifecycle. See [proof](docs/proof.md#ownership-diagrams-63).
-
-The narrow revision-error visibility and legacy-detail overflow found during
-#28 browser inspection remain part of #37's UI follow-up.
-
-## Dashboard track
-
-These scoped design changes can progress independently of automatic PR handoff.
-
-1. [#1 — Factory dashboard refinement](https://github.com/arcitai/software-and-defence-factory/issues/1): implement the accepted shared visual direction and review it in the real UI.
-2. [#27 — optional project theme from DESIGN.md](https://github.com/arcitai/software-and-defence-factory/issues/27), after the shared visual direction and #25; no runtime interpretation of arbitrary Markdown.
-
-## Qualification and later scope
-
-- [#6 — real model/application/security qualification](https://github.com/arcitai/software-and-defence-factory/issues/6). Reuse evidence from #25 where applicable; its security case and broader failure evidence remain separate obligations.
-- [#7 — first bounded Defence case](https://github.com/arcitai/software-and-defence-factory/issues/7). Requires an explicitly selected isolated system and response boundary; no production monitoring is implied.
-- [#32 — running-factory observability research](https://github.com/arcitai/software-and-defence-factory/issues/32). Assess the actual telemetry/operations gap before selecting connectors or starting live monitoring.
-- [#22 — external inspiration](https://github.com/arcitai/software-and-defence-factory/issues/22). Both linked posts and the relevant skill collection are assessed in the issue. Adopted project contracts, feature navigation, review/diagnosis and dependency guidance are delivered with #49; larger runtime work stays in its owning issues.
-- [#39 — optional Coolify/VPS hosting](https://github.com/arcitai/software-and-defence-factory/issues/39). Evaluate a hosting recipe for the optional runtime while keeping the method independently useful. No deployment is implied.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md)
-and the [self-development recipe](docs/development.md) before submitting work.
-
-
-## Dashboard delivery follow-up
-
-- [x] #1: Warp-style frontend delivered in 0.4.5.
-- [x] #45: finish the reference-matched overview, navigation and task detail; implemented and checked; publication readback remains the delivery PR gate.
-- [x] #44: retain measured Codex token usage with honest coverage in both interfaces; native Factory build/check; its review findings are fixed in the integrated candidate with operator Docker/live-provider proof. The original run remains failed/unaccepted; integrated delivery is reviewed separately.
-- #42: first reviewed-candidate continuation slice above; retained unfinished/unreviewed Build checkpoints after timeout remain deferred.
-- #32: bounded/redacted real worker progress through the shared API/CLI/dashboard.
-- #27: optional reviewed DESIGN.md project colors; monochrome remains the complete default.
-
-## Current workbench slice
-
-- [x] [#47 — shared workflows/skills and clearer task intake](https://github.com/arcitai/software-and-defence-factory/issues/47): implementation, 114 automated tests, Node 22/24 CI, independent code review and desktop/narrow light/dark browser acceptance passed. Includes generic worker identity, checkbox filters, horizontal Kanban, GitHub issue chooser and modal issue import. Normal publication and installed readback are recorded in PR #48.
-- Workflow editing remains under #37. Optional issue admission is scheduled by the selected harness, calling the common CLI/API; issue creation alone must not start execution.
-
-## Definition and foundation alignment
-
-- [x] [#49 — one vocabulary, foundation ownership and workbench](https://github.com/arcitai/software-and-defence-factory/issues/49): shared catalog; operator skill in Factory; independent project contracts; whole-row filters, shared status groups and local task intake; repository cleanup. Verified in [PR #55](https://github.com/arcitai/software-and-defence-factory/pull/55); release/adoption evidence is recorded there.
-- [ ] [#50 — Defence roles, skills and evidence](https://github.com/arcitai/software-and-defence-factory/issues/50), then the bounded case in #7.
-- [ ] [#51 — scorers, benchmarks and improvement analytics](https://github.com/arcitai/software-and-defence-factory/issues/51). Recorded token coverage is not a quality score.
-- [ ] [#52 — native intake and GitHub identity](https://github.com/arcitai/software-and-defence-factory/issues/52). Repository/credential boundaries and persistent intake scope; #58 delivers the first provider bridge.
-- [ ] [#53 — versioned definitions and role profiles](https://github.com/arcitai/software-and-defence-factory/issues/53). **0.14.0 first role-profile slice delivered via PR #98**, main `35aae68403d3060a935dc7cce6bfe0d5f9533d17`. The operator reports independent Review, 13 installed runtime cases, 15 native parser cases and six browser cases passed; 107 package files matched before Mac/Z13 adoption, preserving private configuration and 23+18 execution rows. This supersedes the earlier pending gates in [proof](docs/proof.md). Broader skills/resources/access, project/flow/automation definitions and readiness attestation stay open. #69 owns model benchmarks, #51 measurement and #70 improvement. Schedules remain harness-owned.
-- [ ] [#54 — scoped MCP over the shared API](https://github.com/arcitai/software-and-defence-factory/issues/54). One controller and authorization policy.
-
-These extend the #37 parity track. Hosting (#39), observability (#32), quality
-measurement (#51) and security investigation (#50) remain distinct scopes.
-
-## Repository-backed issue intake
-
-- [x] [#56 — repository forms and GitHub issue intake](https://github.com/arcitai/software-and-defence-factory/issues/56): shared `issue` commands, repository templates and required fields, paged issue picker with labels, editable recommendation and explicit start. Verified in [PR #57](https://github.com/arcitai/software-and-defence-factory/pull/57), with 119 automated tests, independent review and desktop/mobile browser acceptance. A bounded slice of #52/#37; no background admission or GitHub writes.
-
-## Repository issue bridge
-
-- [x] [#58 — modular repository issue bridge](https://github.com/arcitai/software-and-defence-factory/issues/58): GitHub publication through the shared API/CLI/dashboard, explicit later start, durable receipts and bounded recovery; other remotes retain local execution. Harnesses own scheduling. Implementation, real GitHub creation/readback, 127 tests, independent review and desktop/narrow light/dark inspection pass. Release/adoption readback is recorded in [PR #59](https://github.com/arcitai/software-and-defence-factory/pull/59). Broader hosted identity, unsent persistent drafts and additional provider adapters are not claimed.
-
-- [ ] [#69 — local/hybrid AI profiles](https://github.com/arcitai/software-and-defence-factory/issues/69): **0.15.0 opt-in keyless local Pi binding slice implemented for independent Review**. Shared CLI/API/Agents/Definition adoption and rollback, private frozen registry, credential isolation and synthetic protocol/container checks. The reviewed checkpoint's endpoint round-trip repair and bounded local reasoning requests are implemented for renewed independent Review. Lead's ten installed transport and six browser cases on rejected `2384451` are superseded evidence; the revised package needs refreshed qualification. Actual hardware allocation/tuning, matched two-fixture local/hybrid comparison and a suitable real issue remain outstanding. No live inference or benchmark winner is claimed; broader #69 remains open.
+Duplicate discovery/continuation/activity/intake/branding tracks #53/#42/#32/#52/#61
+were consolidated into the items above as not planned separately, not claimed
+completed. Reuse the owning issue instead of reopening parallel programmes.

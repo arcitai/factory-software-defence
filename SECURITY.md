@@ -1,15 +1,36 @@
 # Security boundaries
 
-The factory is a private, single-operator developer tool. The operator account, Docker daemon and host kernel are trusted. Docker access is privileged host access; run the controller as an unprivileged dedicated user on a suitable machine.
+Factory is a private, single-operator tool. The host account, installed binaries
+and OS are trusted. Prefer a dedicated unprivileged OS user. A separate native
+configuration under an existing user does not remove that user's host authority.
 
-The dashboard binds to 127.0.0.1. It checks Host, Origin and cross-site requests. Writes and artifact reads require a browser session nonce or the private CLI token. This is local-session protection, not multi-user authentication. Use an SSH tunnel with the same local and remote port. Do not publish the HTTP port directly.
+The Inbox binds to loopback and validates Host, Origin and cross-site requests.
+Protected reads and writes require a local session nonce. This is not multi-user
+authentication; remote access uses an authenticated SSH tunnel. Do not expose the
+HTTP port publicly.
 
-Agent jobs run in non-root containers with a read-only root filesystem, dropped capabilities, resource/deadline limits, no Docker socket and read-only Git metadata. Only implementation receives a writable job checkout. Verification uses a disposable copy. Policy and skills are mounted read-only. Git hooks and global Git configuration are disabled for controller Git operations. Host-level container escape is outside the protection provided here.
+Native Codex enforces the selected workspace permissions. The initial profile
+allows unattended work while denying private filesystem paths, shell network
+access and inherited personal apps/MCP/plugins. Setup and doctor check effective
+configuration; representative negative tests must prove the actual installation.
+Never assume a file setting alone guarantees isolation. Codex's own model network
+connection is separate from the agent's shell network permission.
 
-Mock jobs have no network. Inference jobs currently use bridge networking; this is not an egress allowlist and does not isolate a model credential from the agent receiving it. Give jobs only purpose-scoped inference credentials. Never add GitHub administration, deployment, cloud or personal account credentials to model.env. Live target testing needs separate explicit authorization.
+Repository issues, source and model output are untrusted data. They cannot grant
+credentials, change the project vision or authorize publication. GitHub access
+stays with the host issue integration and is not forwarded in the agent environment.
+Keep project-specific connections separate from personal or other customer access.
 
-Input size and artifact paths are bounded. Workspaces are cloned from committed code; review files remain private. Stop/retry requires confirmation that the previous executor and its containers no longer run. An uncertain stop retains a fence.
+One writer owns a workspace. Private durable receipts record uncertain admission
+or issue creation; an unknown outcome is not automatically retried. Native history
+is preserved outside the package. A disconnected browser does not cancel work,
+and a separate process's persisted-history read cannot prove an active owner idle.
 
-Candidate checks, independent review and approval must agree on both commit and policy hash. Job success is not a guarantee of security. Incident reports remain unverified drafts until an authorized operator obtains separate recovery evidence.
+Run checks and independent review on the actual candidate. Completion is not
+acceptance or a security guarantee. Defensive investigation needs explicit scope;
+production access/recovery and publication require their own authority.
 
-Report vulnerabilities privately to a repository maintainer using GitHub private vulnerability reporting when enabled. Do not publish raw credentials, customer evidence or exploit details in a public issue. If no private channel is available, ask for one without including the sensitive finding.
+Report vulnerabilities privately to a repository maintainer using GitHub private
+vulnerability reporting when available. If no private route is available, ask for
+one without disclosing the finding. Keep credentials, customer evidence and exploit
+details out of public issues and package artifacts.
