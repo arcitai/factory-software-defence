@@ -516,7 +516,7 @@ test('local v3 protected evidence requires exact frozen bindings and cannot be d
 });
 
 for (const kind of ['inherited', 'roles', 'hybrid', 'local']) {
-  test(`0.15.5 reads unchanged 0.15.0/0.15.1/0.15.2/0.15.3/0.15.4 ${kind} evidence with identity, phase and policy guards intact`, t => {
+  test(`0.15.6 emits current and reads retained ${kind} evidence with identity, phase and policy guards intact`, t => {
     const { state, config } = installation(t);
     const local = ['hybrid', 'local'].includes(kind);
     if (kind !== 'inherited') changeDefinition(state, idle(), {
@@ -531,9 +531,12 @@ for (const kind of ['inherited', 'roles', 'hybrid', 'local']) {
     const job = { id: 'job_patch' }, folder = join(state, 'jobs', job.id);
     for (const phase of ['build', 'verify', 'review', 'handoff']) {
       const emitted = executionProfile(common, phase);
+      assert.equal(emitted.runtimeVersion, '0.15.6');
       assert.equal(emitted.version, local ? 3 : kind === 'roles' ? 2 : 1);
-      for (const runtimeVersion of ['0.15.0', '0.15.1', '0.15.2', '0.15.3', '0.15.4', '0.15.5']) {
-        const profile = { ...emitted, runtimeVersion }, run = { id: 'run_patch', execution: profile };
+      const retainedVersions = [...(local ? [] : ['0.14.0']), ...(kind === 'inherited' ? ['0.13.1'] : []),
+        '0.15.0', '0.15.1', '0.15.2', '0.15.3', '0.15.4', '0.15.5'];
+      for (const profile of [emitted, ...retainedVersions.map(runtimeVersion => ({ ...emitted, runtimeVersion }))]) {
+        const run = { id: 'run_patch', execution: profile };
         const artifact = join(folder, 'artifacts', run.id, 'execution.json');
         const frozen = join(folder, run.id, 'execution-config.json');
         save(artifact, profile); save(frozen, common);
@@ -544,9 +547,10 @@ for (const kind of ['inherited', 'roles', 'hybrid', 'local']) {
         assert.equal(trustedExecutionProfile(state, job, run, phase, '0'.repeat(64)), false);
         assert.equal(trustedExecutionProfile(state, job, run, phase === 'build' ? 'review' : 'build', profile.policyHash), false);
         const mutations = [
-          { runtimeVersion: '0.15.6' }, { runtimeVersion: '0.15.5-dev' },
+          { runtimeVersion: '99.0.0' }, { runtimeVersion: '0.15.6-dev' },
           { version: 4 }, { policyHash: '0'.repeat(64) }, { phase: 'unknown' },
-          ...(kind === 'inherited' ? [] : [{ selectionHash: '0'.repeat(64) }, { requestedModel: 'tampered-model' }]),
+          ...(kind === 'inherited' ? [] : [{ selectionHash: '0'.repeat(64) }, { requestedModel: 'tampered-model' },
+            { role: 'unknown' }, { image: 'sha256:' + 'b'.repeat(64) }]),
           ...(local ? [{ localBinding: { id: 'other' } }, { version: 2 }] : [{ localBinding: null }]),
         ];
         for (const mutation of mutations) {
@@ -557,6 +561,11 @@ for (const kind of ['inherited', 'roles', 'hybrid', 'local']) {
         }
         save(artifact, profile); run.execution = profile;
         assert.equal(trustedExecutionProfile(state, job, { ...run, execution: { ...profile, hostName: 'other' } }, phase, profile.policyHash), false);
+        for (const mutation of [{ requestedModel: 'tampered-model' }, { image: 'sha256:' + 'b'.repeat(64) }]) {
+          const altered = { ...profile, ...mutation };
+          assert.throws(() => assertFrozenExecution(common, altered, phase), /does not match/);
+          assert.equal(trustedExecutionProfile(state, job, { ...run, execution: altered }, phase, profile.policyHash), false);
+        }
         if (kind !== 'inherited') {
           const changed = structuredClone(common); changed.image = 'sha256:' + 'b'.repeat(64);
           save(frozen, changed);
