@@ -206,6 +206,9 @@ if (command === 'run') {
     writeFileSync(outputDir + '/agent-report.md', 'Controlled executor fixture.\\n');
     if (args.includes('FACTORY_PHASE=defence')) writeFileSync(outputDir + '/incident-report.json', JSON.stringify({ status: 'insufficient_evidence', summary: 'Controlled draft', hypotheses: [], recommended_actions: [], unknowns: ['No live evidence'], production_action_taken: false }));
   }
+  if (outputDir && state.mode === 'local-missing-report') {
+    unlinkSync(outputDir + '/review.json'); unlinkSync(outputDir + '/agent-report.md');
+  }
   if (outputDir && state.mode.startsWith('redaction-')) {
     writeFileSync(outputDir + '/review.json', JSON.stringify({ verdict: 'pass', summary: 'Useful review content with inert-executor-auth-sentinel', findings: [{ note: 'Key inert-executor-api-key-sentinel' }] }));
     writeFileSync(outputDir + '/agent-report.md', 'Useful agent report. Auth: {"access_token":"inert-executor-auth-sentinel"}. Key: inert-executor-api-key-sentinel.\\n');
@@ -977,6 +980,13 @@ for (const phase of ['build', 'review', 'defence', 'verify']) {
     }
     const result = runExecutor(f); assert.equal(result.status, 0, result.stderr || result.stdout);
     const launched = stateOf(f), argv = launched.jobArgs;
+    assert(argv.includes('--read-only'));
+    assert(argv.includes('/tmp:rw,nosuid,size=1024m'));
+    const mounts = argv.filter((value, i) => argv[i - 1] === '--mount');
+    assert(mounts.some(value => value.endsWith('target=/factory-policy,readonly')));
+    assert(mounts.some(value => value.endsWith('target=/factory-skills,readonly')));
+    assert(mounts.some(value => value.endsWith(`target=/workspace${phase === 'build' ? '' : ',readonly'}`)));
+    assert.equal(mounts.some(value => /target=\/(?:home|root|factory-local-state)(?:,|\/|$)/.test(value)), false);
     assert.equal(argv.includes('--env-file'), false); assert.deepEqual(launched.selectedEnvironmentNames, []);
     assert.equal(execution.policyHash, executionProfile(common, 'handoff').policyHash);
     assert.equal(existsSync(join(f.attemptFolder, `.local-${phase}`)), false, 'removed after confirmed container shutdown');
@@ -994,7 +1004,7 @@ for (const phase of ['build', 'review', 'defence', 'verify']) {
       assert.equal(registry.models.length, 1); assert.equal(registry.models[0].id, binding.model);
       assert.equal(launched.localLauncher, readFileSync(join(root, 'factory/pi-local-launch.mjs'), 'utf8'));
       assert.deepEqual(launched.localAdapter, ['pi-context-extension.mjs', 'pi-context-budget.mjs'].map(file => readFileSync(join(root, 'factory', file), 'utf8')));
-      assert(argv.includes('PI_CODING_AGENT_DIR=/factory-local'));
+      assert.equal(argv.some(value => value.startsWith('PI_CODING_AGENT_DIR=')), false, 'launcher owns ephemeral Pi home');
       const command = argv.slice(argv.lastIndexOf('factory') + 1);
       assert.deepEqual(command, common.resolvedRoleProfiles[role].command);
       assert.equal(command[command.indexOf('--thinking') + 1], binding.reasoningEffort === 'low' ? 'low' : 'off');
@@ -1006,9 +1016,10 @@ for (const phase of ['build', 'review', 'defence', 'verify']) {
   });
 }
 
-test('unavailable local inference retains failure, leaves candidate unchanged and cleans registry without cloud fallback', async t => {
+for (const failure of ['local-unavailable', 'local-missing-report']) {
+test(`${failure} retains failure, leaves candidate unchanged and cleans registry without cloud fallback`, async t => {
   const { effectiveExecutionConfig, executionProfile } = await import('../factory/execution-profile.mjs');
-  const f = fixture(t, 'local-unavailable');
+  const f = fixture(t, failure);
   const config = JSON.parse(readFileSync(join(f.attemptFolder, 'execution-config.json')));
   config.roleDefinition = { version: 1, roles: { review: { harness: 'pi', localBinding: 'local' } } };
   config.localBindings = { local: { endpoint: 'http://missing.invalid/v1', model: 'missing:model', contextWindow: 32768, maxTokens: 1024 } };
@@ -1021,10 +1032,12 @@ test('unavailable local inference retains failure, leaves candidate unchanged an
   const result = runExecutor(f); assert.notEqual(result.status, 0);
   assert.deepEqual(readFileSync(join(f.folder, 'checkout/fixture.txt')), before);
   assert.equal(existsSync(join(f.artifacts, 'review.json')), false);
-  assert.match(readFileSync(join(f.attemptFolder, 'review.log'), 'utf8'), /unavailable; no fallback/);
+  if (failure === 'local-unavailable') assert.match(readFileSync(join(f.attemptFolder, 'review.log'), 'utf8'), /unavailable; no fallback/);
+  else assert.match(result.stderr + result.stdout, /ENOENT.*review\.json/);
   assert.equal(stateOf(f).jobArgs.includes('--env-file'), false);
   assert.equal(existsSync(join(f.attemptFolder, '.local-review')), false);
 });
+}
 
 test('local registry stays fenced on uncertain shutdown and ordinary recovery removes it', async t => {
   const { effectiveExecutionConfig, executionProfile } = await import('../factory/execution-profile.mjs');

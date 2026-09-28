@@ -30,6 +30,59 @@ adoption preserved histories. Those results apply to 0.11.0, not later revisions
 | [Profile](../tests/execution-profile.test.mjs) and [delivery tests](../tests/delivery.test.mjs) | Exact writer versions, unchanged retained records, current provenance/policy/revision guards and unsupported writer rejection | Controlled records/providers do not prove live account writes. |
 | [Service](../tests/services.test.mjs) and [source admission tests](../tests/source-admission.test.mjs) | Stable launch/update contracts and retained-source behavior | Does not prove a running installation's service/image/history preservation. |
 
+### Pi project-trust startup (0.15.3, #103)
+
+The 0.15.2 plain-directory actual-Pi adapter fixture passed, but adding only an
+empty `.agents/skills` directory made the same fixture fail before inference at
+`trust.json.lock`. Replaying the unchanged 0.15.2 launcher with installed official
+Pi **0.87.1** reproduced `EACCES` with a non-root permission-protected binding;
+a direct Pi invocation using an existing read-only mount reproduced `EROFS` at
+the same lock operation. No baseline checkout or private installation was edited.
+The candidate passes the identical representative fixture.
+
+The installed upstream `core/trust-manager.js` explains the gap:
+`hasTrustRequiringProjectResources` tests existence of `.agents/skills` in the
+project/ancestors, or supported entries under project `.pi` (including settings,
+extensions, skills, prompts, themes and system files). `ProjectTrustStore.get`
+locks even when no trust file exists. `core/resource-loader.js` loads explicit
+CLI extensions before the trust decision and preserves explicit CLI skills.
+`core/package-manager.js` resolves project packages before extension filtering;
+`--no-extensions` alone is therefore insufficient to exclude installation.
+These are pinned upstream behavior, not claims about other Pi releases.
+
+The candidate separates read-only binding/adapter inputs from a fresh private
+Pi runtime directory in the existing sandbox tmpfs and explicitly denies project
+trust with `--no-approve`. No trusted project/parent entry is created. Pi creates
+empty `auth.json` and `models-store.json` files, not imported credentials;
+`models.json` remains linked to the read-only binding. The context adapter reads
+its original read-only model input directly. Existing selection, handshake,
+context/output validation and no-cloud-fallback behavior remain in force.
+
+[Actual-Pi trust regression](../tests/pi-trust.test.mjs) covers the old plain and
+minimal-trigger cases, candidate startup, separate Build and permission-protected
+Review tools/reports, all six mounted skills, task/project text, distinct runtime
+directories and cleanup, ignored inherited trust/auth state, unchanged model
+input, terminal provider/tool/report-write failures and an adversarial extension,
+local package and dependency-install probe. Execution would leave a marker;
+the marker is absent. [Executor regressions](../tests/executor-container-recovery.test.mjs)
+check native mount construction, read-only rootfs/policy/skills/Review, omitted
+credential environment and normal recovery. Those use a labeled synthetic Docker
+shim, not a running Docker daemon. `npm run qualify:pi` includes this fixture and
+the retained #100 context compaction, recovery, six-result batch and output-budget
+checks. All inference responses in these fixtures are synthetic loopback HTTP.
+
+Locked dependency installation and dashboard build passed. `npm run check`
+passed **453 runtime/package tests and 63 dashboard tests**, with no failures or
+skips; `npm run qualify:pi` passed **20 actual-Pi synthetic cases**, including the
+trust fixture and retained #100 cases. These are source-worker results.
+
+This worker has Node 22.23.3 and actual Pi 0.87.1, but no Docker CLI/daemon.
+Full repository checks include disposable tarball installation; they do not prove
+an installed native Factory Build/Review in the selected image. Exact installed
+CLI/API/image qualification, independent Review of the delivered candidate and
+one actual local-model run remain lead-owned gates. The failed local #51 attempt
+is not retried, rewritten or accepted by this source repair.
+
 ### Pi context-boundary first slice (0.15.2, #100)
 
 This candidate pins the standard worker to **`@earendil-works/pi-coding-agent@0.87.1`**

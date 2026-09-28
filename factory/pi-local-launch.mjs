@@ -1,6 +1,6 @@
 // Mounted read-only beside the single selected registry. Keep all JSON evidence;
 // process exit alone does not establish a successfully completed Pi turn.
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
@@ -116,16 +116,24 @@ function launch() {
   // Never inherit credential inputs, provider overrides, NODE_OPTIONS or external
   // Pi directories. The runtime image supplies binaries; the repository supplies data.
   const env = Object.fromEntries(['PATH', 'HOME', 'LANG', 'TMPDIR', 'FACTORY_PHASE'].filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]]));
-  env.PI_CODING_AGENT_DIR = directory;
   for (const file of ['pi-context-extension.mjs', 'pi-context-budget.mjs']) readFileSync(join(directory, file));
   const version = spawnSync('pi', ['--version'], { env, encoding: 'utf8', timeout: 10000 });
   if (version.status !== 0 || version.stdout.trim() !== '0.87.1')
     throw new Error('Local context protection requires pinned Pi 0.87.1; qualify and select the worker image while idle. No fallback.');
-  // The explicit non-secret runtime key bypasses Pi 0.87.1's credential-store
-  // refresh, which otherwise tries to lock auth.json in this read-only mount.
-  // --no-extensions still disables discovery. Only this read-only bundled path
-  // is explicitly enabled; it cannot load repository or host extensions.
-  const child = spawn('pi', [...args, '--extension', join(directory, 'pi-context-extension.mjs'), '--api-key', 'factory-local-keyless'], { env, stdio: ['inherit', 'pipe', 'inherit'] });
+  // Pi's home is mutable runtime state (including trust-store locks), not the
+  // operator-owned binding. Each launch gets a private directory in the existing
+  // sandbox tmpfs; no host trust/auth/settings are copied. Keep model input linked
+  // to its read-only mount, and load the adapter directly from that mount.
+  const runtimeDirectory = mkdtempSync('/tmp/factory-pi-');
+  const cleanup = () => rmSync(runtimeDirectory, { recursive: true, force: true });
+  process.on('exit', cleanup); // Container teardown also clears interrupted runs.
+  symlinkSync(join(directory, 'models.json'), join(runtimeDirectory, 'models.json'));
+  env.PI_CODING_AGENT_DIR = runtimeDirectory;
+  // Denying project trust also prevents project settings/packages and dependency
+  // installation, which --no-extensions alone does not prevent. Explicit CLI
+  // resources remain available in pinned Pi: only our adapter and mounted skills.
+  const child = spawn('pi', [...args, '--no-approve', '--no-extensions', '--no-skills', '--no-prompt-templates',
+    '--extension', join(directory, 'pi-context-extension.mjs'), '--api-key', 'factory-local-keyless'], { env, stdio: ['inherit', 'pipe', 'inherit'] });
   const completion = new PiCompletion();
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', chunk => {

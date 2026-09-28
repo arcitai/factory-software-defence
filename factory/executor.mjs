@@ -113,8 +113,7 @@ async function container(mode, input, command, options = {}) {
       for (const file of ['pi-context-extension.mjs', 'pi-context-budget.mjs'])
         writeFileSync(join(localDirectory, file), readFileSync(join(ROOT, 'factory', file)), { mode: 0o600, flag: 'wx' });
       writeFileSync(join(localDirectory, 'models.json'), JSON.stringify(localRegistry(binding)), { mode: 0o600, flag: 'wx' });
-      args.push('--mount', `type=bind,source=${localDirectory},target=${LOCAL_AGENT_DIR},readonly`,
-        '--env', `PI_CODING_AGENT_DIR=${LOCAL_AGENT_DIR}`);
+      args.push('--mount', `type=bind,source=${localDirectory},target=${LOCAL_AGENT_DIR},readonly`);
     }
     selectedModelEnvironment = writeSelectedModelEnvironment(join(state, 'model.env'), modelEnvironmentPath, {
       phase: mode, executor: execution.executor, inferenceProvider: config.inferenceProvider,

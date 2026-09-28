@@ -432,6 +432,37 @@ local inference does not mean zero electricity, hardware or operator cost. Only
 then qualify a suitable real Factory issue; no customer jobs are part of this slice.
 
 
+## Local Pi project resources (0.15.3, #103)
+
+The local launcher gives each invocation a private `0700` directory under the
+job's existing `/tmp` tmpfs for Pi runtime stores/locks. `PI_CODING_AGENT_DIR`
+points there; it is never the read-only `/factory-local` binding mount. The
+selected `models.json` is linked to that mount, and the launcher/context adapter,
+policy and six Factory skills remain read-only. No host home, saved trust,
+authentication or settings are copied. Normal exit removes this state; container
+teardown removes interrupted state. Build and Review never share it. The root
+filesystem and Review checkout remain read-only.
+
+Pinned Pi 0.87.1 consults project trust even for an empty `.agents/skills`
+directory. Factory explicitly passes `--no-approve` to deny project settings,
+packages and executable resource loading, while retaining `--no-extensions`,
+`--no-skills` and `--no-prompt-templates`. A writable Pi home does not authorize
+project dependency installation. Only the explicit bundled context extension
+and `--skill /factory-skills` catalog are supported; their loading and the
+context-ready handshake are tested against actual Pi. Task stdin and ordinary
+`AGENTS.md` context remain available as untrusted text. Repository Pi settings,
+extensions/packages and automatically discovered repository skills are not a
+supported configuration path. Explicit task-driven file reads are still possible
+within the sandbox and grant no additional authority.
+
+Before accepting this repair, the lead must qualify the exact installed 0.15.3
+package/image through CLI/API, representative native local Build and separate
+read-only Review, and one actual local-model run. `npm run qualify:pi` uses actual
+Pi with **synthetic HTTP inference**, not model judgment. See [trust-store
+proof and limits](proof.md#pi-project-trust-startup-0153-103). Retain the failed
+#51 attempt unchanged and unaccepted; retry only through a newly authorized
+attempt after qualification. Do not modify private installations from a job.
+
 ## Local context budget and worker image (0.15.2, #100)
 
 The standard worker recipe pins **`@earendil-works/pi-coding-agent@0.87.1`** from

@@ -7,6 +7,8 @@ interaction and optional project identity. No global project hub is planned.
 
 ## Local context-boundary qualification
 
+- [ ] [#103 — local Pi trust-store initialization](https://github.com/arcitai/software-and-defence-factory/issues/103): **0.15.3 source repair for independent Review**. Isolated ephemeral Pi state, explicit denial of project resource trust and actual-Pi synthetic Build/Review/adversarial regressions. [Evidence and limits](docs/proof.md#pi-project-trust-startup-0153-103). Exact installed CLI/API/image and actual local-model qualification remain with the lead; failed #51 evidence is retained.
+
 - [ ] [#100 — Pi context budgeting and compaction recovery](https://github.com/arcitai/software-and-defence-factory/issues/100): **0.15.2 revised bounded source slice for independent Review**. Retained-batch candidate also failed actual qualification through output starvation; wire allowance restoration and output-enforcing six-read regressions added, awaiting rebuilt-image and unchanged real-fixture qualification. Maintained Pi 0.87.1 image pin, explicit recovery/fail-closed launcher, actual-CLI controlled transport plus 0.73.1 baseline, and generic allocation/migration guidance. [Evidence and limits](docs/proof.md#pi-output-allowance-revision-0152-100). Lead still owns exact installed CLI/API/Docker proof and one bounded actual local-inference Factory fixture before acceptance; #51 usage, #42 unfinished checkpoints and broader #69/#100 tuning remain open.
 
 ## Completed foundation and first slice
