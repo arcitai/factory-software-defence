@@ -20,3 +20,11 @@ test('filters and search keep failure, interruption, unknown and review separate
   assert.deepEqual(filterJobs(jobs,'needs_review').map(job=>job.state),['needs_review']);
   assert.deepEqual(searchJobs(jobs,'Task 4').map(job=>job.state),['interrupted']);
 });
+
+
+test('status checkboxes expand groups and combine with individual states',()=>{
+  assert.deepEqual(filterJobs(jobs,['needs_attention']).map(job=>job.state),['failed','interrupted','unknown']);
+  assert.deepEqual(filterJobs(jobs,['in_progress','needs_review']).map(job=>job.state),['running','needs_review']);
+  assert.deepEqual(filterJobs(jobs,statusGroups.map(group=>group.id)),jobs);
+  assert.deepEqual(filterJobs(jobs,[]),jobs);
+});

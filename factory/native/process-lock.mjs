@@ -1,5 +1,4 @@
-import { randomUUID } from 'node:crypto';
-import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, rmSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 function identity(pid=process.pid) {
@@ -38,32 +37,24 @@ export function inspectProcessLock(path) {
 export function acquireProcessLock(path,purpose='Factory service') {
   const owner=identity(),payload={...owner,purpose};
   mkdirSync(dirname(path),{recursive:true,mode:0o700});
-  for(let attempt=0;attempt<2;attempt++) {
-    let fd;
-    try {
-      fd=openSync(path,'wx',0o600);
-      try {writeSync(fd,`${JSON.stringify(payload)}\n`);} finally {closeSync(fd);}
-      return ()=>{
-        try {if(same(JSON.parse(readFileSync(path,'utf8')),owner))rmSync(path);} catch {}
-      };
-    } catch(error) {
-      if(error.code!=='EEXIST') throw error;
-      let previous,stat;
-      try {stat=lstatSync(path);previous=JSON.parse(readFileSync(path,'utf8'));}
-      catch {throw new Error(`${purpose} lock is unreadable; preserve it and reconcile the service process.`);}
-      const running=alive(previous);
-      if(running!==false) throw new Error(`${purpose} is already running or its owner cannot be verified (PID ${previous.pid ?? 'unknown'}).`);
-      const stale=`${path}.stale-${randomUUID()}`;
-      try {renameSync(path,stale);} catch {continue;}
-      let moved,movedStat;
-      try {movedStat=lstatSync(stale);moved=JSON.parse(readFileSync(stale,'utf8'));}
-      catch {throw new Error(`${purpose} lock changed during stale-lock reconciliation; inspect it before restarting.`);}
-      if(movedStat.ino!==stat.ino || alive(moved)!==false) {
-        if(!existsSync(path)) renameSync(stale,path);
-        throw new Error(`${purpose} lock changed during stale-lock reconciliation; inspect it before restarting.`);
-      }
-      rmSync(stale);
-    }
+  const gate=`${path}.reconcile`;
+  try {mkdirSync(gate,{mode:0o700});}
+  catch(error) {
+    if(error.code==='EEXIST')throw new Error(`${purpose} lock reconciliation is in progress or unresolved; inspect it before restarting.`);
+    throw error;
   }
-  throw new Error(`${purpose} lock changed during restart; inspect it before starting again.`);
+  try {
+    if(existsSync(path)) {
+      let previous;
+      try {previous=JSON.parse(readFileSync(path,'utf8'));}
+      catch {throw new Error(`${purpose} lock is unreadable; preserve it and reconcile the service process.`);}
+      if(alive(previous)!==false)throw new Error(`${purpose} is already running or its owner cannot be verified (PID ${previous.pid ?? 'unknown'}).`);
+      rmSync(path);
+    }
+    const fd=openSync(path,'wx',0o600);
+    try {writeSync(fd,`${JSON.stringify(payload)}\n`);} finally {closeSync(fd);}
+    return ()=>{
+      try {if(same(JSON.parse(readFileSync(path,'utf8')),owner))rmSync(path);} catch {}
+    };
+  } finally {rmSync(gate,{recursive:true});}
 }

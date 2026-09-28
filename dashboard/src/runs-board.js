@@ -8,10 +8,10 @@ export const boardColumns=statusGroups.map(group=>({...group,title:group.label})
 const known=new Set(statusGroups.flatMap(group=>group.states));
 export const boardColumnForState=state=>statusGroups.find(group=>group.states.includes(state))?.id||'needs_attention';
 export function filterJobs(jobs,filter) {
-  if(Array.isArray(filter))return filter.length?jobs.filter(job=>filter.includes(job.state)):jobs;
-  if(filter==='all')return jobs;
-  if(filter==='needs_attention')return jobs.filter(job=>['failed','interrupted','unknown'].includes(job.state));
-  return jobs.filter(job=>job.state===filter);
+  const selected=Array.isArray(filter)?filter:[filter];
+  if(!selected.length||selected.includes('all'))return jobs;
+  const states=new Set(selected.flatMap(id=>statusGroups.find(group=>group.id===id)?.states||[id]));
+  return jobs.filter(job=>states.has(job.state));
 }
 export function searchJobs(jobs,query) {
   const needle=String(query||'').trim().toLocaleLowerCase();if(!needle)return jobs;

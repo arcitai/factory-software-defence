@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { pinInstalledRuntime, serviceManifest, assertStoppedReconciled } from '../factory/native/service.mjs';
 import { acquireProcessLock, inspectProcessLock } from '../factory/native/process-lock.mjs';
 
@@ -18,6 +19,13 @@ test('user systemd manifest pins an installed release and a loopback serve comma
   assert.match(manifest.definition,/ExecStart=.*serve.*--state.*--port/);
   assert.match(manifest.definition,/NoNewPrivileges=true/);
   assert.equal(manifest.runtime,join(state,'runtime','0.18.0'));
+  assert.match(manifest.definition,/ExecStartPre=/);
+  pinInstalledRuntime(state,{root:installed,version:'0.18.0'});
+  const verify=()=>spawnSync(manifest.verification[0],manifest.verification.slice(1),{encoding:'utf8'});
+  assert.equal(verify().status,0);
+  writeFileSync(join(manifest.runtime,'node_modules','yaml','package.json'),'{"name":"yaml","version":"changed"}');
+  assert.notEqual(verify().status,0);
+  assert.match(verify().stderr,/integrity mismatch/);
   assert.throws(()=>serviceManifest({state,config:{repo,node:process.execPath},root:installed,port:80}),/loopback/);
   mkdirSync(join(installed,'.git'));
   assert.throws(()=>serviceManifest({state,config:{repo,node:process.execPath},root:installed}),/installed Factory package/);
@@ -58,4 +66,15 @@ test('retained history does not prevent starting a stopped bridge; a live proces
  assert.doesNotThrow(()=>assertStoppedReconciled(state));
  const release=acquireProcessLock(join(state,'serve.lock'));t.after(release);
  assert.throws(()=>assertStoppedReconciled(state),/active or unknown/);
+});
+
+test('unresolved lock reconciliation preserves a stale lock instead of replacing it',t=>{
+  const state=mkdtempSync(join(tmpdir(),'factory-lock-reconcile-'));
+  t.after(()=>rmSync(state,{recursive:true,force:true}));
+  const path=join(state,'serve.lock'),stale=JSON.stringify({pid:process.pid,boot_id:'old-boot',start_time:'1'});
+  writeFileSync(path,stale);mkdirSync(`${path}.reconcile`);
+  assert.throws(()=>acquireProcessLock(path),/reconciliation is in progress or unresolved/);
+  assert.equal(readFileSync(path,'utf8'),stale);
+  rmSync(`${path}.reconcile`,{recursive:true});
+  acquireProcessLock(path)();
 });

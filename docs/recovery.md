@@ -48,3 +48,8 @@ Follow [migration](migration.md) and [package guidance](npm.md). Preserve the
 previous pinned package and private state. Stop only an idle verified owner before
 switching. Check package identity, native readiness, history and the actual Inbox
 after startup. A failed update is not permission to automatically replay work.
+
+A leftover `serve.lock.reconcile` directory means a process stopped during lock
+reconciliation. Confirm the service and its native child have stopped, preserve
+the directory and lock as evidence, then move that directory aside explicitly.
+Factory never guesses that an unresolved reconciliation owner is safe to replace.

@@ -100,7 +100,7 @@ export class NativeEngine {
     }
     let cursor, pages=0;
     do {
-      const params={sourceKinds:['appServer','exec'],limit:100,sortDirection:'desc'};
+      const params={sourceKinds:['cli','vscode','exec','appServer','subAgent','subAgentReview','subAgentCompact','subAgentThreadSpawn','subAgentOther','unknown'],limit:100,sortDirection:'desc'};
       if (cursor) params.cursor=cursor;
       const page=await this.client.call('thread/list',params).catch(()=>null);
       if (!Array.isArray(page?.data) || page.data.length>100) throw new FactoryError('Codex thread inventory is unavailable; workspace ownership is unknown.',409);

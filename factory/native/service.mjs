@@ -13,7 +13,7 @@ const serviceHash=value=>createHash('sha256').update(value).digest('hex').slice(
 const serviceID=(state,repo)=>`factory-native-${serviceHash(`${state}\n${repo}`)}`;
 const quote=value=>`"${String(value).replaceAll('\\','\\\\').replaceAll('"','\\"').replaceAll('$','$$').replaceAll('%','%%').replaceAll('\n','\\n')}"`;
 const validPort=port=>Number.isSafeInteger(port)&&port>=1024&&port<=65535;
-const unitText=({id,state,repo,node,runtime,port})=>`[Unit]\nDescription=Factory native Codex Inbox\nStartLimitIntervalSec=0\n\n[Service]\nType=exec\nWorkingDirectory=${quote(repo)}\nExecStart=${[node,join(runtime,'bin/software-defence-factory.mjs'),'serve','--state',state,'--port',String(port)].map(quote).join(' ')}\nRestart=on-failure\nRestartSec=10\nTimeoutStopSec=45\nKillMode=control-group\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`;
+const unitText=({state,repo,node,runtime,port,verification})=>`[Unit]\nDescription=Factory native Codex Inbox\nStartLimitIntervalSec=0\n\n[Service]\nType=exec\nWorkingDirectory=${quote(repo)}\nExecStartPre=${verification.map(quote).join(' ')}\nExecStart=${[node,join(runtime,'bin/software-defence-factory.mjs'),'serve','--state',state,'--port',String(port)].map(quote).join(' ')}\nRestart=on-failure\nRestartSec=10\nTimeoutStopSec=45\nKillMode=control-group\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`;
 function callSystemctl(args) {
   return execFileSync('systemctl',['--user',...args],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000}).trim();
 }
@@ -56,9 +56,14 @@ export function serviceManifest({state,config,root=packageRoot,port=7332,home=ho
   if(!validPort(port))throw new Error('Choose a loopback dashboard port from 1024 to 65535.');
   const source=verifyPackageRoot(root),installed=runtime || join(state,'runtime',source.version);
   const id=serviceID(state,config.repo),unit=`${id}.service`;
-  const definition=unitText({id,state,repo:config.repo,node:config.node,runtime:installed,port});
+  const runtime_sha256=runtimeDigest(source.root);
+  // The verifier is embedded in the owned unit, outside the package it checks.
+  // systemd runs it on every start, including automatic failure/boot restarts.
+  const verifier=`import {createHash} from 'node:crypto';import {readdirSync,lstatSync,readFileSync} from 'node:fs';import {join} from 'node:path';\n${runtimeDigest.toString()}\nif(runtimeDigest(process.argv[1])!==process.argv[2])throw new Error('Pinned Factory runtime integrity mismatch; preserve and reconcile the release.');`;
+  const verification=[config.node,'--input-type=module','-e',verifier,installed,runtime_sha256];
+  const definition=unitText({state,repo:config.repo,node:config.node,runtime:installed,port,verification});
   return {id,unit,port,state,repo:config.repo,node:config.node,version:source.version,runtime:installed,
-    folder,file:join(folder,unit),definition,definition_sha256:createHash('sha256').update(definition).digest('hex')};
+    folder,file:join(folder,unit),verification,runtime_sha256,definition,definition_sha256:createHash('sha256').update(definition).digest('hex')};
 }
 export function pinInstalledRuntime(state,source) {
   const folder=join(state,'runtime'),target=join(folder,source.version);
@@ -135,7 +140,7 @@ export async function manageNativeService(action,statePath,port=7332) {
     callSystemctl(['--version']);
     writeFileSync(manifest.file,manifest.definition,{flag:'wx',mode:0o600});
     const record={version:1,id:manifest.id,unit:manifest.unit,port:manifest.port,state,repo:config.repo,node:config.node,
-      runtime,release_version:manifest.version,unit_file:manifest.file,definition_sha256:manifest.definition_sha256};
+      runtime,runtime_sha256:manifest.runtime_sha256,release_version:manifest.version,unit_file:manifest.file,definition_sha256:manifest.definition_sha256};
     try {
       atomicJSON(recordPath,record);
       callSystemctl(['daemon-reload']);callSystemctl(['enable','--now',manifest.unit]);

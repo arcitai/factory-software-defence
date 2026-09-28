@@ -174,3 +174,18 @@ test('interrupt records its request before native side effects and cannot be rep
   assert.equal((await engine.interrupt(job.id,job.turn_id)).interrupt_requested,true);
   await assert.rejects(engine.interrupt(job.id,job.turn_id),/already interrupted/);
 });
+
+
+test('writer inventory includes interactive and child sessions, not just Factory entrypoints',async t=>{
+  const h=harness(t),engine=h.engine(),original=h.client.call;
+  h.turns.set('interactive-active',[{id:'interactive-turn',status:'inProgress'}]);
+  h.client.call=(method,params)=>{
+    if(method==='thread/list') {
+      assert.deepEqual(params.sourceKinds,['cli','vscode','exec','appServer','subAgent','subAgentReview','subAgentCompact','subAgentThreadSpawn','subAgentOther','unknown']);
+      return Promise.resolve({data:[{id:'interactive-active'}],nextCursor:null});
+    }
+    return original(method,params);
+  };
+  await assert.rejects(engine.assertWorkspaceIdle(),/active or unresolved/);
+  assert.equal(h.turnStarts,0);
+});
