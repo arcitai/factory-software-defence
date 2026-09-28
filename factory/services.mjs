@@ -83,7 +83,7 @@ async function portFree(port) {
 }
 // Retain only installed package content. A source tree or npx cache is never
 // the service's enduring runtime. Old snapshots remain available for recovery.
-function retainRuntime() {
+export function retainRuntime() {
   if (SOURCE_CHECKOUT) throw new Error('Install the npm artifact before installing a service; source worktrees are not service runtimes');
   const destination = join(DATA_HOME, 'services/runtimes', VERSION);
   if (!existsSync(destination)) {
@@ -91,7 +91,7 @@ function retainRuntime() {
     const staging = `${destination}.${process.pid}.tmp`;
     try {
       mkdirSync(staging, { mode: 0o700 });
-      for (const name of ['package.json', 'bin', 'factory', 'kit', '.agents', 'scripts']) if (existsSync(join(ROOT, name))) cpSync(join(ROOT, name), join(staging, name), { recursive: true });
+      for (const name of ['package.json', 'bin', 'factory', 'adlc', '.agents', 'scripts']) if (existsSync(join(ROOT, name))) cpSync(join(ROOT, name), join(staging, name), { recursive: true });
       renameSync(staging, destination);
     } finally { rmSync(staging, { recursive: true, force: true }); }
   }

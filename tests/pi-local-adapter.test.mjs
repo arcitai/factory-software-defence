@@ -48,7 +48,7 @@ test('pinned Pi consumes the generated registry, calls a tool, returns its resul
   writeFileSync(launcher, readFileSync(join(ROOT, 'factory/pi-local-launch.mjs')));
   for (const file of ['pi-context-extension.mjs', 'pi-context-budget.mjs'])
     writeFileSync(join(env.PI_CODING_AGENT_DIR, file), readFileSync(join(ROOT, 'factory', file)));
-  const args = [launcher, ...localRoleCommand(binding).slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'kit/skills') : arg)];
+  const args = [launcher, ...localRoleCommand(binding).slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'adlc/skills') : arg)];
   async function run(argsOverride = args) {
     return await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, argsOverride, { cwd: workspace, env, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -90,7 +90,7 @@ test('pinned Pi consumes the generated registry, calls a tool, returns its resul
       chmodSync(env.PI_CODING_AGENT_DIR, 0o700);
       writeFileSync(registryPath, JSON.stringify(localRegistry(bindings[role])));
       chmodSync(env.PI_CODING_AGENT_DIR, 0o500);
-      const roleArgs = [launcher, ...profiles[role].command.slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'kit/skills') : arg)];
+      const roleArgs = [launcher, ...profiles[role].command.slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'adlc/skills') : arg)];
       const start = requests.length, result = await run(roleArgs);
       assert.equal(result.code, 0, `${role}/${choices[i]}: ${result.stderr}${result.stdout}`);
       assert.equal(requests.length, start + 1);

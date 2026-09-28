@@ -65,7 +65,7 @@ test('Pi project trust: old read-only home fails; isolated Build and Review keep
   for (const file of ['pi-local-launch.mjs', 'pi-context-extension.mjs', 'pi-context-budget.mjs'])
     writeFileSync(join(agent, file), readFileSync(join(ROOT, 'factory', file)));
   permissions(agent, false);
-  const args = localRoleCommand(binding).slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'kit/skills') : arg);
+  const args = localRoleCommand(binding).slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'adlc/skills') : arg);
   async function run({ oldHome = false, phase = 'build', nextActions = [], nextBehavior = 'success' } = {}) {
     turn = 0; actions = nextActions; behavior = nextBehavior;
     return await new Promise((resolve, reject) => {

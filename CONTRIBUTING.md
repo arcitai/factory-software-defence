@@ -26,7 +26,7 @@ Docker or prove a model's judgment, browser behavior or production access.
 | `bin/` | CLI entrypoint and operator commands |
 | `factory/` | Controller, queue, executor, services, updates and packaged UI |
 | `dashboard/` | React interface and its tests; edit source here, not generated assets |
-| `kit/`, `kit/skills/` | Portable method and the canonical job-mounted specialist instructions |
+| `adlc/`, `adlc/skills/` | Portable method and the canonical job-mounted specialist instructions |
 | `.agents/skills/` | Repository/operator guidance, including explicit Factory Foundation adoption |
 | `tests/`, `scripts/` | Runtime/package regressions, validation and release helpers |
 | `docs/` | Maintained setup, architecture, operation and proof |

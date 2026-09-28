@@ -141,7 +141,7 @@ for (const scenario of ['unprotected', 'six-read', 'larger-output', 'completion-
     writeFileSync(join(agent, 'models.json'), JSON.stringify(localRegistry(binding)));
     for (const file of ['pi-local-launch.mjs', 'pi-context-extension.mjs', 'pi-context-budget.mjs'])
       writeFileSync(join(agent, file === 'pi-local-launch.mjs' ? 'launch.mjs' : file), readFileSync(join(ROOT, 'factory', file)));
-    const args = localRoleCommand(binding).slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'kit/skills') : arg);
+    const args = localRoleCommand(binding).slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'adlc/skills') : arg);
     const unprotected = scenario === 'unprotected';
     const result = await new Promise((resolve, reject) => {
       const child = spawn(unprotected ? 'pi' : process.execPath, unprotected ? [...args, '--api-key', 'factory-local-keyless'] : [join(agent, 'launch.mjs'), ...args], {

@@ -3,7 +3,7 @@
 - [Contributing](../CONTRIBUTING.md): source setup, checks and PR/release policy.
 - [Factory development](development.md): use the released runtime to develop this project on a worker.
 - [Development queue](../todo.md): ordered, issue-backed work and dependencies.
-- [Repository readiness](../kit/repository.md): GitHub labels/forms, explicit issue admission and reviewed delivery.
+- [Repository readiness](../adlc/repository.md): GitHub labels/forms, explicit issue admission and reviewed delivery.
 - [Dashboard design](../DESIGN.md): accepted project-focused visual direction and interface boundaries.
 - [Factory concepts](concepts.md): host, controller, worker, harness, agent and compatibility.
 - [Workflows, skills and intake](workflows.md): one method/catalog, explicit execution and customization boundaries.
@@ -26,8 +26,8 @@
 - [Qualification](proof.md): what was exercised and what remains unverified.
 - [Ownership](ownership.md): original code, adapted interface and licensing.
 
-For the portable method, start with [the adoption guide](../kit/README.md).
-The [runtime catalog](../kit/skills/README.md) owns the six job skills;
+For the portable method, start with [the adoption guide](../adlc/README.md).
+The [runtime catalog](../adlc/skills/README.md) owns the six job skills;
 [repository/operator guidance](../.agents/skills/README.md) owns explicit adoption
 and [Foundation](../.agents/skills/factory-foundation/SKILL.md).
 

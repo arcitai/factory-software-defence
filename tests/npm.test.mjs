@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
@@ -27,11 +27,12 @@ test('npm artifact installs without a checkout, keeps state outside the package,
   const environment = { ...process.env, XDG_STATE_HOME: join(dir, 'state'), XDG_DATA_HOME: join(dir, 'data'), SDF_AUTO_UPDATE: '0', SDF_BOOTSTRAPPED: '0', npm_config_cache: join(dir, 'npm-cache') };
   const packed = JSON.parse(command('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', dir]))[0];
   const names = packed.files.map(file => file.path);
-  for (const required of ['bin/software-defence-factory.mjs', 'factory/updates.mjs', 'factory/issue-templates.mjs', 'factory/intake.mjs', 'factory/definition.mjs', 'factory/terminology.json', '.agents/skills/factory-foundation/SKILL.md', 'docs/concepts.md', 'factory/paths.mjs', 'factory/image/Dockerfile', 'kit/policy.md', 'docs/setup.md', 'docs/services.md', 'kit/skills/factory-implement/SKILL.md', 'scripts/export-kit.mjs', 'scripts/retained-source-fixture.mjs', 'LICENSE']) assert.ok(names.includes(required), required);
+  for (const required of ['bin/software-defence-factory.mjs', 'factory/updates.mjs', 'factory/issue-templates.mjs', 'factory/intake.mjs', 'factory/definition.mjs', 'factory/terminology.json', '.agents/skills/factory-foundation/SKILL.md', 'docs/concepts.md', 'factory/paths.mjs', 'factory/image/Dockerfile', 'adlc/README.md', 'adlc/policy.md', 'docs/setup.md', 'docs/services.md', 'docs/architecture.md', 'docs/hybrid.md', 'docs/proof.md', 'adlc/skills/factory-implement/SKILL.md', 'scripts/export-kit.mjs', 'scripts/probe-harness.mjs', 'scripts/retained-source-fixture.mjs', 'LICENSE']) assert.ok(names.includes(required), required);
+  assert(!names.some(path => path.startsWith('kit/')));
   assert.ok(names.every(path => !/^(?:\.factory|\.git\/|tests\/|experiments\/|evals\/|node_modules\/)|(?:^|\/)\.env(?:\.|$)/.test(path)));
   const runtimeIDs = ['factory-evaluate', 'factory-implement', 'factory-review', 'factory-security', 'factory-spec', 'factory-triage'];
   assert.deepEqual(names.filter(path => path.endsWith('/SKILL.md')).sort(),
-    ['.agents/skills/factory-foundation/SKILL.md', ...runtimeIDs.map(id => `kit/skills/${id}/SKILL.md`)].sort());
+    ['.agents/skills/factory-foundation/SKILL.md', ...runtimeIDs.map(id => `adlc/skills/${id}/SKILL.md`)].sort());
   assert(!names.some(path => path.startsWith('operator-skills/')));
   const occupiedBin = join(prefix, 'bin/factory');
   mkdirSync(join(prefix, 'bin'), { recursive: true });
@@ -73,6 +74,17 @@ test('npm artifact installs without a checkout, keeps state outside the package,
   const repo = join(dir, 'app'); mkdirSync(repo);
   command('git', ['init', '-q', repo]);
   command('git', ['-C', repo, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@localhost', 'commit', '--allow-empty', '-qm', 'fixture']);
+  const codexBin = join(dir, 'codex probe bin'); mkdirSync(codexBin);
+  const fakeCodex = join(codexBin, 'codex');
+  writeFileSync(fakeCodex, "#!/bin/sh\nprintf 'codex-cli 1.2.3\\n'\n"); chmodSync(fakeCodex, 0o755);
+  const codexProbe = JSON.parse(command(process.execPath, [join(packageRoot, 'scripts/probe-harness.mjs')], {
+    cwd: repo, env: { ...environment, PATH: [codexBin, process.env.PATH].join(delimiter) },
+  }));
+  assert.equal(codexProbe.state, 'found'); assert.equal(codexProbe.version, '1.2.3');
+  const cliCodexProbe = JSON.parse(command(bins[0], ['probe', 'codex'], {
+    cwd: repo, env: { ...environment, PATH: [codexBin, process.env.PATH].join(delimiter) },
+  }));
+  assert.equal(cliCodexProbe.state, 'found'); assert.equal(cliCodexProbe.version, '1.2.3');
   run(['init', '--repo', repo, '--agent', 'mock', '--check', 'true', '--source-ref', 'main']);
   const state = join(environment.XDG_STATE_HOME, 'software-defence-factory/platform');
   const configured=JSON.parse(readFileSync(join(state, 'factory.json')));
@@ -82,9 +94,20 @@ test('npm artifact installs without a checkout, keeps state outside the package,
   const definition = JSON.parse(originalDefinition);
   assert.deepEqual(JSON.parse(run(['skills'])), { agents: definition.skills, operators: definition.operator_skills });
   assert.deepEqual(definition.skills.map(skill => skill.id).sort(), runtimeIDs);
+  // Service snapshots must carry the same catalog as the installed package.
+  // This only stages files under the fixture data home; no OS service is created.
+  const retainedRoot = command(process.execPath, ['--input-type=module', '-e',
+    `import { retainRuntime } from ${JSON.stringify(pathToFileURL(join(packageRoot, 'factory/services.mjs')).href)}; console.log(retainRuntime());`],
+    { cwd: repo, env: environment }).trim();
+  const retainedSkills = JSON.parse(command(process.execPath,
+    [join(retainedRoot, 'bin/software-defence-factory.mjs'), 'skills', '--state', state],
+    { cwd: repo, env: environment }));
+  assert.deepEqual(retainedSkills, { agents: definition.skills, operators: definition.operator_skills });
+  assert.equal(readFileSync(join(retainedRoot, 'adlc/policy.md'), 'utf8'), readFileSync(join(packageRoot, 'adlc/policy.md'), 'utf8'));
+
   assert.equal(definition.operator_skills.length, 1);
   for (const skill of [...definition.skills, ...definition.operator_skills]) {
-    assert.equal(skill.path, `${skill.id === 'factory-foundation' ? '.agents' : 'kit'}/skills/${skill.id}/SKILL.md`);
+    assert.equal(skill.path, `${skill.id === 'factory-foundation' ? '.agents' : 'adlc'}/skills/${skill.id}/SKILL.md`);
     const content = readFileSync(join(packageRoot, skill.path), 'utf8');
     assert.equal(skill.content, content);
     assert.equal(skill.sha256, createHash('sha256').update(content).digest('hex'));
@@ -157,6 +180,7 @@ test('npm artifact installs without a checkout, keeps state outside the package,
   assert.equal(spawnSync(process.execPath, [cli, 'init', '--repo', repo], { env: environment }).status, 1);
   run(['kit', '--output', join(dir, 'method')]);
   assert.equal(readdirSync(join(dir, 'method/.agents/skills')).length, 6);
+  assert.equal(readFileSync(join(dir, 'method/.factory-kit/policy.md'), 'utf8'), readFileSync(join(packageRoot, 'adlc/policy.md'), 'utf8'));
   const manifest = JSON.parse(readFileSync(join(dir, 'method/.factory-kit/manifest.json')));
   for (const skill of definition.skills) {
     const path = `.agents/skills/${skill.id}/SKILL.md`;

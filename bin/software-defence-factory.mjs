@@ -20,6 +20,18 @@ import { hasService, manageService, serviceDefinition, withServiceOperation, isM
 import { runCandidateGit } from '../factory/git-environment.mjs';
 import { initializeDemoRepository } from '../factory/demo-fixture.mjs';
 import { probeWebBrowser } from '../factory/web-readiness.mjs';
+import { probeCodex } from '../scripts/probe-harness.mjs';
+
+// Discovery is a read-only launcher path. It bypasses package bootstrap so it
+// cannot update or inspect a configured Factory installation.
+if (process.argv.length === 4 && process.argv[2] === 'probe' && process.argv[3] === 'codex') {
+  let result;
+  try { result = await probeCodex(); }
+  catch { result = { schemaVersion: 1, harness: 'codex', state: 'broken', executablePath: null, version: null,
+    authentication: 'unknown', protocol: 'unknown', taskReadiness: 'unknown', failureReason: 'probe_failed' }; }
+  await new Promise(resolve => process.stdout.write(`${JSON.stringify(result, null, 2)}\n`, resolve));
+  process.exit(0);
+}
 
 try {
   const handled = await bootstrap(process.argv.slice(2));
@@ -348,6 +360,7 @@ Usage: factory <command> [options]
 Compatibility executable: software-defence-factory (same runtime and state)
 
   kit --output NEW_DIRECTORY               Export the portable method without a runtime
+  probe codex                             Discover Codex and report version only
   demo                                    Install and run a synthetic sample (no model key)
   qualify --state PATH                    Exercise recovery and isolation with a stopped demo job
   qualify-web --state PATH --image ID     Exercise Playwright Verify with a synthetic delayed-action fixture

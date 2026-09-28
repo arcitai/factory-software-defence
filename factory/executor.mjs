@@ -99,11 +99,11 @@ async function container(mode, input, command, options = {}) {
     '--mount',`type=bind,source=${workspace},target=/workspace${writable ? '' : ',readonly'}`,
     '--mount',`type=bind,source=${join(workspace,'.git')},target=/workspace/.git,readonly`];
   args.push('--mount',`type=bind,source=${reportDir},target=/output`,
-    '--mount',`type=bind,source=${join(ROOT,'kit')},target=/factory-policy,readonly`,
-    '--mount',`type=bind,source=${join(ROOT,'kit/skills')},target=/factory-skills,readonly`);
+    '--mount',`type=bind,source=${join(ROOT,'adlc')},target=/factory-policy,readonly`,
+    '--mount',`type=bind,source=${join(ROOT,'adlc/skills')},target=/factory-skills,readonly`);
   // The same reviewed catalog supplies Codex native discovery; no operator skills.
   if (mode !== 'verify' && harnessOf(config) === 'codex')
-    args.push('--mount',`type=bind,source=${join(ROOT,'kit/skills')},target=/etc/codex/skills,readonly`);
+    args.push('--mount',`type=bind,source=${join(ROOT,'adlc/skills')},target=/etc/codex/skills,readonly`);
   if (scratch) args.push('--mount',`type=bind,source=${scratch},target=/scratch`);
   if (mode === 'verify') args.push('--env',`FACTORY_BASE_REVISION=${git('rev-parse',`${metadata().base}^{commit}`)}`);
   const logPath = join(folder, attempt, `${mode}.log`);

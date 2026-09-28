@@ -2,6 +2,50 @@
 
 The package has two independently useful parts: a portable method and a local runtime. An application can adopt the method with its existing agent and CI without running this controller.
 
+## Migration contract
+
+The target product is Factory Foundation, the portable `adlc/` method and
+skills, the current Inbox UI, and minimal native-harness integration. GitHub
+owns issues, PRs and CI. Native Codex owns its sessions, execution, context,
+permissions and supported schedules. Retain a small npm/npx setup, discovery
+and dashboard launcher. The setup and dashboard integration described here are
+future work until implemented and qualified.
+
+Codex comes first; Claude follows. Pi/local tuning and other providers are
+deferred. Do not add a Factory scheduler or custom context/retry engine. Keep
+independent review, real checks, exact-candidate binding, least privilege and
+private historical evidence. Retire old runtime pieces only after replacements
+are proven. Preserve the accepted Inbox design and its assets/layout. CLI
+sessions are not guaranteed to appear in the desktop app; that remains a future
+qualification gate.
+
+The integration backend connects the Inbox to repository APIs and the selected
+harness, authenticates those calls, and correlates issue/session and candidate
+references. Native harnesses own execution and recovery. Codex is tracked in
+[#114](https://github.com/arcitai/software-and-defence-factory/issues/114);
+Claude Code, Cursor and Grok are separate later qualification tracks.
+
+Each project selects its own harness configuration, history, skills, plugins and
+connection identities. Unattended execution and tool access are separate choices:
+no recurring approval prompts inside the agreed authority, and no inherited
+personal connections. Verify effective settings and the actual tool inventory,
+including negative tests for personal and cross-project access. If an upstream
+connection cannot use the project's intended identity, leave it unavailable.
+A dedicated unprivileged OS user is recommended. An explicitly chosen existing
+user is supported with its limits recorded: a separate configuration home is not
+OS isolation, especially with full host access or sudo. This integration is not
+yet qualified.
+
+The small CLI retains setup and maintenance responsibilities. An opt-in native
+OS update service may check Factory releases, then activate a verified version
+only when idle, with health checks and rollback. Preserve project settings,
+credentials and history; harness updates remain owned by each harness. This
+maintenance route is follow-up work, not an installed service in this slice.
+
+The remaining sections documents the currently shipped controller and
+its boundaries. It is a description of the installed implementation, separate
+from the migration target above.
+
 ## Setup and deployment
 
 ![Operator access and a private Factory execution host](diagrams/deployment.svg)
@@ -62,7 +106,7 @@ Checks and Review bind the exact candidate and current policy. Configured
 profiles are not qualified quality; Review grants neither correctness nor merge
 authority. Merge, release and application deployment remain separately authorized.
 
-## Runtime
+## Shipped runtime
 
 `factory/queue.mjs` owns state transitions and persists every attempt before execution. At admission, `source-admission.mjs` resolves the configured or explicit ref and retains its commit objects in a private per-job bare repository. The protected job record binds that repository identity, requested ref and resolved SHA; retries and revisions restore from those retained objects. `server.mjs` adapts the queue and private artifacts to the dashboard. `processes.mjs` owns process groups, deadlines and reconciliation. `executor.mjs` creates the checkout, runs roles through the selected harness and application checks, records review and validates handoff.
 
@@ -92,9 +136,9 @@ The harness owns optional automations and calls the same API/CLI.
 
 ## Method and updates
 
-`kit/skills/` is the single canonical catalog for triage, specification,
+`adlc/skills/` is the single canonical catalog for triage, specification,
 implementation, review, security and evaluation. Jobs receive it read-only at
-`/factory-skills`, alongside `kit/` at `/factory-policy`. Codex agent phases
+`/factory-skills`, alongside `adlc/` at `/factory-policy`. Codex agent phases
 mount the same catalog at `/etc/codex/skills` for native discovery; Pi retains
 `--skill /factory-skills`. Custom harnesses receive the prompt-facing contract
 and require separate discovery qualification. All six remain available; there
@@ -108,7 +152,7 @@ mounted as job policy. An adopting repository may contain operator guidance;
 its presence in `/workspace` is readable, untrusted project context and cannot
 grant host authority, credentials or broader permissions.
 
-The export command maps `kit/skills/` to staged `.agents/skills/` for deliberate
+The export command maps `adlc/skills/` to staged `.agents/skills/` for deliberate
 method adoption. It refuses existing destinations, never edits an application's
 AGENTS.md and never installs global skills. CLI/API/dashboard read installed
 skill paths, content and SHA-256 from the same definition.
@@ -129,7 +173,7 @@ The npm CLI keeps runtime state outside node_modules. The updater installs immut
 | Automation schedule | Selected harness | Explicit calls into Factory CLI/API |
 | List/board status groups | `dashboard/src/runs-board.js` | Both task views and their filters |
 | Host details | `factory/machine.mjs` | Infrastructure API and dashboard |
-| Job instructions | `kit/skills/`, `kit/policy.md` | Read-only execution mounts and staged method export |
+| Job instructions | `adlc/skills/`, `adlc/policy.md` | Read-only execution mounts and staged method export |
 | Setup guidance | `.agents/skills/factory-foundation/`, `docs/setup.md` | Explicit operator CLI/Skills view |
 
 `workflows.mjs` is a compatibility re-export, not another definition. Stored
