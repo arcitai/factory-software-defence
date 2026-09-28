@@ -11,13 +11,15 @@
 - [CLI/dashboard capabilities](interfaces.md): current shared operations, gaps and parity work.
 
 - [Setup plan](setup.md): host access, application/CI, inference, autostart, reboot proof and handoff.
+- [Local Build · Cloud Review](hybrid.md): optional hybrid recipe, execution/inference boundaries and qualification limits.
 - [Optional browser verification](web-verification.md): pinned Playwright/Chromium image, trusted story contract, readiness and limits.
 - [Quickstart](quickstart.md): connect a repository, configure inference, run and inspect a task.
 - [Install and update](npm.md): npm/npx, state paths, automatic updates and CI/CD.
 - [Services and SSH tunnels](services.md): boot/login startup, remote dashboards, idle updates and recovery.
 - [Architecture](architecture.md): setup, runtime ownership and work lifecycle, with text alternatives.
   Editable views: [setup/deployment](diagrams/deployment.excalidraw),
-  [runtime layers](diagrams/architecture.excalidraw), [work lifecycle](diagrams/lifecycle.excalidraw).
+  [runtime layers](diagrams/architecture.excalidraw), [work lifecycle](diagrams/lifecycle.excalidraw),
+  [local build / cloud review](diagrams/hybrid.excalidraw).
 - [Recovery](recovery.md): stopped, failed and interrupted attempts.
 - [Defence integration](defence-integration.md): private incident intake and limits.
 - [Usage measurements](usage.md): reported tokens, partial coverage and cost limits.

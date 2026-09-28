@@ -25,9 +25,12 @@ repository/provider credentials stay with the controller, while CI, authorized
 merge and application deployment retain their separate authority. Neither source
 instructions nor skills can grant that authority.
 
-Role profiles, additional repository providers, MCP, scores/benchmarks and reviewed
-self-improvement remain planned. The repository Inbox and its explicit admission
-lifecycle are delivered (#60), with the shared list/board work view in 0.12.0.
+Role harness/model overrides and opt-in private local bindings are implemented
+through the shared [definition contract](definition.md). Broader per-role
+skills/resources/access restrictions, additional repository providers, MCP,
+scores/benchmarks and reviewed self-improvement remain planned. The repository
+Inbox and its explicit admission lifecycle are delivered (#60), with the shared
+list/board work view in 0.12.0.
 
 ## Work lifecycle
 
@@ -40,6 +43,24 @@ operator acceptance and patch handoff. Requested changes create a new attempt
 with fresh checks and review. Optional PR publication, repository CI, authorized
 merge and deployment are separate steps. Defence instead produces private scoped
 investigation evidence; production recovery requires separate authority.
+
+## Local Build · Cloud Review
+
+![Hybrid execution flow with separate worker and inference boundaries](diagrams/hybrid.svg)
+
+[Editable hybrid view](diagrams/hybrid.excalidraw) ·
+[Selectable recipe and qualification](hybrid.md). Issue / explicit admission →
+Local Build → deterministic Verify → Cloud Review → operator acceptance →
+optional protected PR and repository CI. The implementation worker calls an
+explicit local model; an independent read-only review context calls an explicitly
+selected hosted model. Both isolated workers may share a local or VPS execution
+host: inference location does not determine worker hosting.
+
+Build keeps the `implement` key and returns to Factory's checks and separate
+Review. The recipe adds no scheduler or roles; Audit remains scoped Defence work.
+Checks and Review bind the exact candidate and current policy. Configured
+profiles are not qualified quality; Review grants neither correctness nor merge
+authority. Merge, release and application deployment remain separately authorized.
 
 ## Runtime
 
