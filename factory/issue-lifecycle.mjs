@@ -1,11 +1,10 @@
-// Provider issue truth is read-only here. Only execution associations come from SQLite.
 export const DEFAULT_READINESS_LABELS = Object.freeze({ triage: 'factory:triage', spec: 'factory:spec', ready: 'factory:ready', blocked: 'factory:blocked' });
 export function readinessMapping(value = DEFAULT_READINESS_LABELS) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || Object.keys(value).some(key => !Object.hasOwn(DEFAULT_READINESS_LABELS, key))
     || Object.keys(DEFAULT_READINESS_LABELS).some(key => typeof value[key] !== 'string' || !value[key].trim() || value[key].length > 100)
     || new Set(Object.values(value).map(label => label.toLowerCase())).size !== 4)
-    throw new Error('issueReadinessLabels must map triage, spec, ready and blocked to four distinct label names.');
+    throw new Error('Issue readiness labels must map triage, spec, ready and blocked to four distinct names.');
   return { ...value };
 }
 export function issueReadiness(labels = [], mapping = DEFAULT_READINESS_LABELS) {
@@ -25,60 +24,46 @@ export function canonicalIssue(value) {
     return { key:`github:${repository}:${number}`, provider:'github', repository, number, url:`${repository}/issues/${number}` };
   } catch { return null; }
 }
-export function executionReservesIssue(job) {
-  return !job.deleted_at && (!['succeeded', 'failed', 'cancelled'].includes(job.state)
-    || Boolean(job.delivery && !['published', 'abandoned'].includes(job.delivery.state)));
-}
+const reserves = job => !['needs_review','failed','interrupted'].includes(job.state);
+const describe = job => ({id:job.id,state:job.state,workflow:job.workflow?.name || 'unknown',phase:null,created_at:job.created_at,updated_at:job.updated_at});
 export function executionAssociation(jobs, identity) {
   const attempts = jobs.filter(job => canonicalIssue(job.task?.source_url)?.key === identity.key)
     .sort((a,b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || b.id.localeCompare(a.id));
-  const describe = job => ({ id:job.id, state:job.state, workflow:job.workflow?.name || null, phase:job.workflow?.steps?.[job.workflow.current_step] || null, created_at:job.created_at, updated_at:job.updated_at });
-  const active = attempts.filter(executionReservesIssue).map(describe);
-  return { executions:attempts.map(describe), latest_execution:attempts[0] ? describe(attempts[0]) : null, active_execution:active[0] || null, active_executions:active };
+  const active = attempts.filter(reserves).map(describe);
+  return {executions:attempts.map(describe),latest_execution:attempts[0] ? describe(attempts[0]) : null,
+    active_execution:active[0] || null,active_executions:active};
 }
 export function associateIssue(issue, jobs, mapping) {
   const identity = canonicalIssue(issue.url);
   if (!identity) throw new Error('Provider returned an unsupported issue identity.');
-  const association = executionAssociation(jobs, identity);
-  const readiness = issueReadiness(issue.labels, mapping);
-  const start_block_reason = association.active_execution ? 'An execution is active or unresolved. Open its history to continue or cancel it.'
-    : issue.state !== 'open' ? 'Only an open repository issue can start new work.'
+  const association = executionAssociation(jobs, identity), readiness = issueReadiness(issue.labels, mapping);
+  const start_block_reason = association.active_execution ? 'Native work is active or unresolved. Inspect its Codex history first.'
+    : association.executions.length ? 'This issue has native history. Continue its recorded Codex thread from the detail view.'
+    : issue.state !== 'open' ? 'Only an open repository issue can start work.'
     : readiness.state === 'blocked' || readiness.state === 'conflicting' ? 'Resolve the readiness labels on the repository before starting work.' : null;
-  return { ...issue, identity, readiness, ...association, start_block_reason };
+  return {...issue,identity,readiness,...association,start_block_reason};
 }
 export function backlogHistory(jobs, issues) {
-  const loaded = new Set(issues.map(issue => issue.identity.key)), grouped = new Map();
-  for (const job of jobs) {
-    const identity = canonicalIssue(job.task?.source_url);
-    if (identity && loaded.has(identity.key)) continue;
-    const key = identity?.key || `local:${job.id}`;
-    if (!grouped.has(key)) grouped.set(key, { identity, key, title:job.task?.title || job.prompt?.split('\n')[0] || job.id, url:identity?.url || null,
-      source_status:identity ? 'not_loaded' : 'local', ...(identity ? executionAssociation(jobs, identity) : { executions:[{id:job.id,state:job.state,workflow:job.workflow?.name || null,phase:job.workflow?.steps?.[job.workflow.current_step] || null}] }) });
-  }
-  return [...grouped.values()];
-}
-
-// Canonical all-work read model, shared by headless readers and the dashboard.
-// A source page is a bounded snapshot, never evidence that other sources closed.
-export function workRecords(jobs = [], issues = []) {
-  const sources = new Map(issues.map(issue => [issue.identity.key, issue]));
-  const histories = backlogHistory(jobs, []);
-  const rows = new Map(histories.map(row => [row.key, row]));
-  for (const [key, issue] of sources) rows.set(key, {
-    ...issue, key, ...executionAssociation(jobs, issue.identity),
+  const loaded = new Set(issues.map(issue => issue.identity.key));
+  return jobs.filter(job => {
+    const identity=canonicalIssue(job.task?.source_url);
+    return !identity || !loaded.has(identity.key);
+  }).map(job=>{
+    const identity=canonicalIssue(job.task?.source_url);
+    return {identity,key:identity?.key || `local:${job.id}`,title:job.task?.title || job.id,url:identity?.url || null,
+      source_status:identity?'not_loaded':'local',...executionAssociation(jobs,identity || {key:''})};
   });
-  return [...rows.values()].map(row => {
-    const issue = sources.get(row.key) || null;
-    const execution = row.active_execution || row.latest_execution || row.executions[0] || null;
-    return {
-      key: row.key, identity: row.identity, title: issue?.title || row.title,
-      url: row.url, source_status: issue ? 'loaded' : row.identity ? 'not_loaded' : 'local',
-      issue, executions: row.executions, active_execution: row.active_execution || null,
-      latest_execution: row.latest_execution || execution,
-      execution_id: execution?.id || null,
-      state: execution?.state || 'not_started',
-      workflow: execution?.workflow || null,
-      phase: execution?.phase || null,
-    };
+}
+export function workRecords(jobs = [], issues = []) {
+  const sources = new Map(issues.map(issue=>[issue.identity.key,issue]));
+  const rows = new Map(backlogHistory(jobs,[]).map(row=>[row.key,row]));
+  for (const [key,issue] of sources) rows.set(key,{...issue,key,...executionAssociation(jobs,issue.identity)});
+  return [...rows.values()].map(row=>{
+    const issue=sources.get(row.key) || null;
+    const execution=row.active_execution || row.latest_execution || row.executions[0] || null;
+    return {key:row.key,identity:row.identity,title:issue?.title || row.title,url:row.url,
+      source_status:issue?'loaded':row.identity?'not_loaded':'local',issue,executions:row.executions,
+      active_execution:row.active_execution || null,latest_execution:row.latest_execution || execution,
+      execution_id:execution?.id || null,state:execution?.state || 'not_started',workflow:execution?.workflow || null,phase:null};
   });
 }

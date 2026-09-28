@@ -1,6 +1,6 @@
 # Factory policy
 
-The project instructions and the user's existing authority govern the work. This method does not grant credentials or publication rights. A concrete installation must enforce access, concurrency, resource limits, checks and release rules.
+The project instructions and the user's existing authority govern the work. This method does not grant credentials or publication rights. The selected native harness and operating environment enforce access and execution limits; project checks and CI enforce delivery rules.
 
 ## Delivery
 
@@ -32,7 +32,7 @@ Available security specialists may help, but no plugin or model access is bundle
 
 ## Defence and operations
 
-The optional defence workflow may share the installation/dashboard while retaining separate scope and authority. Incident investigation can cover software developed elsewhere. Convert a validated finding into a bounded software task with system/revision, impact, evidence and acceptance criteria. Software checks the repair; deployment and recovery verification follow their own policy. Shared UI grants no new production access.
+Scoped defensive investigation may share the native environment and Inbox while retaining separate scope and authority. Incident investigation can cover software developed elsewhere. Convert a validated finding into a bounded software task with system/revision, impact, evidence and acceptance criteria. Software checks the repair; deployment and recovery verification follow their own policy. Shared UI grants no new production access.
 
 ## Measurements
 

@@ -1,446 +1,62 @@
-# Recovery and retained evidence
+# Recovery
 
-Use `status --state PATH` and the private supervisor.log to identify the active installation. Stop it before replacing its package or container image.
+Preserve history and determine which process owns work before changing anything.
+Reconnection, continuation and a fresh start are different operations.
 
-- A normal `stop` signals the controller, waits for the executor process group, removes its labelled containers and retains the database and artifacts.
-- An unconfirmed running attempt becomes `interrupted` on controller restart. It is never silently considered successful.
-- Admission resolves the configured source ref or an explicit `--source-ref` in the configured repository, records its identity/ref/SHA in private job metadata and retains its Git objects under that job. Build and retry restore from this retained revision; moving or deleting the source ref does not select a new commit.
-- `retry JOB_ID` verifies retained objects and reconciles the previous process group and containers. A missing/corrupt retained source, live writer or unknown process blocks retry. For a new build/defence attempt, the prior checkout is retained as previous-checkout-*.
-- A forced host/controller stop can leave the selected inference env file in the private attempt directory. Normal executor cleanup removes it only after a Docker listing confirms the named container is absent. Retry/reconciliation removes a leftover copy only after the prior process group is confirmed stopped and a Docker listing confirms the labelled containers are absent; a `docker rm` or `docker stop` exit alone does not prove shutdown. If identity, a Docker probe or shutdown is uncertain, the recovery fence and file remain; do not clean it manually while a worker may still be active. After shutdown is confirmed, recovery also redacts the fixed phase reports and log using the selected environment values before removing the env file.
-- Retry repeats the stopped phase. A failed verification may retry the same candidate when its policy is unchanged and the check can now pass. If the check or execution policy changed after build, retrying verify/review cannot reuse the earlier build for handoff; handoff remains blocked. Preserve that failed attempt, then use an eligible requested revision or submit a replacement task to build under the current policy. Do not edit SQLite or acceptance evidence to bypass the guard.
-- A requested revision starts fresh from the recorded source by default, retains previous evidence and starts a new build with accumulated feedback. It never silently reuses candidate code. Supplying a deliberate new `--source-ref` resolves and retains that base before the action; prior source metadata stays in history, and the new build gets fresh checks and review. See the explicit continuation choice below.
-- Removing a stopped task from the dashboard hides its queue record. Private artifacts and its deleted_at record remain on disk; this is not secure erasure.
+| Observation | Action |
+| --- | --- |
+| Browser/tunnel closed, bridge still running | Reopen the tunnel/Inbox; inspect status. No new turn is needed. |
+| Completed native turn needs revision | Continue with feedback and its current terminal turn ID. |
+| Native turn running | Let it finish, or explicitly interrupt that exact turn. |
+| Unknown outcome after a disconnected write | Inspect the native thread and private receipt before retrying. |
+| Configuration or skill hashes changed | Preserve the changed files and reconcile the intended installation; do not bypass the check. |
+| Service startup failed | Inspect the user-service journal and selected executable/package/state paths. |
+| Host restarted during a turn | Reconcile native history and receipts. Startup never replays the turn. |
 
-Do not remove active.json merely to unblock a job. Establish that its PID, process group and labelled containers are stopped. PID reuse or missing process identity requires operator investigation. Preserve logs and work before cleanup.
+Use `factory status`, `factory result` and `factory reconnect` against the owning
+bridge. Native Codex owns the full history. Another app-server may read persisted
+history without knowing a different process's live state; that read alone cannot
+authorize a competing writer or stopping the original process.
 
-For backup, stop the installation and copy the complete private state directory, including SQLite files, factory.json, role-definition.json when present, and credentials, to an authorized private destination. Restore only while stopped. Update the repository path if it moved, verify ownership/permissions and the pinned image, then inspect state before any retry. Keep previous backups; no automatic destructive schema migration is provided.
-
-Earlier experimental engines use a different journal. Start a new state directory for the native 0.3 runtime; preserve old journals separately. There is no automatic import of their jobs or approval state.
-
-Verification cleanup makes owned scratch directories traversable before removing
-them and never follows their symlinks. The executor and recovery paths remove
-`check-workspace` only after Docker confirms the named container is absent; a
-client exit, failed remove or failed/unknown probe does not establish shutdown.
-While shutdown is uncertain, the scratch directory and active recovery fence
-remain. Ordinary reconciliation removes scratch after the process and labelled
-containers are confirmed stopped. If a filesystem error still prevents cleanup,
-the attempt fails and retains the original check exit and private log path
-alongside the cleanup error.
-Inspect that retained attempt before manual removal; never substitute the source
-candidate path for the scratch path.
-
-When trusted web verification is enabled, Verify keeps the copied check output
-as disposable preview scratch and creates separate preview and browser
-containers. The preview uses `network none`; the browser shares only that exact
-preview's isolated network namespace for loopback. Their mounts and PID
-namespaces remain separate, and only the browser mounts its private result and
-screenshot directory. The `web-policy.json`, preview scratch, browser output
-and active fence remain until both exact labelled containers are confirmed
-removed. Normal stop/retry recovery reconciles all Factory-labelled containers
-before removing those files. An unknown stop, deadline or cancellation keeps
-the state and fence for recovery. A missing browser, unsupported Linux
-capability, interrupted story or malformed evidence blocks acceptance; never
-retry around a retained writer or reuse earlier story evidence for a changed
-candidate or policy. Browser traces and screenshots are private evidence and
-are presented through the shared interfaces. See [the web contract](web-verification.md).
-
-## Local Pi history exhaustion
-
-The 0.15.5 candidate adds bounded proactive recovery for short histories, including
-productive writes whose immutable arguments require fewer retained groups;
-see [limits and image adoption](setup.md#local-context-budget-and-worker-image-0152-100).
-A failed/empty summary, exhausted recovery limit, cancellation or irreducible
-request remains a failed attempt even if a tool already wrote a report. Keep its
-checkout, raw events and private diagnostic evidence. Reconcile the stopped
-worker before admitting a smaller task or explicitly selecting another qualified
-profile as a separate attempt. Do not enlarge the allocation, rewrite a failed
-history or label an explicit cloud retry as local success. Successful transport
-recovery still needs semantic checks and independent Review. The reviewed first
-checkpoint failed real local qualification; the revised artifact needs a new
-lead-owned installed and real-task pass before acceptance. See the
-[rejected trial and source regression](proof.md#short-local-pi-history-recovery-0155-candidate-105).
-
-## Review feedback or phase retry
-
-Use **Request changes** on a failed software review only when its validated
-verdict is `changes` or `blocked`, or at the normal approval gate. The CLI
-provides the same action:
+## Service operation
 
 ```sh
-factory revise JOB_ID --file /private/revision.md --state /private/state/project
+factory service status --state /absolute/private/factory-state
+factory service restart --state /absolute/private/factory-state
+factory service stop --state /absolute/private/factory-state
 ```
 
-Feedback must be nonempty and at most 4,000 characters. It is accumulated in the
-bounded job prompt. The controller checks the latest attempt and reconciles its
-processes before starting a new build from the retained source commit with that
-feedback. The old checkout moves to `previous-checkout-*`; the old failed review
-and reports remain intact. Verification, review and operator approval are all
-required again. A stale or duplicate request cannot approve or restart a newer
-attempt. To deliberately change the base, pass `--source-ref REF`; the controller
-resolves and retains it from the same configured repository before changing the
-job record. If the request cannot reconcile, its unlinked source copy is removed.
-**Retry** only repeats the stopped phase and is suitable for a repaired
-execution environment; retrying review cannot change the candidate.
+Normal stop/restart/removal must reconcile through the owning bridge and refuse
+active or unresolved work. Maintenance blocks new admissions while that check and
+shutdown complete. OS shutdown or a forced kill can still interrupt native work;
+Factory does not promise seamless execution through power loss.
 
-A crashed review without a validated verdict cannot request implementation
-changes. Inspect the private log and restore the missing runtime capability
-before retrying. For pre-0.4.3 jobs, the controller can recognize a failed review
-only from that attempt's retained `review.json`, matching the candidate and
-successful check policy. Missing or mismatched evidence grants no revision action.
-Do not edit SQLite, rewrite verdicts or create acceptance records to bypass this.
+Service removal preserves the native state and pinned package for recovery.
+Do not delete a writer/admission receipt simply to clear an error. If ownership
+cannot be established, keep the files and obtain explicit operator reconciliation.
 
-## Bounded diagnostics
+## Issue creation uncertainty
 
-Each attempt's private `<phase>.log` retains the first 128 KiB and last 768 KiB
-of observed Docker stdout/stderr. A truncation marker identifies omitted bytes;
-the footer records process exit code, signal and stream byte counts. UTF-8 is
-decoded separately per pipe; interleaving reflects observed arrival order, not a
-guarantee of ordering between pipes. Inspect `artifacts/<run>/executor.log` and
-`result.json` for controller/adapter failures as well. Raw model logs remain
-private: do not paste them into public issues without sanitizing them.
+A lost GitHub response may follow a successful issue creation. Reconcile the
+existing creation receipt with the provider; do not submit a second issue merely
+because the browser displayed an error. Treat unresolved outcomes as unresolved.
+Never log tokens or private findings in a public issue.
 
-A terminal log line is diagnostic evidence, not a replacement for required
-agent reports, passing checks or review. Nonzero exits and missing/malformed
-reports still fail closed. Process termination during a host crash can leave
-incomplete logs and an interrupted attempt; apply process reconciliation above.
+## Rollback and updates
 
-Before retention, Docker stdout/stderr logs have exact selected inference
-credential values replaced. Mounted reports (`agent-report.md`, `review.json`,
-`incident-report.json`) are sanitized after the phase container is confirmed
-absent; if shutdown is uncertain, they remain in the private attempt directory
-and ordinary recovery sanitizes them after confirming the stop. Filtering
-includes selected API-key, token, secret, password and credential settings plus
-credential fields inside selected Codex auth JSON. Reports are opened without
-following symlinks and with nonblocking access before descriptor type checks, so
-special files such as FIFOs are refused promptly. An unsafe or oversized report
-cannot be promoted. If filtering cannot complete, recovery retains the selected
-inference file and active fence; a repeated recovery remains blocked until the
-fixed owned report can be safely filtered. Once process and container shutdown
-are confirmed, repair or replace that report and retry ordinary recovery so it
-can sanitize the output before removing the selected file and fence. This
-bounded filter does not detect encoded or transformed values and does not
-rewrite candidate files or patches; it is not a general data loss prevention
-control.
+Follow [migration](migration.md) and [package guidance](npm.md). Preserve the
+previous pinned package and private state. Stop only an idle verified owner before
+switching. Check package identity, native readiness, history and the actual Inbox
+after startup. A failed update is not permission to automatically replay work.
 
-## Recorded execution profiles
+A leftover `serve.lock.reconcile` directory means a process stopped during lock
+reconciliation. Confirm the service and its native child have stopped, preserve
+the directory and lock as evidence, then move that directory aside explicitly.
+Factory never guesses that an unresolved reconciliation owner is safe to replace.
 
-Before each attempt executes, the controller freezes its effective configuration
-and resolves the Docker image tag to an immutable image ID. The private
-`<run>/execution-config.json` is mode 0600 and is not a dashboard artifact. Its
-command can contain private operator configuration; preserve it only in private
-backups. The inference environment remains private and is never exported.
-
-The allowlisted `artifacts/<run>/execution.json`, measurement and dashboard
-agree on executor, requested model, controller version, immutable image and
-policy hash. This hash fingerprints the effective runtime configuration JSON; it
-is not the SHA-256 of the mounted `policy.md` file. Verification and handoff are deterministic and have no model;
-handoff has no job container. Mock executions also have no model; arbitrary
-custom commands have unknown model selection rather than a fabricated provider
-default. Only supported Codex/Pi profiles record a configured model request.
-A requested model is configuration, not independent
-proof of the model/provider that served inference. Changing the installation's
-profile affects subsequent attempts, never the recorded history. A changed
-check/review policy still invalidates acceptance of earlier proof.
-
-Protected delivery evidence uses an explicit [runtime compatibility
-contract](npm.md#protected-evidence-compatibility): version-1 profiles from
-0.8.0, 0.9.0 and 0.9.1 can be interpreted by 0.9.1 while every existing trust
-and current-policy guard still applies. An upgrade alone does not require
-re-approval. Preserve original runtime versions, hashes and phase records;
-do not normalize old configuration or manufacture provenance to unblock a job.
-Unknown formats/versions remain blocked. Published PR receipt reconciliation
-stays read-only, and compatibility does not relax the original-base/remote-target
-guard or add checkpoint continuation.
-
-In 0.14.0, role overrides use v2 protected evidence and one frozen common policy.
-Use [definition rollback](definition.md) through an idle controller to restore the
-previous portable selection. It preserves all attempts and changes the definition
-revision; it does not change separate private settings or credentials. Changed
-roles invalidate checkpoint/new-publication evidence until the exact prior policy
-is restored or a fresh complete cycle succeeds. Task-wide model overrides are
-refused when role overrides are active; an old task with such a model needs a
-replacement admission without it. Incomplete definition temporary files are ignored
-on restart; never splice historical execution evidence into a new profile.
-
-Attempts made before this metadata existed display **Not recorded
-(legacy/unknown)**. Do not copy today's profile onto them. For an investigation,
-compare the retained per-attempt measurement, logs, candidate/check/review hashes
-and any contemporaneous private configuration backup. Record only corroborated
-facts in a separate private incident note with evidence paths and unknowns; leave
-the original queue/evidence unchanged. Without that evidence, model/image facts
-cannot be reconstructed reliably.
-
-### Legacy source records
-
-Jobs admitted before source retention keep their historical candidate and review
-evidence without an invented admission-time SHA. A complete existing candidate
-can still pass the normal current candidate, policy, review and approval guards;
-the handoff labels its source **Not recorded (legacy/unknown)**. An unpinned
-queued job is blocked on controller restart, and an unpinned job cannot retry or
-request implementation changes. Submit a replacement job to capture the
-configured or explicit source ref before execution. Do not reconstruct proof
-from the current checkout, issue text or a later ref value.
-
-If a retained store is missing or corrupt, retry and revision stop with an
-explicit source error. Restore the private state backup containing that job's
-retained Git objects, or submit a replacement from a source ref that still
-resolves. The controller never substitutes the mutable configured checkout.
-
-### Interrupted image selection or controller startup
-
-`installation.lock` serializes image changes with controller startup, including
-managed boot/restarts. A live supervisor then prevents image changes while work
-can run. If an operation is interrupted, preserve the lock and inspect its PID
-and action. Remove it only after confirming that process and its image build or
-startup have stopped, then run `doctor` and reconcile image metadata before
-starting again. The CLI does not automatically clear an unknown lock.
-
-## Unconfirmed repository issue creation
-
-Use `issue submissions` and `issue recover --key REQUEST_ID` against the same
-controller state. Recovery reads the original provider using the original
-identity; it does not publish again. Do not use a new request key to retry an
-uncertain write. See [provider ownership and recovery limits](integrations.md).
-
-## Trusted PR delivery
-
-Delivery is available only for an accepted software job with current source,
-candidate, check, independent review and approval records. Trusted publication
-also requires matching private per-run execution records: native Codex/Pi for
-build and review, deterministic verification and handoff, and explicitly
-non-synthetic bound candidate/check/review artifacts. Missing, unknown,
-synthetic or inconsistent evidence is not publication proof. Status, CLI, API
-and dashboard use the same guard. The private operator configuration pins the
-GitHub repository and target; task text and worker reports cannot provide
-either. The controller stores the intent and remote branch/PR identifiers in
-the job row before it writes. Status and task details show the receipt
-separately from integration or deployment.
-
-Inspect the same installation before recovery:
-
-```sh
-factory status --state /private/state/project
-factory publish JOB_ID --state /private/state/project
-```
-
-After a lost response or controller restart, repeat `publish`. The controller
-reads the exact configured target, generated branch and PR before attempting a
-missing stage. A matching branch/PR is reused; a different remote head, target,
-repository or collision is preserved and blocks recovery. It never force-pushes,
-rebases, creates a second PR to avoid an uncertain response, or merges. Restore
-the original trusted repository/target configuration if it changed; do not
-redirect a saved intent.
-
-Before any new content, branch or PR write, a saved intent is rechecked against
-the protected run profiles and linked artifacts. A mock/synthetic record cannot
-authorize a new write on retry. A known receipt or PR-creation checkpoint can
-still use read-only provider reconciliation; if that cannot establish the
-existing effect, the uncertain record remains blocked from further writes.
-
-Before advertising or attempting a new write, status and the shared publisher
-qualify the exact accepted Git trees again. Factory reads the immutable admitted
-base commit and reconstructs the accepted candidate tree from the protected,
-digest-bound patch. Added, changed, deleted or symlinked
-`.github/workflows/*.yml` and `*.yaml` definitions block trusted publication.
-Every base workflow must parse with the bundled YAML parser and use the
-supported literal `push`, `pull_request`, `pull_request_target` or
-`workflow_dispatch` trigger subset; dispatch inputs and other events such as
-`workflow_run` or `workflow_call` are unsupported. A manual dispatch is
-evaluated with the generated branch as its selected ref, as GitHub permits
-dispatching a workflow against a selected branch ([manual workflow runs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)).
-Any declared PR activity type is treated as potentially active for that
-candidate PR. Branch filters are interpreted only when their patterns contain
-ASCII letters, digits, `.`, `_`, `-` or `/`; exact literals are checked against
-the generated branch and configured target. Other patterns are treated as
-possible matches. This includes `*`, `**`, `?`, `+`, `[]`, `!` and escaped
-characters from GitHub's [filter syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#filter-pattern-cheat-sheet).
-Path filters are also treated as possible matches.
-
-Conditions support only `&&`-joined `==`/`!=` comparisons against quoted
-strings using `github.ref`, `github.event_name`, `github.head_ref`,
-`github.base_ref` or `vars.NAME`; `||`, functions and other contexts are
-refused. Supported ASCII string comparisons follow GitHub's case-insensitive
-[expression semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/expressions).
-Non-ASCII mismatches stay unknown rather than guessing Unicode case folding.
-For `pull_request`, `github.ref` stays unknown because the future merge ref
-cannot be established from a guessed PR number. Unknown comparisons cannot
-prove a privileged job inactive. Dynamic permissions, malformed YAML and
-ambiguous guards block publication with a reason while leaving patch delivery
-available.
-
-Each job that could run for the generated branch push, a branch-selected
-manual dispatch or a PR event must have explicit effective permissions limited
-to `contents: read` or `none`, a known GitHub-hosted runner, and no secret
-context, protected environment, reusable workflow call, OIDC permission or
-deployment permission. A privileged release job can qualify only when a simple
-literal conjunction proves it cannot run for each matching event. The current
-`ci.yml` main-only release guard is supported. Before any content, branch or PR
-write, the existing provider readback still confirms that the configured
-target commit and tree are the exact accepted base. Active jobs must use one of
-the supported literal runner labels (`ubuntu-latest`,
-`ubuntu-22.04`, `ubuntu-24.04`, `ubuntu-26.04`, `windows-latest`,
-`windows-2022`, `windows-2025`, `macos-latest`, `macos-14`, `macos-15` or
-`macos-26`). External action steps must be local or pinned to an immutable
-commit SHA or container digest.
-
-This bounded check does not establish that all CI is safe. It does not inspect
-repository/organization rules, webhooks, external CI or other organization
-automation, nor does it audit the behavior of referenced third-party actions.
-Unsupported cases refuse trusted publication and leave normal local checks,
-review, approval and manual patch delivery available.
-
-After publication is confirmed, readback follows the saved PR identity and
-records its current open draft/ready, closed or merged state and checks. This
-read-only refresh does not require the source branch to remain after closure or
-the PR base commit to equal today's target commit. It still checks the saved
-repository, target and branch names, PR head, and accepted delivery commit's
-tree and parent. A changed identity or candidate stays a visible conflict; a
-provider outage retains the last known publication receipt. First publication
-continues to require the accepted current base and an open draft PR.
-
-The dashboard offers reconciliation for saved `intent`, `publishing`,
-`uncertain` and safely retryable `blocked` checkpoints. Legacy accepted jobs
-without candidate-bound check, review and approval evidence are labelled
-unverified and cannot be published. Deleting an issue with any unconfirmed
-delivery record is blocked in the dashboard and controller API; inspect or
-reconcile the saved remote effect before removing the job. A confirmed
-`published` receipt is no longer unresolved.
-
-The shared capability advertises new publication only with ready evidence and
-no saved delivery or a known resumable write state. A branch-only `conflict`
-has no publish action; inspect it and use explicit local abandonment only
-after the exact branch head and absence of an associated PR are confirmed.
-Conflicts with a saved PR receipt and pending PR-creation checkpoints retain a
-read-only reconciliation action. Unknown and abandoned delivery states cannot
-advertise or start publication.
-
-The shared delivery status marks each available PR action as `publish` or
-`reconcile`; task details use that mode for idle and pending button wording.
-While a request is pending, publication shows “Publishing…” and read-only
-recovery shows “Reconciling…”. A conflicted record with a saved PR receipt
-therefore stays visibly a readback action.
-
-A collision found while the record is still at `intent` is known to precede
-provider writes. Inspect the exact branch in GitHub, then use the task action
-**Abandon local delivery; keep remote branch**, or confirm its current head with
-the CLI:
-
-```sh
-factory status --state /private/state/project
-factory abandon-delivery JOB_ID --branch-sha INSPECTED_SHA --state /private/state/project
-```
-
-The controller checks the latest run, saved delivery identity, current branch
-head and exact repository/target, then confirms that no PR is attached. It
-records the inspected identity and local resolution in the job row. It does not
-write, update or delete the remote branch or create/accept a PR. The `abandoned`
-state disables later publication and permits local issue removal while retaining
-the delivery record, run history and evidence. A stale or changed branch, any
-associated/unknown PR, changed destination, later delivery stage or uncertain
-provider effect remains blocked; reconcile or inspect it before taking another
-action.
-
-CLI publication and branch-resolution requests have a ten-minute deadline
-because they can require multiple provider requests. Other CLI API requests
-keep their five-second deadline. If the client reaches its deadline, inspect
-`status` after the controller action finishes. Repeat `publish` to reconcile a
-publication; repeat `abandon-delivery` only after inspecting the currently
-reported branch identity.
-
-The receipt reads the exact PR head's check runs and commit statuses. Raw
-conclusions are retained. `success`, `skipped` and `neutral` do not make the
-aggregate fail, while skipped/neutral are distinct from an executed passing
-check. `pending`, `unknown`, failed and unavailable remain distinct; unknown
-conclusions and incomplete pagination stay unknown. This aggregate does not
-establish required-check completeness or merge authorization. A target/base,
-candidate or policy change requires fresh applicable checks, review and
-approval; do not edit SQLite or acceptance evidence to bypass the guard. A stale
-target after branch creation leaves that unique branch for inspection and does
-not open a PR. A PR does not imply integration or deployment.
-
-## Already accepted malformed patches (#91)
-
-A matching digest does not prove a patch can reproduce its candidate. Before
-0.11.2, trimming Git diff output could remove trailing blank context lines.
-Native publication correctly refuses such a patch before provider writes.
-Preserve the accepted record, patch, digests, retained Git objects and prior
-attempts. Restarting or reading state does not repair or migrate this evidence.
-
-For recovery, use a separately reviewed, normal protected maintainer PR from
-the exact retained candidate tree, checking its tree identity and original base,
-or run a new native attempt with fresh Verify, independent Review and approval.
-The maintainer route is not successful native publication. Never replace an old
-patch or acceptance hash, fabricate approval, or disable reconstruction guards.
-
-New handoffs in 0.11.2 retain raw Git bytes and reconstruct the protected patch
-against the original retained base in private bare storage before acceptance.
-Failure retains evidence and creates no accepted record or provider writes.
-Publication still repeats reconstruction and all current provenance, source,
-workflow and target checks. Operator installed/native qualification on Z13 is
-required before further general unattended delivery.
-
-## Continue a reviewed candidate (first #42 slice)
-
-Use one explicit starting point for a current software review with a returned
-`changes`/`blocked` verdict, or a passed review awaiting approval:
-
-```sh
-# Existing default: restore admitted source, discarding candidate code from the next Build.
-factory revise JOB_ID --file feedback.md --state PATH
-# Keep this job’s current immutable reviewed tree; keep its source/delivery baseline.
-factory revise JOB_ID --file feedback.md --from reviewed-candidate --state PATH
-# Existing source replacement: resolve and retain a deliberately different baseline.
-factory revise JOB_ID --file feedback.md --source-ref REF --state PATH
-```
-
-`--from admitted-source` names the default explicitly. `--from` and
-`--source-ref` cannot be combined. In the dashboard, Request changes exposes
-these same three starting points, the original source SHA, selected checkpoint
-head/tree and review attempt. Opening the form defaults to fresh source; a
-background refresh does not silently replace a checkpoint already selected.
-Errors stay next to the revision action and preserve feedback.
-
-The shared `request_changes` action accepts `run_id`, `feedback`, and
-`revision_mode`: `fresh_source`, `continue_candidate` or `replace_source`.
-Continuation additionally requires `candidate_head` and `candidate_tree` from
-this job’s `continuation_status` in `GET /api/v1/status`. They are stale-action
-guards, not selectors for arbitrary refs, host paths or other jobs. Replacement
-requires `source_ref`. Omitting mode preserves the existing default and
-`source_ref` behavior. Status includes `revision_mode`, public `continuation`
-provenance, and `continuation_status.available` or an actionable refusal reason.
-Availability describes protected evidence; the action also probes live workers
-and validates the Git objects before changing the checkout.
-
-Continuation confirms the executor/process group and job containers are idle;
-it refuses active or unknown work instead of stopping it implicitly. Under the
-existing queue action lock it validates the current review cycle, exact
-protected profiles and artifacts, original retained source, effective policy
-and any required browser evidence. It copies the clean reviewed Git objects
-into a private, job-bound checkpoint store with a pinned ref and manifest,
-checks head/tree/single parent and object integrity, and only then archives the
-writable checkout through ordinary reconciliation. Missing, dirty, tampered,
-foreign or incompatible candidates are refused without deleting prior work.
-
-The next Build validates the retained checkpoint and current policy again,
-restores the retained source as HEAD, and stages the checkpoint tree on that
-base. The ordinary Build commit is a single-parent aggregate: Review sees the
-entire original-base-to-new-candidate diff, including earlier changes. The
-original source admission is unchanged; continuation provenance has separate
-names and records on the revision, job, candidate and acceptance. Prior failed
-reviews stay failed, with their usage and artifacts retained. A stopped Build
-can retry the same selected immutable checkpoint after validation; it cannot
-reuse unfinished Build output. A restart never grants acceptance or triggers
-an automatic retry.
-
-Every revision requires new full Verify, independent Review and operator
-approval. Browser and profile gates still apply. Delivery requires the original
-accepted base to equal the configured, unchanged remote target. Continuation
-does not refresh that target (#72), rewrite history, merge or publish anything.
-Changed execution policy requires an explicit fresh start or source replacement,
-not reuse of an incompatible checkpoint. Restore missing private retention from
-backup before retrying; never edit checkpoint manifests or acceptance records.
-
-Unfinished/uncommitted Build checkpoints, exit-cause classification, live pending
-feedback and harness deadline hints remain deferred within #42. Opt-in desktop/VM
-observation and browser recordings belong to later #82. This slice does not close
-#42 or qualify those capabilities.
+If a service maintenance request loses its response, its operation token is
+retained in private `maintenance.json`. Retry the same service command to
+reconcile that operation, or run `factory service cancel-maintenance --state PATH`
+to reopen admission explicitly. A changed process instance never reuses the old
+operation. Preserve unresolved `service-operation.lock` reconciliation records
+just like the serving lock; do not guess that another process is inactive.

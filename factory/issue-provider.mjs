@@ -1,22 +1,20 @@
 import { githubIssueProvider } from './providers/github.mjs';
-import { readProjectLinks } from './project-links.mjs';
-import { QueueError } from './error.mjs';
-import { runHostGit } from './git-environment.mjs';
+import { readGitOrigin, readProjectLinks } from './project-links.mjs';
+import { FactoryError } from './error.mjs';
 
 // Selection is local and capability-based. Unknown hosts never receive a GitHub
-// token or a guessed API request. Git checkout/execution does not need an adapter.
+// token or a guessed API request.
 export function issueProvider(repo) {
   if (readProjectLinks(repo)) return githubIssueProvider(repo);
   let host = null;
   try {
-    const remote = runHostGit(['-c', 'core.fsmonitor=false', '-C', repo, 'config', '--local', '--get', 'remote.origin.url'], {
-      timeout: 2000, maxBuffer: 4096, stdio: ['ignore', 'pipe', 'ignore'],
-    });
+    const remote=readGitOrigin(repo);
+    if(!remote)throw new Error('No configured origin.');
     if (/^(https?|ssh):\/\//.test(remote)) host = new URL(remote).hostname;
     else host = remote.match(/^(?:[^@\s]+@)?([a-zA-Z0-9.-]+):[^/]/)?.[1] || null;
     if (!/^[a-zA-Z0-9.-]+$/.test(host || '')) host = null;
-  } catch { /* No recognizable network origin; local execution remains available. */ }
-  const unavailable = async () => { throw new QueueError('This repository has no supported issue provider. Use a local brief; no remote issue will be created.', 400); };
+  } catch { /* No recognizable repository origin. */ }
+  const unavailable = async () => { throw new FactoryError('This repository has no supported issue provider. Native issue start is unavailable.', 400); };
   return { id:'unsupported', label:'Repository host', repository:null, host, supported:false,
     capabilities:{issues:false,templates:false,create:false},
     context:unavailable, list:unavailable, preview:unavailable, templates:unavailable, draft:unavailable, publish:unavailable, recover:unavailable };

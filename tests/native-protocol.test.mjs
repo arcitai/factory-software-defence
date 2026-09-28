@@ -36,7 +36,7 @@ test('readiness fails closed on effective configuration and installed connection
   assert.equal(JSON.stringify(status).includes('never-return-this'),false);
 });
 
-test('malformed, oversized and native error frames close transport without returning native text',async()=>{
+test('malformed and native error frames refuse untrusted output',async()=>{
   for (const frame of ['{bad json', JSON.stringify({id:1,error:{message:'SECRET TOKEN and raw command'}})]) {
     let killed=false;
     const client=new AppServer({config:{},env:{}});
@@ -46,11 +46,43 @@ test('malformed, oversized and native error frames close transport without retur
     await assert.rejects(pending,error=>!error.message.includes('SECRET'));
     if (frame==='{bad json') assert.equal(killed,true);
   }
+});
+
+test('oversized read frame is discarded without killing a running native child',async()=>{
+  let killed=false;const client=new AppServer({config:{},env:{}});
+  client.child={stdin:{writable:true,write:()=>{}},kill:()=>{killed=true;}};
+  const pending=client.call('thread/read',{},2);
+  client.read(Buffer.alloc(16*1024*1024+1,65));
+  client.read(Buffer.from('\n'));
+  await assert.rejects(pending,/Native state unavailable/);
+  assert.equal(killed,false);
+  const next=client.call('thread/read',{});
+  client.read(Buffer.from(JSON.stringify({id:2,result:{thread:{id:'still-connected'}}})+'\n'));
+  assert.equal((await next).thread.id,'still-connected');
+});
+
+test('large valid and coalesced frames do not disconnect an active transport',async()=>{
   let killed=false;
   const client=new AppServer({config:{},env:{}});
   client.child={stdin:{writable:true,write:()=>{}},kill:()=>{killed=true;}};
-  const pending=client.call('thread/read',{});
-  client.read(Buffer.alloc(1024*1024+1,65));
-  await assert.rejects(pending,/Native state unavailable/);
-  assert.equal(killed,true);
+  const pending=Array.from({length:3},()=>client.call('thread/turns/list',{}));
+  const payload='x'.repeat(6*1024*1024);
+  const frames=pending.map((_,index)=>JSON.stringify({id:index+1,result:{data:[],padding:payload}})+'\n');
+  client.read(Buffer.from(frames.join('')));
+  const values=await Promise.all(pending);
+  assert.equal(values.length,3);
+  assert.equal(values[0].padding.length,payload.length);
+  assert.equal(killed,false);
+});
+
+test('a status read timeout leaves native execution connected and ignores its late reply',async()=>{
+  let killed=false;const client=new AppServer({config:{},env:{}});
+  client.child={stdin:{writable:true,write:()=>{}},kill:()=>{killed=true;}};
+  await assert.rejects(client.call('thread/turns/list',{},1),/Native state unavailable/);
+  assert.equal(killed,false);
+  client.receive(JSON.stringify({id:1,result:{data:[]}}));
+  const next=client.call('thread/read',{});
+  client.receive(JSON.stringify({id:2,result:{thread:{id:'thread'}}}));
+  assert.equal((await next).thread.id,'thread');
+  assert.equal(killed,false);
 });

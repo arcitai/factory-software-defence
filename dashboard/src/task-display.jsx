@@ -1,10 +1,9 @@
 import React from "react";
-import { Check, Code2, CircleAlert, Eye, Circle } from "lucide-react";
-const zeroTime = "0001-01-01T00:00:00Z";
+import { Code2, CircleAlert, Circle } from "lucide-react";
 
-const stateTone = value => ({ running: "violet", queued: "cyan", awaiting_approval: "pink", succeeded: "green", needs_review: "amber", failed: "amber", timed_out: "amber", blocked: "amber", interrupted: "amber" })[value] || "neutral";
+const stateTone = value => ({ running: "violet", needs_review: "amber", failed: "amber", interrupted: "amber", unknown: "amber" })[value] || "neutral";
 export function TaskStateIcon({ value }) {
-  const Icon = value === "succeeded" ? Check : value === "running" ? Code2 : ["failed", "blocked", "timed_out", "interrupted", "needs_review"].includes(value) ? CircleAlert : value === "awaiting_approval" ? Eye : Circle;
+  const Icon = value === "running" ? Code2 : ["failed", "interrupted", "needs_review", "unknown"].includes(value) ? CircleAlert : Circle;
   return <span className={`task-status-icon tone-${stateTone(value)}`} aria-hidden="true"><Icon size={14} /></span>;
 }
 export function State({ value }) {
@@ -18,7 +17,7 @@ export function friendlyName(name) {
     .replace(/^./, (c) => c.toUpperCase());
 }
 export function relativeTime(value) {
-  if (!value || value === zeroTime) return "Not started";
+  if (!value) return "Not started";
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) return "Unavailable";
   const seconds = Math.max(
@@ -34,24 +33,18 @@ export function relativeTime(value) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 export function formatTimestamp(value) {
-  return !value || value === zeroTime || !Number.isFinite(Date.parse(value))
+  return !value || !Number.isFinite(Date.parse(value))
     ? "Unavailable"
     : new Date(value).toLocaleString();
 }
 export function stateLabel(value) {
   const labels = {
     not_started: "Not started",
-    awaiting_approval: "Awaiting acceptance",
-    cancelling: "Cancelling",
     failed: "Failed",
     interrupted: "Interrupted",
-    queued: "Queued",
     running: "Running",
-    succeeded: "Completed",
     needs_review: "Native turn completed · needs review",
-    timed_out: "Timed out",
-    cancelled: "Cancelled",
-    blocked: "Blocked",
+    unknown: "Unknown",
   };
   return labels[value] || (value ? friendlyName(value) : "Unknown");
 }

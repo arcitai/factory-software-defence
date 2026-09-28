@@ -23,7 +23,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Factory version, OS, agent and whether this affects the CLI or dashboard. Do not paste factory.json or model.env.
+      description: Factory version, OS, agent and whether this affects the CLI or dashboard. Do not paste private native configuration or credentials.
     validations:
       required: true
   - type: textarea

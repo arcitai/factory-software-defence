@@ -10,7 +10,7 @@ for (const file of ["scripts", "tests", "factory", "bin"]
   .flatMap(walk)
   .filter((f) => f.endsWith(".mjs")))
   execFileSync(process.execPath, ["--check", file], { stdio: "pipe" });
-for (const file of ["config", "factory"]
+for (const file of ["adlc", "factory"]
   .flatMap(walk)
   .filter((f) => f.endsWith(".json")))
   JSON.parse(readFileSync(file, "utf8"));

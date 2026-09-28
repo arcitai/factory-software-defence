@@ -1,92 +1,70 @@
 ---
 name: factory-foundation
-description: Prepare or assess a repository and its execution host for Factory, including CI, access, harness configuration, services and a bounded qualification.
+description: Prepare or assess a project and its execution host for Factory, including repository checks, isolated native harness configuration and startup qualification.
 ---
 
 # Factory Foundation
 
-Prepare the selected project for the accepted Factory use. Start from its local
-instructions, existing source and session decisions. Preserve useful work and
-licenses. Assessment-only requests stay read-only. A method-only adoption needs
-no runtime, Docker host or model account.
+Use for an explicitly requested Factory adoption or assessment. Preserve the
+project's instructions, accepted decisions and useful work; assessment stays
+read-only. Follow the [setup guide](../../../docs/setup.md) for supported
+commands. Method-only adoption needs no running dashboard or model account.
 
-The [setup plan](../../../docs/setup.md) owns supported commands and checkpoints.
-Read the relevant sections rather than inventing a host-specific setup recipe.
-Choose this skill explicitly when adopting Factory. Project preparation tools
-need no knowledge of Factory and do not invoke this transition automatically.
-It is not an execution-job skill and grants no infrastructure or account access.
+## Scope the installation
 
-## Establish the boundary
+Identify the project, owner, intended work and delivery destination. Find its
+approved VISION.md or equivalent brief and keep that source canonical. If it
+is missing, stage a short draft from the [vision template](../../../adlc/vision-template.md)
+using accepted context. A draft cannot authorize new goals. Improvements must
+state the observed problem, fit with the vision and an observable acceptance
+check. Scope or access expansion needs the owner's decision.
 
-Identify the repository, responsible owner, intended work, checks and delivery
-destination. Distinguish application hosting from Factory execution compute.
-Use the actual host's OS, service manager, hardware and private network; do not
-assume a machine model, a VPN provider, a cloud, Git forge, issue tracker, CI
-provider or particular harness. Inspect the configured remote and actual provider
-capabilities. GitHub is one adapter; an unsupported host keeps local execution
-without guessed API calls. Use [integration ownership](../../../docs/integrations.md).
+Inspect the actual host, repository remote and native harness. Codex and GitHub
+are the current supported integration; record unsupported capabilities rather
+than inventing an adapter or treating binary discovery as readiness. Application
+hosting is separate from Factory's execution host. Keep missing obligations in
+the existing issue/task record, not a second project registry.
 
-Find the project's owner-approved VISION.md or equivalent product brief and
-record that canonical source in its instructions. Preserve existing decisions;
-do not add a competing vision document. If none exists, stage a short draft from
-[the vision template](../../../adlc/vision-template.md), using accepted owner
-context and marking unresolved choices. A draft does not authorize new scope.
-Self-improvement proposals must identify the observed problem, classify alignment
-with that brief, and define an observable check. Unclear or out-of-scope proposals
-need an owner decision; agents cannot approve their own scope or access expansion.
-Ordinary fixes within accepted scope continue under existing authority.
+## Prepare and qualify
 
-Use the existing task/issue record for missing obligations and evidence. Avoid a
-second project registry or a template conversion of an existing application.
-Continue authorized repairs; ask only for decisions or authority actually missing.
+- **Repository:** preserve canonical instructions, design and code standards,
+  real tests and deployment rules. Adapt [repository readiness](../../../adlc/repository.md),
+  issue forms/labels and CI checks to the existing project. Stage the selected
+  ADLC method before adoption; do not overwrite application files. Inspect the
+  actual required checks and workflow access, not just file presence.
+- **Native environment:** use separate Factory configuration, native login and
+  selected ADLC skills. Do not copy personal login, plugins or connections.
+  A dedicated OS user is recommended; a separate configuration directory under
+  the same user is not OS isolation. Verify effective workspace permissions,
+  private-path denial and the tool/connection inventory. Unattended approval
+  does not mean unrestricted host access. Keep provider credentials with the
+  component needing them, outside the agent environment unless explicitly needed.
+- **Operation:** install a pinned package, stable Node and Codex binaries, a
+  private state directory and a loopback listener. Use the supported OS service
+  manager and authenticated SSH forwarding for remote access. Record boot/login
+  prerequisites and test restart recovery without starting another native turn.
+  Updating or stopping an active or unknown writer must not silently interrupt
+  it. Native history and local references remain outside the package.
+- **Proof:** start one bounded issue through the installed Inbox or CLI; inspect
+  its native result, explicitly continue it, then run the project's checks and
+  independent review against the exact candidate. Qualify only the authorized
+  delivery. Distinguish mock/synthetic checks from real integration and a tested
+  restart from an untested reboot.
 
-For native-harness adoption, use the [migration contract](../../../docs/architecture.md#migration-contract).
-Keep each project's settings and connection identities deliberate; qualify its
-effective tools separately from unattended approval mode. The controller/image
-steps below describe the currently shipped optional runtime.
+Codex owns sessions, tools, context and execution. Requested schedules belong
+to the native harness; do not install a Factory scheduler. Issue creation and
+labels alone never authorize execution. Model choices such as Local Build ·
+Cloud Review need support and measured qualification through the chosen harness.
+Defence findings and production recovery retain their separate access and
+publication boundaries.
 
-## Prepare and prove
+## Migration and handoff
 
-- **Repository:** inspect instructions, scope/design, architecture, dependencies,
-  real checks, code/design standards, secrets, ownership and recovery. Preserve
-  the project’s canonical sources and confirm that jobs can discover them through
-  repository instructions. Adapt the staged method to the
-  project; do not overwrite its files. Reconcile the chosen provider’s issue forms/labels (where supported), CI triggers,
-  required checks, protection rules and the intended PR/release path using
-  [repository readiness](../../../adlc/repository.md). Before trusted GitHub PR
-  delivery, confirm active candidate-triggered workflows fit the bounded
-  qualification in [recovery](../../../docs/recovery.md#trusted-pr-delivery);
-  unsupported workflows keep delivery patch-only. Organization hooks and
-  external CI remain operator-owned. File presence is not proof.
-- **Infrastructure:** choose a private state directory, loopback port, host and
-  unprivileged operator. Verify actual SSH authentication, host key, network,
-  Docker and stable Node executable where needed. Factory needs no unrestricted
-  sudo. Jobs must not receive Docker, SSH, forge or deployment credentials.
-- **Harness and model:** select supported tools and a compatible job image;
-  verify the intended inference route from that image/network. Keep credentials
-  private and scoped. A working model endpoint does not qualify output quality.
-- **Operation:** enable only intended controllers, tunnels and update services.
-  Inspect old queues before startup: queued work resumes. Verify backups,
-  stop/recovery and boot/login dependencies; record observed proof separately
-  from an untested reboot or unattended-start claim.
-- **Qualification:** use a separate synthetic state for runtime checks. When
-  real application qualification is requested, admit one bounded task, inspect
-  the exact candidate, run real checks, obtain separate review and verify the
-  authorized delivery. A synthetic success is not application qualification.
+Follow [recovery](../../../docs/recovery.md) before replacing an old installation:
+reconcile active work, preserve private history, disable obsolete services and
+updaters deliberately, qualify the replacement, and retain a recovery route.
+Do not carry the old runtime into the active source or package for archival use.
 
-Skills guide agents; the selected native harness owns sessions, tools,
-permissions and execution. Remote issues stay in the selected provider. The
-legacy optional runtime still uses its controller and SQLite for retained jobs;
-do not introduce those into a native installation. Creating an issue or assigning
-a label does not start work.
-Optional schedules belong to the selected harness and call Factory CLI/API; do
-not install a parallel cron module or enable schedules during ordinary setup.
-Verify each requested provider action separately from job/inference access.
-
-## Handoff
-
-Record source/runtime/image revisions, check results, host/state/service paths,
-credential references (never values), delivery/recovery ownership and remaining
-obligations in the private installation handoff. Keep public repository docs
-portable. Distinguish prepared, connected and qualified states. Use the actual
-CLI/API and dashboard evidence; do not declare unsupported capabilities ready.
+Record versions, project/state/service paths, connection identities without
+secrets, observed checks and remaining limits in the private installation
+handoff. Keep public instructions portable and installation claims precise.

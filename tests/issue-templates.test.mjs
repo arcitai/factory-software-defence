@@ -53,7 +53,7 @@ test('repository form defaults and required input, dropdown and checkbox semanti
   assert.equal(template.fields[0].value,'<script>untrusted guidance</script>');
   const draft=compileTemplate(template,valid);
   assert.match(draft.spec,/### Scope\n\nSandbox/);assert.match(draft.spec,/\[x\] Supplied evidence only/);assert.match(draft.spec,/\[ \] No production changes/);
-  assert.equal(draft.recommendation.workflow,'defence');assert.deepEqual(draft.template,{id:'incident.yml',sha});
+  assert.equal(draft.recommendation.workflow,'defensive');assert.deepEqual(draft.template,{id:'incident.yml',sha});
   for(const answers of [{...valid.answers,summary:''},{...valid.answers,hosts:[]},{...valid.answers,hosts:['Outside']},{...valid.answers,boundary:[]},{...valid.answers,scope:'Outside'}])assert.throws(()=>compileTemplate(template,{...valid,answers}));
   assert.throws(()=>compileTemplate(template,{...valid,title:''}),/title/);
   assert.throws(()=>compileTemplate(template,{...valid,answers:{...valid.answers,summary:'x'.repeat(240001)}}),/Invalid/);
@@ -78,7 +78,7 @@ test('template reads are repository scoped, preserve contact links and refuse ch
     return file(form);
   };
   const result=await readTemplates(repo,read);assert.equal(result.templates.length,1);assert.equal(result.contacts.length,1);assert.deepEqual(result.warnings,[]);
-  assert.equal((await draftFromTemplate(repo,{...valid,template:'incident.yml',sha},read)).recommendation.workflow,'defence');
+  assert.equal((await draftFromTemplate(repo,{...valid,template:'incident.yml',sha},read)).recommendation.workflow,'defensive');
   await assert.rejects(draftFromTemplate(repo,{...valid,template:'incident.yml',sha:'b'.repeat(40)},read),/changed/);
   await assert.rejects(draftFromTemplate(repo,{...valid,template:'../secret.yml',sha},read),/Choose/);
   let reads=0;

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { nativeEnvironment, nativePolicy, verifyNativeConfig } from './setup.mjs';
 
-const MAX_FRAME = 1024 * 1024;
+const MAX_FRAME = 16 * 1024 * 1024;
 const MAX_PENDING = 32;
 const unavailable = () => new Error('Native state unavailable; inspect the Codex session locally.');
 const plain = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -16,7 +16,7 @@ export class AppServer {
   constructor({ config, env }) {
     this.config=config; this.env=env; this.pending=new Map(); this.next=1;
     this.available=false; this.listeners=new Set(); this.unexpectedApproval=false;
-    this.buffer=Buffer.alloc(0);
+    this.buffer=Buffer.alloc(0);this.discarding=false;
   }
   async connect() {
     this.child=spawn(this.config.codex,['app-server','--strict-config'],
@@ -35,19 +35,26 @@ export class AppServer {
     } catch { this.close(); throw unavailable(); }
   }
   read(chunk) {
-    if (chunk.length>MAX_FRAME) return this.close();
-    this.buffer=Buffer.concat([this.buffer,chunk]);
-    if (this.buffer.length > MAX_FRAME && !this.buffer.includes(10)) return this.close();
-    while (true) {
-      const end=this.buffer.indexOf(10);
-      if (end<0) break;
-      if (end>MAX_FRAME) return this.close();
-      const line=this.buffer.subarray(0,end).toString('utf8');
-      this.buffer=this.buffer.subarray(end+1);
+    let offset=0;
+    while(offset<chunk.length) {
+      const end=chunk.indexOf(10,offset);
+      if(this.discarding) {
+        if(end<0)return;
+        this.discarding=false;offset=end+1;continue;
+      }
+      const part=chunk.subarray(offset,end<0?chunk.length:end);
+      if(this.buffer.length+part.length>MAX_FRAME) {
+        this.buffer=Buffer.alloc(0);
+        if(end<0){this.discarding=true;return;}
+        offset=end+1;continue;
+      }
+      this.buffer=Buffer.concat([this.buffer,part]);
+      if(end<0)return;
+      const line=this.buffer.toString('utf8');this.buffer=Buffer.alloc(0);
       this.receive(line);
-      if (!this.child) return;
+      if(!this.child)return;
+      offset=end+1;
     }
-    if (this.buffer.length>MAX_FRAME) this.close();
   }
   disconnect() {
     if (!this.child && !this.available && !this.pending.size) return;
@@ -66,7 +73,7 @@ export class AppServer {
     if (!this.child?.stdin?.writable || this.pending.size>=MAX_PENDING) return Promise.reject(unavailable());
     const id=this.next++;
     return new Promise((resolve,reject)=>{
-      const timer=setTimeout(()=>{this.pending.delete(id);reject(unavailable());this.close();},timeout);
+      const timer=setTimeout(()=>{this.pending.delete(id);reject(unavailable());},timeout);
       this.pending.set(id,{resolve,reject,timer});
       try {this.send({id,method,params});} catch {clearTimeout(timer);this.pending.delete(id);reject(unavailable());this.close();}
     });
@@ -77,6 +84,7 @@ export class AppServer {
     if (!plain(value)) return this.close();
     if (Object.hasOwn(value,'id') && !value.method) {
       const pending=this.pending.get(value.id);
+      if (!pending && Number.isSafeInteger(value.id) && value.id>0 && value.id<this.next) return;
       if (!pending || (Object.hasOwn(value,'result')===Object.hasOwn(value,'error'))) return this.close();
       clearTimeout(pending.timer); this.pending.delete(value.id);
       if (value.error) pending.reject(unavailable());

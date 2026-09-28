@@ -1,7 +1,7 @@
 {
   "name": "software-defence-factory",
-  "version": "0.17.0",
-  "description": "Factory: scoped software delivery and defence investigations with isolated jobs, evidence and review",
+  "version": "0.18.0",
+  "description": "Factory: native Codex project Inbox, Foundation and portable ADLC method",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -18,7 +18,8 @@
   "homepage": "https://github.com/arcitai/software-and-defence-factory#readme",
   "publishConfig": {
     "access": "public",
-    "registry": "https://registry.npmjs.org/"
+    "registry": "https://registry.npmjs.org/",
+    "tag": "next"
   },
   "files": [
     "bin/",
@@ -29,45 +30,27 @@
     ".github/ISSUE_TEMPLATE/factory-task.yml",
     ".github/ISSUE_TEMPLATE/bug-report.yml",
     ".github/ISSUE_TEMPLATE/feature-request.yml",
-    "docs/workflows.md",
-    "docs/native-codex.md",
-    "docs/definition.md",
-    "config/labels.json",
+    "docs/",
     "scripts/export-kit.mjs",
     "scripts/probe-harness.mjs",
-    "scripts/probe-platform.mjs",
-    "scripts/retained-source-fixture.mjs",
-    "docs/npm.md",
-    "docs/setup.md",
-    "docs/architecture.md",
-    "docs/hybrid.md",
-    "docs/proof.md",
-    "docs/diagrams/",
-    "docs/services.md",
-    "docs/recovery.md",
-    "docs/quickstart.md",
-    "docs/defence-integration.md",
-    "docs/ownership.md",
     "THIRD_PARTY_NOTICES.md",
-    "scripts/probe-review.mjs",
-    "scripts/probe-web.mjs",
-    "scripts/probe-diagnostics.mjs",
-    "docs/usage.md",
-    "docs/concepts.md",
-    "docs/interfaces.md",
-    "docs/web-verification.md",
-    "docs/integrations.md"
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "DESIGN.md",
+    "SECURITY.md",
+    "todo.md"
   ],
   "scripts": {
     "factory": "node bin/software-defence-factory.mjs",
-    "probe:platform": "node scripts/probe-platform.mjs",
     "probe:codex": "node scripts/probe-harness.mjs",
     "test": "node --test tests/*.test.mjs",
     "check": "node scripts/check.mjs && node --test tests/*.test.mjs && npm run test:dashboard",
     "build:dashboard": "npm --prefix dashboard ci --ignore-scripts && npm --prefix dashboard run build",
-    "test:dashboard": "npm --prefix dashboard test",
-    "qualify:pi": "FACTORY_REQUIRE_PI=1 node --test tests/pi-local-adapter.test.mjs tests/pi-trust.test.mjs tests/pi-context.test.mjs tests/pi-context-batch.test.mjs tests/pi-context-history.test.mjs tests/pi-context-productive.test.mjs"
+    "test:dashboard": "npm --prefix dashboard test"
   },
+  "bundleDependencies": [
+    "yaml"
+  ],
   "dependencies": {
     "yaml": "2.9.1"
   }
