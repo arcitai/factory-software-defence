@@ -53,3 +53,10 @@ A leftover `serve.lock.reconcile` directory means a process stopped during lock
 reconciliation. Confirm the service and its native child have stopped, preserve
 the directory and lock as evidence, then move that directory aside explicitly.
 Factory never guesses that an unresolved reconciliation owner is safe to replace.
+
+If a service maintenance request loses its response, its operation token is
+retained in private `maintenance.json`. Retry the same service command to
+reconcile that operation, or run `factory service cancel-maintenance --state PATH`
+to reopen admission explicitly. A changed process instance never reuses the old
+operation. Preserve unresolved `service-operation.lock` reconciliation records
+just like the serving lock; do not guess that another process is inactive.

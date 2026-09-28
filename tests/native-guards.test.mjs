@@ -152,11 +152,12 @@ test('explicit continuation reserves one writer, retains turns and rejects stale
 
 test('result requests metadata and only the latest summary; disconnect stays unknown',async t=>{
   const h=harness(t),engine=h.engine(),job=await h.start(engine,7);
-  h.turns.get(job.thread_id)[0]={id:job.turn_id,status:'completed',items:[{type:'agentMessage',text:'A final answer'}]};
+  h.turns.get(job.thread_id)[0]={id:job.turn_id,status:'completed',completedAt:1790600000,items:[{type:'agentMessage',text:'A final answer'}]};
   const views=[];const original=h.client.call;
   h.client.call=(method,params)=>{if(method==='thread/turns/list')views.push({view:params.itemsView,limit:params.limit});return original(method,params);};
   const result=await engine.result(job.id);
   assert.equal(result.native_result.response,'A final answer');
+  assert.equal(result.updated_at,new Date(1790600000000).toISOString());
   assert.deepEqual(views,[{view:'notLoaded',limit:100},{view:'summary',limit:1}]);
   h.client.available=false;
   assert.equal((await engine.result(job.id)).state,'unknown');

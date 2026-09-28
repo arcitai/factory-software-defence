@@ -35,7 +35,7 @@ Usage:
   factory start URL [--work-type software|defensive] [--brief TEXT] [--state PATH]
   factory continue ID --turn TURN_ID --feedback TEXT [--state PATH]
   factory interrupt ID --turn TURN_ID [--state PATH]
-  factory service install|status|start|stop|restart|remove [--state PATH] [--port PORT]
+  factory service install|status|start|stop|restart|remove|cancel-maintenance [--state PATH] [--port PORT]
   factory kit --output NEW_DIRECTORY
   factory foundation
   factory probe codex
@@ -123,7 +123,7 @@ async function command(args) {
   }
   if(name==='service') {
     const [action,...options]=rest;
-    if(!action)throw new Error('Use service install|status|start|stop|restart|remove.');
+    if(!action)throw new Error('Use service install|status|start|stop|restart|remove|cancel-maintenance.');
     const {flags}=parse(options,{allowed:['--state','--port']});
     const result=await manageNativeService(action,stateFrom(flags),Number(flags['--port'] || 7332));print(result);return;
   }

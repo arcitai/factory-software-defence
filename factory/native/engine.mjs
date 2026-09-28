@@ -34,12 +34,14 @@ function turnMetadata(turn) {
   return {id:turn.id,state:stateOf(turn.status),started_at:turn.startedAt || null,completed_at:turn.completedAt || null};
 }
 function makeJob(record, status, turns=[], current=null) {
-  const byID=new Map(turns.map(turn=>[turn.id,turn]));
   const runs=turns.slice().reverse().map(turn=>({id:turn.id,command:'codex',state:stateOf(turn.status),started_at:turn.startedAt || null,completed_at:turn.completedAt || null}));
   const now=current || turns.find(turn=>turn.id===record.turn_id) || null;
+  const nativeTime=now?.completedAt||now?.startedAt;
+  const nativeDate=typeof nativeTime==='number'?new Date(nativeTime<1e12?nativeTime*1000:nativeTime):new Date(nativeTime);
+  const activity=nativeTime&&Number.isFinite(nativeDate.getTime())?nativeDate.toISOString():record.updated_at||record.created_at;
   const latestStatus=record.phase==='started' ? status : 'unknown';
   return {id:record.id,native:true,thread_id:record.thread_id || null,turn_id:record.turn_id || null,
-    created_at:record.created_at,updated_at:record.updated_at || record.created_at,state:latestStatus,
+    created_at:record.created_at,updated_at:activity,state:latestStatus,
     task:{title:record.title,spec:`Issue content pinned by SHA-256: ${record.spec_hash}`,source_url:record.url},
     workflow:{name:record.work_type || 'software',steps:[],current_step:0},runs,
     native_turn_status:now ? stateOf(now.status) : null,

@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {execFileSync} from 'node:child_process';
 const root=fileURLToPath(new URL('../',import.meta.url));
-test('real tarball installs offline, carries yaml and documentation, and exports the portable method',t=>{
+test('real tarball installs offline, carries yaml and documentation, and exports the portable method',async t=>{
  const scratch=mkdtempSync(join(tmpdir(),'factory-pack-'));
  t.after(()=>rmSync(scratch,{recursive:true,force:true}));
  const npm=(args,cwd=root)=>execFileSync('npm',args,{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60000});
@@ -19,6 +19,12 @@ test('real tarball installs offline, carries yaml and documentation, and exports
  const installed=join(prefix,'node_modules','software-defence-factory');
  assert.ok(existsSync(join(installed,'node_modules','yaml','package.json')));
  execFileSync(process.execPath,['--input-type=module','-e',`await import(${JSON.stringify(pathToFileURL(join(installed,'factory/native/server.mjs')).href)})`],{encoding:'utf8'});
+ const {serviceManifest,pinInstalledRuntime}=await import(pathToFileURL(join(installed,'factory/native/service.mjs')));
+ const state=join(scratch,'service-state');mkdirSync(state);
+ const runtime=pinInstalledRuntime(state,{root:installed,version:packed.version});
+ const manifest=serviceManifest({state,config:{repo:root,node:process.execPath},root:installed,runtime});
+ assert.equal(existsSync(join(runtime,'node_modules','.bin')),false);
+ execFileSync(manifest.verification[0],manifest.verification.slice(1),{encoding:'utf8'});
  const cli=join(installed,'bin/software-defence-factory.mjs');
  assert.equal(execFileSync(process.execPath,[cli,'--version'],{encoding:'utf8'}).trim(),packed.version);
  assert.match(execFileSync(process.execPath,[cli,'foundation'],{encoding:'utf8'}),/Factory Foundation/);

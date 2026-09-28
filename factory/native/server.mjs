@@ -82,13 +82,14 @@ export function createNativeServer(state,config,{harness,provider,instance=rando
         if(!(request.headers['content-type']||'').startsWith('application/json'))throw new FactoryError('Use application/json',415);
         const input=await body(request);
         if(url.pathname==='/api/v1/maintenance/cancel') {
-          if(input.instance!==instance||!maintenance||maintenance.phase!=='prepared'||input.token!==maintenance.token)
+          if(input.instance!==instance||(maintenance&&(maintenance.phase!=='prepared'||input.token!==maintenance.token)))
             throw new FactoryError('Maintenance ownership changed or preparation is still in progress.',409);
           maintenance=null;return send(200,{instance,prepared:false});
         }
         if(url.pathname==='/api/v1/maintenance/prepare') {
           if(input.instance!==instance)throw new FactoryError('Native instance changed.',409);
           if(typeof input.token!=='string'||!/^[a-zA-Z0-9-]{16,100}$/.test(input.token))throw new FactoryError('Maintenance needs a unique operation token.',400);
+          if(maintenance?.token===input.token && maintenance.phase==='prepared')return send(200,{instance,token:maintenance.token,prepared:true});
           if(maintenance)throw new FactoryError('Maintenance is already prepared.',409);
           const owner={token:input.token,phase:'preparing'};maintenance=owner;
           try {await waitForWrites();await assertIdle();owner.phase='prepared';return send(200,{instance,token:owner.token,prepared:true});}

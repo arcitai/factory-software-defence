@@ -73,6 +73,7 @@ test('maintenance prepare waits for admitted writes, then rejects new writes unt
   assert.equal((await post('/api/v1/maintenance/prepare',{instance:'one',token:'operation-token-two'})).status,409);
   finish();assert.equal((await first).status,201);
   assert.equal((await prepare).status,200);
+  assert.equal((await post('/api/v1/maintenance/prepare',{instance:'one',token:'operation-token-one'})).status,200);
   assert.equal(idleChecks,1);
   assert.equal(starts,1);
   assert.equal((await post('/api/v1/maintenance/cancel',{instance:'one',token:'operation-token-two'})).status,409);

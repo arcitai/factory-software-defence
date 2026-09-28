@@ -64,6 +64,9 @@ factory service status --state /absolute/private/factory-state
 ```
 
 The service pins package bytes and the selected Node/state/repository paths.
+Every systemd start verifies the runtime, including its bundled dependency,
+against the recorded digest. Unused npm executable shims are excluded; changed
+runtime bytes block startup. This detects drift, not a hostile shared OS user.
 Login normally starts a user service; boot without login needs the host's user
 lingering policy. Record disk-unlock and network prerequisites. Do not claim a
 reboot was tested merely because a service is enabled.

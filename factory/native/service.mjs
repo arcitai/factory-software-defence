@@ -6,7 +6,7 @@ import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readNative } from './setup.mjs';
 import { connectBridge } from './bridge-client.mjs';
-import { inspectProcessLock } from './process-lock.mjs';
+import { acquireProcessLock, inspectProcessLock } from './process-lock.mjs';
 
 const packageRoot=fileURLToPath(new URL('../../',import.meta.url));
 const serviceHash=value=>createHash('sha256').update(value).digest('hex').slice(0,16);
@@ -41,6 +41,8 @@ function runtimeDigest(root) {
   const digest=createHash('sha256');
   const walk=(folder,prefix='')=>{
     for(const entry of readdirSync(folder).sort()) {
+      // npm's generated executable shims are not used by the Node service.
+      if(entry==='.bin' && folder.endsWith('/node_modules'))continue;
       if(entry==='.git')throw new Error('Mutable checkout content cannot be pinned as a service release.');
       const relative=prefix+entry,path=join(folder,entry),stat=lstatSync(path);
       if(stat.isSymbolicLink())throw new Error('Pinned service release cannot contain symbolic links.');
@@ -77,7 +79,7 @@ export function pinInstalledRuntime(state,source) {
   }
   const staging=join(folder,`.install-${randomUUID()}`);
   try {
-    cpSync(source.root,staging,{recursive:true,errorOnExist:true,filter:path=>!path.split('/').includes('.git')});
+    cpSync(source.root,staging,{recursive:true,errorOnExist:true,filter:path=>!path.split('/').includes('.git')&&!path.endsWith('/node_modules/.bin')});
     const pkg=JSON.parse(readFileSync(join(staging,'package.json'),'utf8'));
     if(pkg.name!=='software-defence-factory'||pkg.version!==source.version)throw new Error('Factory runtime changed while it was being pinned.');
     if(runtimeDigest(staging)!==expected)throw new Error('Factory runtime bytes changed while it was being pinned.');
@@ -100,7 +102,14 @@ function ownedRecord(state) {
 }
 async function prepareIdle(state,repo) {
   const bridge=await connectBridge(state,repo);
-  const token=randomUUID();
+  const path=join(state,'maintenance.json');
+  let operation=existsSync(path)?JSON.parse(readFileSync(path,'utf8')):null;
+  if(!operation||operation.instance!==bridge.instance) {
+    operation={instance:bridge.instance,token:randomUUID()};
+    atomicJSON(path,operation);
+  }
+  const {token}=operation;
+  if(typeof token!=='string'||!/^[a-zA-Z0-9-]{16,100}$/.test(token))throw new Error('Native maintenance record is invalid; preserve it before recovery.');
   const result=await bridge.request('/api/v1/maintenance/prepare',{instance:bridge.instance,token});
   if(result.instance!==bridge.instance || result.prepared!==true || result.token!==token)throw new Error('Native maintenance identity changed; operation refused.');
   return {...bridge,maintenanceToken:token};
@@ -123,8 +132,14 @@ async function snapshot(state,record) {
     port:record.port,loopback:`http://127.0.0.1:${record.port}`,active:active==='active',active_state:active,pid,enabled:enabled==='enabled',healthy,native_instance};
 }
 export async function manageNativeService(action,statePath,port=7332) {
+  if(action==='status')return serviceAction(action,statePath,port);
+  const {state}=readNative(statePath);
+  const release=acquireProcessLock(join(state,'service-operation.lock'),'Factory service operation');
+  try {return await serviceAction(action,statePath,port);}finally {release();}
+}
+async function serviceAction(action,statePath,port) {
   if(process.platform!=='linux')throw new Error('Native services currently support Linux user systemd only.');
-  if(!['install','status','start','stop','restart','remove'].includes(action))throw new Error('Use service install|status|start|stop|restart|remove.');
+  if(!['install','status','start','stop','restart','remove','cancel-maintenance'].includes(action))throw new Error('Use service install|status|start|stop|restart|remove|cancel-maintenance.');
   const {state,config}=readNative(statePath),{folder,record:recordPath}=configPaths(state);
   if(action==='status') {
     const existing=ownedRecord(state);
@@ -156,6 +171,15 @@ export async function manageNativeService(action,statePath,port=7332) {
     if(action==='remove')return {installed:false,state,preserved:true};
     throw new Error('Native service is not installed.');
   }
+  if(action==='cancel-maintenance') {
+    const path=join(state,'maintenance.json');
+    if(!existsSync(path))throw new Error('No recorded service maintenance to reconcile.');
+    const operation=JSON.parse(readFileSync(path,'utf8')),bridge=await connectBridge(state,record.repo);
+    if(operation.instance===bridge.instance)
+      await bridge.request('/api/v1/maintenance/cancel',operation);
+    rmSync(path);
+    return {cancelled:true,state,instance:bridge.instance};
+  }
   const before=await snapshot(state,record);
   if(action==='start') {
     if(before.active)throw new Error('Native service is already active.');
@@ -186,8 +210,9 @@ export async function manageNativeService(action,statePath,port=7332) {
     return {installed:false,state,preserved:true,runtime:record.runtime};
   }
   } catch(error) {
-    if(bridge)await bridge.request('/api/v1/maintenance/cancel',{instance:bridge.instance,token:bridge.maintenanceToken}).catch(()=>{});
+    if(bridge)await bridge.request('/api/v1/maintenance/cancel',{instance:bridge.instance,token:bridge.maintenanceToken}).then(()=>rmSync(join(state,'maintenance.json'),{force:true})).catch(()=>{});
     throw error;
   }
+  rmSync(join(state,'maintenance.json'),{force:true});
   return snapshot(state,record);
 }
