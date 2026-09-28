@@ -35,6 +35,16 @@ function excerpt(text, limit) {
   return Buffer.byteLength(shortened) < Buffer.byteLength(text) ? shortened : text;
 }
 
+// A pressure signal, not a token estimate: cap large tool bodies so upstream's
+// existing large-result recovery still owns bursts, but count every call/argument
+// and a useful short excerpt. Provider usage cannot measure this growing floor.
+export function historyPressure(messages, envelope) {
+  const copy = structuredClone(messages);
+  for (const message of copy) if (message.role === 'toolResult')
+    for (const part of message.content || []) if (part.type === 'text') part.text = excerpt(part.text, 1024);
+  return envelope + bytes(copy) + 64 * copy.length;
+}
+
 // Uniform cap shares space among large results without penalizing small ones.
 // Calls, arguments, identities, ordering and all non-tool text are immutable.
 export function fitToolText(value, budget, measure = bytes, native = false) {
@@ -49,8 +59,27 @@ export function fitToolText(value, budget, measure = bytes, native = false) {
       for (const part of message.content) if (part.type === 'text') slots.push([part, 'text', part.text]);
     }
   }
-  const cap = limit => { for (const [object, key, text] of slots) object[key] = excerpt(text, limit); };
+  // Prefer recent short discoveries within a bounded allowance; large batches
+  // still share the remaining space. Prefix stability is measured separately.
+  const recent = new Set();
+  let recentBytes = 0;
+  for (const slot of [...slots].reverse()) {
+    const size = bytes(slot[2]);
+    if (size <= 2048 && recentBytes + size <= Math.min(8192, budget / 4)) {
+      recent.add(slot); recentBytes += size;
+    }
+  }
+  const cap = limit => { for (const slot of slots) {
+    const [object, key, text] = slot;
+    object[key] = recent.has(slot) ? text : excerpt(text, limit);
+  } };
   cap(0);
+  // Release older preferences first if the complete preferred set cannot fit.
+  // Even one useful recent result is better than uniformly shortening them all.
+  for (const slot of [...recent].reverse()) {
+    if (measure(original) <= budget) break;
+    recent.delete(slot); cap(0);
+  }
   if (measure(original) > budget) throw new Error('Local Pi context budget cannot fit required instructions, tool pairs and truncation guidance; use smaller task/input or qualify the configured allocation. No fallback.');
   let low = 0, high = Math.max(0, ...slots.map(([, , text]) => text.length));
   while (low < high) {

@@ -44,6 +44,22 @@ retry around a retained writer or reuse earlier story evidence for a changed
 candidate or policy. Browser traces and screenshots are private evidence and
 are presented through the shared interfaces. See [the web contract](web-verification.md).
 
+## Local Pi history exhaustion
+
+The 0.15.5 candidate adds bounded proactive recovery for short histories, including
+productive writes whose immutable arguments require fewer retained groups;
+see [limits and image adoption](setup.md#local-context-budget-and-worker-image-0152-100).
+A failed/empty summary, exhausted recovery limit, cancellation or irreducible
+request remains a failed attempt even if a tool already wrote a report. Keep its
+checkout, raw events and private diagnostic evidence. Reconcile the stopped
+worker before admitting a smaller task or explicitly selecting another qualified
+profile as a separate attempt. Do not enlarge the allocation, rewrite a failed
+history or label an explicit cloud retry as local success. Successful transport
+recovery still needs semantic checks and independent Review. The reviewed first
+checkpoint failed real local qualification; the revised artifact needs a new
+lead-owned installed and real-task pass before acceptance. See the
+[rejected trial and source regression](proof.md#short-local-pi-history-recovery-0155-candidate-105).
+
 ## Review feedback or phase retry
 
 Use **Request changes** on a failed software review only when its validated

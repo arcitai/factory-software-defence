@@ -59,3 +59,13 @@ for (const [name, events] of [
 ]) test(`Pi completion rejects ${name}`, () => assert.equal(accepts(events), false));
 
 test('Pi completion requires the last JSONL record delimiter', () => assert.equal(accepts(success, ''), false));
+
+const proactiveStart = { type: 'factory_context_recovery', phase: 'start', recovery: 1 };
+const proactiveEnd = { ...proactiveStart, phase: 'complete' };
+test('Pi completion requires paired bounded proactive recovery', () => {
+  assert.equal(accepts([proactiveStart, proactiveEnd, ...success]), true);
+  for (const events of [[proactiveStart], [proactiveEnd], [proactiveStart, proactiveStart, proactiveEnd],
+    [proactiveStart, { ...proactiveEnd, recovery: 2 }], [{ ...proactiveStart, recovery: 17 }, { ...proactiveEnd, recovery: 17 }],
+    [proactiveStart, { ...proactiveEnd, phase: 'failed' }]])
+    assert.equal(accepts([...events, ...success]), false);
+});

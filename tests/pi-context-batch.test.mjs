@@ -44,6 +44,7 @@ for (const scenario of ['unprotected', 'six-read', 'larger-output', 'completion-
     const report = join(workspace, 'agent-report.md');
     const requests = [], errors = [];
     let phase = 0, summaries = 0, resumed = false, originalUser, originalSystem, originalTools;
+    let proactive = false, eventBuffer = '';
     const emittedCalls = new Map();
     const server = createServer(async (req, res) => {
       try {
@@ -62,9 +63,9 @@ for (const scenario of ['unprotected', 'six-read', 'larger-output', 'completion-
         if (requests.length > 16) return fail('Fixture request limit');
         if (summary) {
           summaries++;
-          // This workload summarizes a turn prefix. Pi's separate default cap is
-          // half its 16,384 reserve, even when generation allows more output.
-          assert.equal(allowance, Math.min(8192, output));
+          // Upstream turn-prefix and proactive history summaries have distinct
+          // pinned caps. Match the observed lifecycle, never the generation cap.
+          assert.equal(allowance, proactive ? Math.floor(0.8 * Math.min(16384, output)) : Math.min(8192, output));
           if (scenario === 'summary-failure') return fail('Controlled summary failure');
         } else {
           originalUser ??= body.messages.find(m => m.role === 'user');
@@ -148,7 +149,16 @@ for (const scenario of ['unprotected', 'six-read', 'larger-output', 'completion-
       });
       let stdout = '', stderr = '', timedOut = false;
       const timer = setTimeout(() => { timedOut = true; process.kill(-child.pid, 'SIGKILL'); }, 45000);
-      child.stdout.on('data', data => stdout += data); child.stderr.on('data', data => stderr += data);
+      child.stdout.on('data', data => {
+        stdout += data; eventBuffer += data;
+        let end;
+        while ((end = eventBuffer.indexOf('\n')) !== -1) {
+          const line = eventBuffer.slice(0, end); eventBuffer = eventBuffer.slice(end + 1);
+          if (!line.trim()) continue;
+          const event = JSON.parse(line);
+          if (event.type === 'factory_context_recovery') proactive = event.phase === 'start';
+        }
+      }); child.stderr.on('data', data => stderr += data);
       child.on('error', reject); child.on('close', code => { clearTimeout(timer); resolve({ code, stdout, stderr, timedOut }); });
       child.stdin.end(task);
     });
