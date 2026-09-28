@@ -1,11 +1,10 @@
 // Explicitly mounted Factory adapter, never discovered from the host/repository.
 import { readFileSync, writeSync } from 'node:fs';
-import { join } from 'node:path';
 import { openAICompletionsApi } from '@earendil-works/pi-ai';
 import { bytes, fitToolText, projectedTokens, restoreOutputBudget, validatePairs } from './pi-context-budget.mjs';
 
 export default function factoryLocalContext(pi) {
-  const registry = JSON.parse(readFileSync(join(process.env.PI_CODING_AGENT_DIR, 'models.json'), 'utf8'));
+  const registry = JSON.parse(readFileSync(new URL('./models.json', import.meta.url), 'utf8'));
   const configured = registry.providers['factory-local'].models[0];
   const window = configured.contextWindow, output = configured.maxTokens;
   let task;
