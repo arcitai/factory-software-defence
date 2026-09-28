@@ -873,11 +873,11 @@ for (const [harness, phase] of [['codex', 'review'], ['pi', 'review'], ['custom'
     assert.equal(execution.status, 0, execution.stderr || execution.stdout);
     const args = stateOf(f).jobArgs;
     const mounts = args.flatMap((arg, i) => arg === '--mount' ? [args[i + 1]] : []);
-    const catalog = `type=bind,source=${join(root, 'kit/skills')}`;
+    const catalog = `type=bind,source=${join(root, 'adlc/skills')}`;
     assert(mounts.includes(`${catalog},target=/factory-skills,readonly`));
     assert.equal(mounts.includes(`${catalog},target=/etc/codex/skills,readonly`), harness === 'codex' && phase !== 'verify');
     assert(!mounts.some(mount => /source=[^,]*(?:operator-skills|\.agents)/.test(mount)));
-    assert(mounts.includes(`type=bind,source=${join(root, 'kit')},target=/factory-policy,readonly`));
+    assert(mounts.includes(`type=bind,source=${join(root, 'adlc')},target=/factory-policy,readonly`));
     assert(mounts.some(mount => mount.endsWith(',target=/workspace/.git,readonly')));
     assert(mounts.some(mount => mount.endsWith(',target=/workspace,readonly')));
     for (const flag of ['--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges']) assert(args.includes(flag));

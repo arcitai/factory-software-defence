@@ -5,6 +5,15 @@ current delivery state. Work one accepted slice at a time. The chosen product
 boundary is **one controller/dashboard per project**, with common Factory
 interaction and optional project identity. No global project hub is planned.
 
+## Native harness migration
+
+- [ ] [#113 — simplify the ownership model](https://github.com/arcitai/software-and-defence-factory/issues/113): Foundation, `adlc/`, the accepted Inbox and a small setup/maintenance CLI. Follow the [migration contract](docs/architecture.md#migration-contract); remove replaced runtime code only after qualification.
+- [ ] [#114 — Codex first](https://github.com/arcitai/software-and-defence-factory/issues/114): prove issue/session/Inbox/review/PR flow and project-specific configuration/connections without recurring approvals. Native app visibility remains unqualified.
+- [ ] Later native harnesses: [Claude Code #115](https://github.com/arcitai/software-and-defence-factory/issues/115), [Cursor #116](https://github.com/arcitai/software-and-defence-factory/issues/116), [Grok #117](https://github.com/arcitai/software-and-defence-factory/issues/117).
+
+The Pi/local-inference work below is deferred under this direction. Retain its
+existing implementation and evidence until its replacement is proven.
+
 ## Local context-boundary qualification
 
 - [ ] [#103 — local Pi trust-store initialization](https://github.com/arcitai/software-and-defence-factory/issues/103): **0.15.3 source repair for independent Review**. Isolated ephemeral Pi state, explicit denial of project resource trust and actual-Pi synthetic Build/Review/adversarial regressions. [Evidence and limits](docs/proof.md#pi-project-trust-startup-0153-103). Exact installed CLI/API/image and actual local-model qualification remain with the lead; failed #51 evidence is retained.

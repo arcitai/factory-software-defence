@@ -117,7 +117,7 @@ for (const scenario of (process.env.FACTORY_PI_BASELINE === '1' ? ['complete']
     for (const file of ['pi-context-extension.mjs', 'pi-context-budget.mjs'])
       writeFileSync(join(agent, file), readFileSync(join(ROOT, 'factory', file)));
     chmodSync(agent, 0o500);
-    const args = [launcher, ...localRoleCommand(binding).slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'kit/skills') : arg)];
+    const args = [launcher, ...localRoleCommand(binding).slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'adlc/skills') : arg)];
     const result = await new Promise((resolve, reject) => {
       const child = spawn(baseline ? 'pi' : process.execPath, baseline ? args.slice(1) : args, { env, cwd: workspace, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
       const usageParser = new PiUsageParser();

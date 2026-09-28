@@ -26,7 +26,7 @@ export function factoryDefinition(config) {
   const harness = harnessOf(config);
   const profiles = publicRoleProfiles(resolveRoleProfiles(config));
   const skills = Object.entries(skillRoles).map(([role, purpose]) => {
-    const id = `factory-${role}`, path = `kit/skills/${id}/SKILL.md`;
+    const id = `factory-${role}`, path = `adlc/skills/${id}/SKILL.md`;
     const content = readFileSync(join(ROOT, path), 'utf8');
     return { id, purpose, path, content, sha256: digest(content) };
   });

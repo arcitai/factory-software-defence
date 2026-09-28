@@ -3,11 +3,27 @@
 The operator skill is available through `factory foundation`, including from
 an installed npm package without a source checkout. Its canonical source is
 [.agents/skills/factory-foundation/SKILL.md](../.agents/skills/factory-foundation/SKILL.md).
-Use it explicitly for adoption; it is independent of AIOS. Repository/operator
-guidance stays outside the runtime catalog at `kit/skills/`.
+Use it explicitly for adoption. Repository/operator
+guidance stays outside the runtime catalog at `adlc/skills/`.
 See [Factory concepts](concepts.md) for host, worker, harness and agent roles.
 The [setup/deployment view](architecture.md#setup-and-deployment) shows operator
 access, the private execution host and the separate application delivery boundary.
+
+This plan documents the currently shipped optional controller. The accepted
+#113 target moves session and execution ownership to native harnesses while
+retaining Foundation, `adlc/`, the current Inbox design and a small npm/npx
+launcher. The migration remains in progress; native setup flow and dashboard
+integration are future work. After installing the package, run
+`factory probe codex`. From a Factory package root, use
+`npm run probe:codex`. It searches absolute PATH entries outside the working directory and its
+descendants, runs only
+`codex --version` without a shell, and reports authentication, protocol and task
+readiness as unknown. On Windows it supports `codex.exe`; `.cmd`
+and `.ps1` shims are reported unsupported. The probe does not log in, install
+software or qualify desktop visibility. It is also packaged with the npm
+artifact. Follow the [migration contract](architecture.md#migration-contract)
+for project-specific connections and unattended execution; discovery alone does
+not configure or prove those boundaries.
 
 Use this plan for a new installation or when moving an existing Factory to an
 execution host. Complete the applicable checkpoints in order and record the
@@ -41,7 +57,7 @@ stopped. There is no multi-project controller or second scheduler hidden in
 this plan.
 
 For method-only adoption, run `factory kit --output NEW_DIRECTORY`
-and follow [the adoption guide](../kit/README.md). The remaining host/runtime
+and follow [the adoption guide](../adlc/README.md). The remaining host/runtime
 steps apply only when using Factory's optional controller. Export maps the six
 job skills into staged `.agents/skills/`; it never changes the application's
 AGENTS.md or installs global skills. Foundation stays in the installed package.
@@ -125,7 +141,7 @@ anything. Verify the canonical Git origin and main branch's tracking target;
 a fork may still track its upstream product. Move application sources into the
 chosen workspace, not into the npm package or private runtime state.
 
-Use [repository readiness](../kit/repository.md) for issue forms, labels, CI
+Use [repository readiness](../adlc/repository.md) for issue forms, labels, CI
 policy and the explicit issue-to-job handoff. A ready label does not start a job.
 
 Before admitting development work, establish:
@@ -354,7 +370,7 @@ Copy this private completion record into the installation's handoff:
 Use Pass, Fail or Not applicable with a reason; never infer success from an
 installed file. Keep host identities, credentials, raw logs and customer details
 out of public issues and package contents. A ready worker is only the foundation:
-follow [the method](../kit/README.md#first-real-task) for the first explicitly
+follow [the method](../adlc/README.md#first-real-task) for the first explicitly
 accepted application task and revision-bound checks/review/handoff.
 
 

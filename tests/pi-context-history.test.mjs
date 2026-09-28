@@ -99,7 +99,7 @@ for (const scenario of ['complete', 'discovery', 'retry', 'summary-retry', 'summ
     writeFileSync(join(agent, 'models.json'), JSON.stringify(localRegistry(binding)));
     for (const file of ['pi-local-launch.mjs', 'pi-context-extension.mjs', 'pi-context-budget.mjs'])
       writeFileSync(join(agent, file), readFileSync(join(ROOT, 'factory', file)));
-    const args = localRoleCommand(binding).slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'kit/skills') : arg);
+    const args = localRoleCommand(binding).slice(2).map(arg => arg === '/factory-skills' ? join(ROOT, 'adlc/skills') : arg);
     const result = await new Promise((resolve, reject) => {
       child = spawn(process.execPath, [join(agent, 'pi-local-launch.mjs'), ...args], {
         env: { PATH: process.env.PATH, HOME: temp }, cwd: workspace, detached: true, stdio: ['pipe', 'pipe', 'pipe'],

@@ -15,7 +15,7 @@ Defence currently runs **Investigate** against supplied scoped evidence and
 produces a private draft. It is not production monitoring, exploitation or
 verified recovery. See [Defence integration](defence-integration.md).
 
-The six bundled job skills in `kit/skills/` cover triage, specification, implementation, review,
+The six bundled job skills in `adlc/skills/` cover triage, specification, implementation, review,
 security and evaluation. They are instructions, not six running processes.
 All are mounted read-only for agent steps; the role prompt supplies the work
 boundary. Triage/specification prepare scope before admission; evaluation is a

@@ -29,6 +29,7 @@ Choose the part you need:
 | --- | --- |
 | Set up an operator, worker and application | [Setup plan and acceptance checklist](docs/setup.md) |
 | Use the method with your existing agent | `factory kit --output ./factory-kit` — exports a new staging directory |
+| Discover installed Codex | `factory probe codex` — read-only version probe; readiness remains unknown |
 | Try the runtime without inference | `factory demo` — Docker required; synthetic sample only |
 | Connect an existing repository | [Runtime quickstart](docs/quickstart.md) |
 | Understand installation and updates | [npm and npx](docs/npm.md) |
@@ -36,6 +37,16 @@ Choose the part you need:
 | Review the evidence and limits | [Qualification](docs/proof.md) |
 
 The runtime supplies policy and six focused skills to its isolated jobs. `init` configures a private installation; it does not modify the application or start work. Model access and the application's real check command must be configured before using it for delivery.
+
+## Native harness direction
+
+Factory is moving toward a portable ADLC method, Foundation setup, the existing
+project Inbox and a small setup/maintenance CLI. The selected harness owns agent
+execution; GitHub owns issues, PRs and CI. Codex comes first, with Claude Code,
+Cursor and Grok evaluated separately later. The currently shipped controller
+remains available while its replacement is qualified. See the
+[migration contract](docs/architecture.md#migration-contract) for ownership,
+project-specific access and the gates for removing replaced runtime code.
 
 ## How the factory works
 
@@ -52,7 +63,7 @@ The project dashboard has an **Inbox**, measured **Analytics**, **Agents**, **Sk
 
 The optional **defence** workflow accepts scoped incident evidence and produces a private, read-only draft. It does not monitor production or claim verified recovery. See [defence integration](docs/defence-integration.md).
 
-Start setup with `factory foundation` and the [Factory Foundation plan](docs/setup.md).
+Start operator setup with `factory foundation` and the [Factory Foundation plan](docs/setup.md). Claude Code users should also follow the [native AGENTS.md loading note](adlc/README.md#native-instruction-loading).
 
 ## Repository map
 
@@ -61,7 +72,7 @@ Start setup with `factory foundation` and the [Factory Foundation plan](docs/set
 | `bin/` | CLI entry point |
 | `factory/` | Queue, HTTP API, isolation, evidence, updates and bundled dashboard assets |
 | `dashboard/` | Dashboard source and UI tests |
-| `kit/`, `kit/skills/` | Portable method, adoption records and the canonical six job skills |
+| `adlc/`, `adlc/skills/` | Portable method, adoption records and the canonical six job skills |
 | `.agents/skills/` | Repository/operator guidance, including explicit Factory Foundation adoption; outside the job catalog |
 | `scripts/`, `tests/` | Packaging, qualification, release checks and behavioral tests |
 | `docs/` | Setup, architecture, recovery, proof and ownership |

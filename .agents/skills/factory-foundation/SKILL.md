@@ -30,6 +30,11 @@ Use the existing task/issue record for missing obligations and evidence. Avoid a
 second project registry or a template conversion of an existing application.
 Continue authorized repairs; ask only for decisions or authority actually missing.
 
+For native-harness adoption, use the [migration contract](../../../docs/architecture.md#migration-contract).
+Keep each project's settings and connection identities deliberate; qualify its
+effective tools separately from unattended approval mode. The controller/image
+steps below describe the currently shipped optional runtime.
+
 ## Prepare and prove
 
 - **Repository:** inspect instructions, scope/design, architecture, dependencies,
@@ -38,7 +43,7 @@ Continue authorized repairs; ask only for decisions or authority actually missin
   repository instructions. Adapt the staged method to the
   project; do not overwrite its files. Reconcile the chosen provider’s issue forms/labels (where supported), CI triggers,
   required checks, protection rules and the intended PR/release path using
-  [repository readiness](../../../kit/repository.md). Before trusted GitHub PR
+  [repository readiness](../../../adlc/repository.md). Before trusted GitHub PR
   delivery, confirm active candidate-triggered workflows fit the bounded
   qualification in [recovery](../../../docs/recovery.md#trusted-pr-delivery);
   unsupported workflows keep delivery patch-only. Organization hooks and
