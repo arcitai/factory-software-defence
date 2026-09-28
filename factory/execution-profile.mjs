@@ -35,16 +35,19 @@ import { expectedWebStories, webPolicyHash } from './web-verification.mjs';
 // schemas, isolation, frozen hashes, reconstruction and acceptance are unchanged.
 // 0.16.0 adds host-owned activity only; protected writers, policy/selection
 // hashes, candidate reconstruction, mounts and acceptance guards are unchanged.
+// 0.17.0 adds an opt-in native bridge; retained legacy writers, selection hashes,
+// isolation, reconstruction and acceptance contracts are unchanged. Native receipts
+// are not legacy evidence and cannot qualify legacy acceptance.
 // Older writers still require exact patch/tree reconstruction before publication.
 // Deliberately independent of VERSION: a release bump is not
 // evidence compatibility. Re-audit this list before every release, including
 // writer, isolation and validation changes; remove versions whose guarantees no longer
 // satisfy current policy. See docs/npm.md. This predicate alone grants no trust.
-const SUPPORTED_EXECUTION_RUNTIMES_V1 = new Set(['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1', '0.11.2', '0.12.0', '0.13.0', '0.13.1', '0.14.0', '0.15.0', '0.15.1', '0.15.2', '0.15.3', '0.15.4', '0.15.5', '0.15.6', '0.16.0']);
+const SUPPORTED_EXECUTION_RUNTIMES_V1 = new Set(['0.8.0', '0.9.0', '0.9.1', '0.10.0', '0.11.0', '0.11.1', '0.11.2', '0.12.0', '0.13.0', '0.13.1', '0.14.0', '0.15.0', '0.15.1', '0.15.2', '0.15.3', '0.15.4', '0.15.5', '0.15.6', '0.16.0', '0.17.0']);
 
 export function isSupportedExecutionProfile(profile) {
-  if ([2, 3].includes(profile?.version)) return (profile.version === 3 ? ['0.15.0', '0.15.1', '0.15.2', '0.15.3', '0.15.4', '0.15.5', '0.15.6', '0.16.0'].includes(profile.runtimeVersion) && Object.hasOwn(profile, 'localBinding')
-    : ['0.14.0', '0.15.0', '0.15.1', '0.15.2', '0.15.3', '0.15.4', '0.15.5', '0.15.6', '0.16.0'].includes(profile.runtimeVersion) && !Object.hasOwn(profile, 'localBinding') && profile.inferenceProvider !== 'factory-local')
+  if ([2, 3].includes(profile?.version)) return (profile.version === 3 ? ['0.15.0', '0.15.1', '0.15.2', '0.15.3', '0.15.4', '0.15.5', '0.15.6', '0.16.0', '0.17.0'].includes(profile.runtimeVersion) && Object.hasOwn(profile, 'localBinding')
+    : ['0.14.0', '0.15.0', '0.15.1', '0.15.2', '0.15.3', '0.15.4', '0.15.5', '0.15.6', '0.16.0', '0.17.0'].includes(profile.runtimeVersion) && !Object.hasOwn(profile, 'localBinding') && profile.inferenceProvider !== 'factory-local')
     && profile.role === (Object.keys(ROLE_PHASES).find(role => ROLE_PHASES[role] === profile.phase) || null)
     && (profile.reasoningEffort === null || ['low', 'medium', 'high'].includes(profile.reasoningEffort))
     && /^[a-f0-9]{64}$/.test(profile.selectionHash || '');

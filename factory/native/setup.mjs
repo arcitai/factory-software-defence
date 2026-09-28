@@ -3,12 +3,14 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { homedir } from 'node:os';
+import { userInfo } from 'node:os';
 
 const within = (root, path) => { const r = relative(root, path); return r === '' || (r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r)); };
 const quote = value => JSON.stringify(value);
 const CONFIG = 'native.json';
-const writerRoot = () => join(realpathSync(homedir()),'.local','state','software-defence-factory','native-writers');
+// Account identity, not the launch environment, owns isolation and writer locks.
+const accountHome = () => realpathSync(userInfo().homedir);
+const writerRoot = () => join(accountHome(),'.local','state','software-defence-factory','native-writers');
 
 function executable(candidate, repo) {
   if (!isAbsolute(candidate)) throw new Error('Select an absolute Codex executable path.');
@@ -74,7 +76,7 @@ export function setupNative(repoPath, statePath, selectedCodex, bundleRead) {
     const runtimeDirs=[dirname(codexTarget),dirname(dirname(codexTarget))];
     if (!lstatSync(bundle).isDirectory() || !runtimeDirs.includes(bundle)
       || relative('/',bundle).split(sep).filter(Boolean).length<3
-      || within(bundle, process.env.HOME || '/nonexistent'))
+      || within(bundle, accountHome()))
       throw new Error('Bundle read must be a narrow Codex executable directory or installation root, never the personal home or its ancestor.');
     reads.push(bundle);
   }

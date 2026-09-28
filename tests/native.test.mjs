@@ -93,3 +93,40 @@ test('GitHub creation uncertainty retains a receipt and reconciles without a sec
   assert.equal((await store.create(input)).state,'created');
   assert.equal(writes,1);
 });
+
+
+test('different launch HOME values cannot create independent writers for one account/repository', async t => {
+  const f=fixture(t), root=dirname(f.state), states=['first-account-state','second-account-state'].map(name=>join(root,name));
+  const setupUrl=new URL('../factory/native/setup.mjs',import.meta.url).href;
+  const configs=states.map((state,index)=>{
+    const launchHome=join(root,`launch-home-${index}`);mkdirSync(launchHome);
+    const script=`import {setupNative,readNative} from ${JSON.stringify(setupUrl)};
+      setupNative(${JSON.stringify(f.repo)},${JSON.stringify(state)},${JSON.stringify(f.codex)});
+      console.log(JSON.stringify(readNative(${JSON.stringify(state)}).config));`;
+    return JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8',env:{...process.env,HOME:launchHome}}));
+  });
+  const client={onNotification:()=>{}}, first=new NativeEngine(states[0],configs[0],client,provider);
+  const release=await first.reserveWriter({id:'home-regression',created_at:new Date().toISOString()});release();
+  const {createHash}=await import('node:crypto');
+  const key=createHash('sha256').update(f.repo).digest('hex');
+  t.after(()=>rmSync(join(configs[0].writer_root,`${key}.lock`),{force:true}));
+  await assert.rejects(new NativeEngine(states[1],configs[1],client,provider).reserveWriter({id:'second'}),/Another native installation owns this repository/);
+});
+
+test('bundle cannot grant the canonical account home when launch HOME is different or aliased', t => {
+  const f=fixture(t),root=dirname(f.state),personal=join(root,'deep','account'),binary=join(personal,'bin','codex');
+  mkdirSync(dirname(binary),{recursive:true});copyFileSync(f.codex,binary);chmodSync(binary,0o755);
+  const alias=join(root,'home-alias');symlinkSync(personal,alias);
+  const other=join(root,'other-home');mkdirSync(other);
+  for(const [index,launchHome] of [other,alias].entries()) {
+    const state=join(root,`broad-state-${index}`);
+    // Model a deeper OS-account home without mutating the host account database.
+    const script=`import os from 'node:os';import {syncBuiltinESMExports} from 'node:module';
+      const original=os.userInfo;os.userInfo=()=>({...original(),homedir:${JSON.stringify(personal)}});syncBuiltinESMExports();
+      const {setupNative}=await import(${JSON.stringify(new URL('../factory/native/setup.mjs',import.meta.url).href)});
+      try {setupNative(${JSON.stringify(f.repo)},${JSON.stringify(state)},${JSON.stringify(binary)},${JSON.stringify(personal)});}
+      catch(error){console.log(error.message);process.exit(0);}process.exit(3);`;
+    const result=execFileSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8',env:{...process.env,HOME:launchHome}});
+    assert.match(result,/never the personal home/);assert.equal(existsSync(state),false);
+  }
+});
