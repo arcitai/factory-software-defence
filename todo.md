@@ -4,33 +4,38 @@
 this file preserves order, not a second execution queue. Historical releases and
 retired implementation evidence remain in Git and private installation records.
 
-## Finish the native product
+## Native product
+
+[PR #120](https://github.com/arcitai/software-and-defence-factory/pull/120)
+delivered native simplification, startup, continuation, scoped Codex permissions
+and architecture in 0.18.0. [PR #122](https://github.com/arcitai/software-and-defence-factory/pull/122)
+delivered Inbox qualification in 0.18.2 and closed #37. Remaining work:
 
 - [ ] [#113](https://github.com/arcitai/software-and-defence-factory/issues/113):
-  remove the old runtime end-to-end; small CLI/bridge, automatic startup, coherent
-  documentation/diagrams and deliberate installed migration.
+  qualify opt-in OS-native release checks and idle activation/rollback; these are
+  not delivered.
 - [ ] [#114](https://github.com/arcitai/software-and-defence-factory/issues/114):
-  native Codex continuation, actual result/history, owning-process maintenance,
-  effective isolation and installed lifecycle qualification.
-- [ ] [#37](https://github.com/arcitai/software-and-defence-factory/issues/37):
-  preserve accepted Inbox UX and share operational actions between CLI/API/UI.
+  prove sustained native credential refresh/coexistence and qualify any separately
+  selected Desktop integration; these are not delivered.
 - [ ] [#70](https://github.com/arcitai/software-and-defence-factory/issues/70):
-  verify vision-bounded improvement in reusable method and adopting projects.
+  demonstrate a real-use, vision-bounded improvement in the method and an adopting
+  project.
+- [ ] [#6](https://github.com/arcitai/software-and-defence-factory/issues/6):
+  resume application use only when the owner resumes it.
 
-Completion requires independent review, appropriate tests, actual installed
-CLI/API/browser proof, protected PR/CI and verified adoption. Source edits or
-mock tests alone do not complete these items. Keep historical state private;
-never revive obsolete jobs automatically.
+Completion follows [CONTRIBUTING.md](CONTRIBUTING.md): independent review and
+relevant checks, with installed execution/adoption evidence where required.
+Preserve existing history; never replay obsolete work automatically.
 
 ## Later, only for a proven gap
 
 - Native harness integrations: [Claude Code #115](https://github.com/arcitai/software-and-defence-factory/issues/115),
   [Cursor #116](https://github.com/arcitai/software-and-defence-factory/issues/116),
-  [Grok #117](https://github.com/arcitai/software-and-defence-factory/issues/117).
+  [Grok #117](https://github.com/arcitai/software-and-defence-factory/issues/117),
+  deferred pending a proven need and separate qualification.
 - [#69 Local Build · Cloud Review](https://github.com/arcitai/software-and-defence-factory/issues/69):
   a qualified native recipe, not a new inference engine.
-- [#6 real-project qualification](https://github.com/arcitai/software-and-defence-factory/issues/6),
-  [#7 scoped defence case](https://github.com/arcitai/software-and-defence-factory/issues/7),
+- [#7 scoped defence case](https://github.com/arcitai/software-and-defence-factory/issues/7),
   [#50 defence method](https://github.com/arcitai/software-and-defence-factory/issues/50).
 - [#27 project accents](https://github.com/arcitai/software-and-defence-factory/issues/27),
   [#51 evidence-backed measurements](https://github.com/arcitai/software-and-defence-factory/issues/51).

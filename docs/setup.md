@@ -40,6 +40,33 @@ is not a real execution or sandbox proof. Model preferences belong in the native
 configuration; access changes require deliberate requalification. Factory refuses
 an unexplained change to its pinned configuration or skill catalog.
 
+## Native Codex session visibility
+
+Codex stores configuration, authentication and history under `CODEX_HOME`
+([configuration and state locations](https://learn.chatgpt.com/docs/config-file/config-advanced#config-and-state-locations)).
+Factory uses its dedicated Codex home, so the same ChatGPT account does not
+combine local configuration or history. The supported Factory surface is the
+project Inbox and these commands through its owning bridge:
+
+```sh
+factory status --state /absolute/private/factory-state
+factory result ID --state /absolute/private/factory-state
+factory continue ID --turn TURN_ID --feedback TEXT --state /absolute/private/factory-state
+```
+
+A separate personal Codex Desktop or remote connection must not be expected to
+show Factory sessions. Desktop remote connections start their server in the
+remote user's login shell ([remote connection documentation](https://learn.chatgpt.com/docs/remote-connections#connect-to-an-ssh-host)).
+Do not copy or symlink authentication, session or database files, or enable
+personal connections to expose Factory work. A persisted native read does not
+authorize another writer. Desktop visibility or resume requires qualification
+for that deployment and is not needed for Factory's current surface.
+
+Local-home separation is not account or plan separation. API authentication and
+subscription login are distinct; do not infer plan or quota behavior from local
+state or promise automatic token refresh or indefinite coexistence. For expired
+or revoked login, follow [native Codex login recovery](recovery.md#native-codex-login-recovery).
+
 ## Start and reach the Inbox
 
 ```sh

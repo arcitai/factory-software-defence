@@ -18,6 +18,29 @@ bridge. Native Codex owns the full history. Another app-server may read persiste
 history without knowing a different process's live state; that read alone cannot
 authorize a competing writer or stopping the original process.
 
+## Native Codex login recovery
+
+For an expired or revoked login, first inspect work and the selected service:
+
+```sh
+factory status --state /absolute/private/factory-state
+factory service status --state /absolute/private/factory-state
+```
+
+Keep unknown outcomes unknown. Preserve work and reconcile ownership through the
+existing [service operation](#service-operation) rules; do not kill work to
+repair login. Once work is idle and ownership is reconciled, run:
+
+```sh
+factory login --state /absolute/private/factory-state
+factory doctor --state /absolute/private/factory-state
+```
+
+Login is native to the selected Factory Codex home; it does not replace personal
+Codex login. Doctor alone does not prove live inference or token refresh. Do not
+fall back to personal context or duplicate work if authentication remains
+unavailable. For session visibility and account boundaries, see [setup](setup.md#native-codex-session-visibility).
+
 ## Service operation
 
 ```sh

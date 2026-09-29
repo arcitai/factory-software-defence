@@ -39,5 +39,4 @@ history locations, service identity and tested/untested limits. Roll back only
 with a verified idle owner and explicit old-state selection; never point the old
 runtime at native state or let both write the same workspace.
 
-Native app-server sessions live in the dedicated Codex home. Factory does not
-promise that they appear in a separate personal Codex Desktop environment.
+For native session visibility and context boundaries, see [setup](setup.md#native-codex-session-visibility).
