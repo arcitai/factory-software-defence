@@ -323,7 +323,7 @@ body { font-size: 14px; }
 .task-metadata .metadata-hint { font-size: 11px; line-height: 17px; color: var(--muted-foreground); margin-top: 5px; }
 .metadata-link { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; text-decoration: none; }
 .metadata-link:hover { background: var(--muted); }
-.task-metadata .task-state { border-radius: 20px; padding: 5px 9px; color: var(--tone); background: color-mix(in srgb, var(--tone) 15%, transparent); }
+.task-metadata .task-state { max-width: 100%; white-space: normal; border-radius: 20px; padding: 5px 9px; color: var(--tone); background: color-mix(in srgb, var(--tone) 15%, transparent); }
 .workshop > .secondary-page { max-width: 1500px; padding: 0 56px 56px; }
 @media (max-width: 1200px) {
   .project-header { padding-left: 36px; padding-right: 36px; }
