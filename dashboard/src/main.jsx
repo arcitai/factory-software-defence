@@ -14,7 +14,7 @@ import './styles.css';
 
 function App() {
   const [status,setStatus]=useState({jobs:[],csrf_token:''}),[statusError,setStatusError]=useState(''),[statusLoaded,setStatusLoaded]=useState(false);
-  const [route,setRoute]=useState(()=>routeFromHash(window.location.hash)),[composerOpen,setComposerOpen]=useState(false),[taskActionError,setTaskActionError]=useState('');
+  const [route,setRoute]=useState(()=>routeFromHash(window.location.hash)),[composerOpen,setComposerOpen]=useState(false),[taskActionError,setTaskActionError]=useState(''),[issueRefreshKey,setIssueRefreshKey]=useState(0);
   const [dark,setDark]=useState(()=>localStorage.getItem('factory-theme')==='dark'),[workNavigation,setWorkNavigation]=useState([]);
   const scrollPositions=useRef(new Map()),previousHash=useRef(window.location.hash),returnTask=useRef(null),loader=useRef(null);
   const view=route.view,identity=projectIdentity(status.repo),selectedJob=route.jobID?status.jobs.find(job=>job.id===route.jobID):undefined;
@@ -24,6 +24,7 @@ function App() {
   useLayoutEffect(()=>{window.scrollTo({top:scrollPositions.current.get(window.location.hash)||0,behavior:'instant'});if(view==='runs'&&returnTask.current){const link=[...document.querySelectorAll('.task-row-link,.run-card-link')].find(item=>item.getAttribute('href')===returnTask.current);link?.focus({preventScroll:true});returnTask.current=null;}},[view,route.jobID,route.issueKey]);
   useEffect(()=>{let stopped=false,timer;const refresh=async()=>{await loader.current.refresh();if(!stopped)timer=window.setTimeout(refresh,2000);};refresh();return()=>{stopped=true;loader.current.cancel();window.clearTimeout(timer);};},[]);
   async function refreshStatus(){return loader.current.refresh();}
+  async function issueCreated(){setIssueRefreshKey(key=>key+1);await refreshStatus();}
   async function nativeAction(job,action,payload={}) {
     setTaskActionError('');
     const response=await fetch(`/api/v1/jobs/${encodeURIComponent(job.id)}/${action}`,{method:'POST',headers:{'Content-Type':'application/json','X-Factory-Session':status.csrf_token},body:JSON.stringify(payload)});
@@ -47,8 +48,8 @@ function App() {
         <Inbox jobs={status.jobs} loaded={statusLoaded} active={view==='runs'||view==='issue'} issueKey={route.issueKey} identity={identity} links={status.project_links} onNavigation={setWorkNavigation}
           detailProps={{actionError:taskActionError,onWorkflowAction:nativeAction}} onNewIssue={showNewIssue?()=>setComposerOpen(true):null}
           nativeReadiness={status.native_readiness} token={status.csrf_token} provider={status.issue_provider} statusError={statusError} refreshStatus={refreshStatus}
-          refreshKey={0} onStarted={started}/>
-        {composerOpen&&<RunComposer identity={identity} issueProvider={status.issue_provider} csrfToken={status.csrf_token} projectLinks={status.project_links} onCreated={async()=>refreshStatus()} close={()=>setComposerOpen(false)}/>}
+          refreshKey={issueRefreshKey} onStarted={started}/>
+        {composerOpen&&<RunComposer identity={identity} issueProvider={status.issue_provider} csrfToken={status.csrf_token} projectLinks={status.project_links} onCreated={issueCreated} close={()=>setComposerOpen(false)}/>}
       </div>
     </main>
   </div>;

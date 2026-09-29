@@ -9,7 +9,7 @@ async function requestKey(context, title, spec, labels) {
   return `browser_${Array.from(new Uint8Array(digest), byte=>byte.toString(16).padStart(2,'0')).join('')}`;
 }
 
-export function IssuePublish({ title, spec, labels, csrfToken, onCreated, onBusy }) {
+export function IssuePublish({ title, spec, labels, csrfToken, onCreated, onRecovered, onBusy }) {
   const key = useRef(null), alive = useRef(true);
   const [connection,setConnection] = useState(null), [receipts,setReceipts] = useState([]);
   const [busy,setBusy] = useState(false), [error,setError] = useState(''), [recovered,setRecovered] = useState(null);
@@ -48,8 +48,8 @@ export function IssuePublish({ title, spec, labels, csrfToken, onCreated, onBusy
     {connection ? <p className="work-help">Create in <strong>{connection.repository}</strong> as <strong>{connection.actor}</strong>. No execution starts.</p> : <p className="work-help">{error ? 'Repository connection unavailable.' : 'Checking repository identity…'}</p>}
     {labels.length>0 && <p className="work-help">Labels: {labels.join(', ')}</p>}
     {error && <p role="alert" className="form-error">{error}</p>}
-    {receipts.map(receipt=><div className="issue-receipt" key={receipt.request_id}><strong>Unconfirmed: {receipt.title}</strong><p className="work-help">Check this earlier submission before creating another copy.</p><Button type="button" variant="outline" disabled={busy} onClick={()=>perform(async()=>{const result=await api(`/api/v1/issue-submissions/${receipt.request_id}/recover`,{});if(alive.current){setRecovered(result);setReceipts(items=>items.filter(item=>item.request_id!==receipt.request_id));}})}>Check submission</Button></div>)}
-    {recovered?.issue && <p role="status"><a href={recovered.issue.url} target="_blank" rel="noreferrer">Recovered #{recovered.issue.number}: {recovered.title} ↗</a>. Select it from repository issues to start work.</p>}
+    {receipts.map(receipt=><div className="issue-receipt" key={receipt.request_id}><strong>Unconfirmed: {receipt.title}</strong><p className="work-help">Check this earlier submission before creating another copy.</p><Button type="button" variant="outline" disabled={busy} onClick={()=>perform(async()=>{const result=await api(`/api/v1/issue-submissions/${receipt.request_id}/recover`,{});if(alive.current){setReceipts(items=>items.filter(item=>item.request_id!==receipt.request_id));if(result.issue){setRecovered(result);onRecovered?.(result);}}})}>Check submission</Button></div>)}
+    {recovered?.issue && <p role="status"><a href={recovered.issue.url} target="_blank" rel="noreferrer">Recovered #{recovered.issue.number}: {recovered.title} ↗</a>. This is an earlier submission; your current draft is unchanged.</p>}
     <div className="issue-publish-actions"><Button type="button" variant="ghost" disabled={busy} onClick={()=>load()}>Refresh connection</Button><Button type="button" disabled={busy || !connection?.available || !title.trim() || !spec.trim()} onClick={()=>perform(async()=>{
       key.current=await requestKey(connection,title,spec,labels);
       const result=await api('/api/v1/issues',{title,spec,labels,request_id:key.current,repository:connection.repository,actor:connection.actor});

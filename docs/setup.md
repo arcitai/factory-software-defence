@@ -71,6 +71,39 @@ Login normally starts a user service; boot without login needs the host's user
 lingering policy. Record disk-unlock and network prerequisites. Do not claim a
 reboot was tested merely because a service is enabled.
 
+## Create and deliver an issue
+
+In the Inbox, choose **New issue** and select a repository template or **Blank
+issue**. Complete every required field. Review the compiled title and description,
+then check the repository and acting GitHub identity shown before choosing **Create
+issue**. The receipt confirms the GitHub issue; creation does not start Codex.
+**Done** returns to the Inbox, which refreshes its issue list.
+
+Once the UI shows **Issue #N created**, GitHub creation is confirmed, even if the
+browser closes before **Done**. Do not create a replacement issue. If the POST
+response disappears before confirmation, treat the upstream outcome as uncertain
+until that same submission is reconciled. The composer checks its receipt after a
+lost response; use **Check submission** when an uncertain receipt is listed. From
+the CLI, inspect the submission and reconcile its existing ID:
+
+```sh
+factory issues submissions --state PATH
+factory issues recover REQUEST_ID --state PATH
+```
+
+Keep the original request ID; do not submit the same content again with a new ID
+while its outcome is uncertain. Reloading the browser is not a way to preserve an
+unsent form. **Check submission** can recover an earlier issue without replacing
+the draft currently in the composer; follow its recovered-issue link.
+
+After the issue appears in the Inbox, open it, review its current content and
+readiness, then choose **Start work** deliberately. The result shows the native
+Codex response and thread identity. A completed turn needs project checks and an
+independent review of the exact candidate. Use **Continue** to send bounded
+feedback to that same thread. Prepare a protected pull request through the
+project's normal GitHub process, then wait for its required CI checks and review;
+Factory does not treat a completed turn as acceptance or publish a PR for you.
+
 ## Qualify one bounded issue
 
 1. Inspect readiness and verify a permitted workspace write plus denial of a

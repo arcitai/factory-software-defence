@@ -27,6 +27,8 @@ New issue loads repository templates, then creates through the repository
 provider. Creation is separate from Start. Existing repository issues enter the
 Inbox automatically when loaded; there is no redundant import-as-new-issue flow.
 GitHub browser login and the execution host's authenticated GitHub CLI are separate.
+For the browser creation, receipt recovery and delivery walkthrough, see
+[setup](setup.md#create-and-deliver-an-issue).
 
 The issue CLI uses the same JSON bodies as the dashboard's HTTP requests.
 `issues draft --file` takes `template` (the selected template ID), `sha`, `title` and `answers`; inspect
