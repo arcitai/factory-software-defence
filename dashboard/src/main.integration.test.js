@@ -78,6 +78,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
     created_at: '2026-09-28T09:00:00Z', updated_at: '2026-09-28T10:00:00Z',
   }));
   const receipts = new Map();
+  const upstreamReceipts = new Map();
   const requests = [];
   let nextIssueNumber = 121;
   let issueListReads = 0;
@@ -148,6 +149,11 @@ test('Inbox refreshes from created receipts without losing filters, board choice
         request_id: input.request_id, state: 'created', provider: 'github', repository, actor: 'operator',
         title: input.title, issue: { number: issue.number, url: issue.url, missing_labels: [] },
       };
+      upstreamReceipts.set(input.request_id, receipt);
+      if (input.title.startsWith('Unconfirmed ')) {
+        receipts.set(input.request_id, { ...receipt, state: 'uncertain', issue: undefined });
+        throw new Error('Creation outcome is uncertain. Check submission.');
+      }
       receipts.set(input.request_id, receipt);
       if (input.title === 'Lost response recovered issue') throw new Error('Browser response was lost after HTTP 201.');
       return jsonResponse(receipt, 201);
@@ -156,9 +162,8 @@ test('Inbox refreshes from created receipts without losing filters, board choice
       const requestId = url.pathname.split('/')[4];
       const prior = receipts.get(requestId);
       if (prior?.state === 'uncertain') {
-        const issue = repositoryIssue(nextIssueNumber++, prior.title);
-        issues.push(issue);
-        const recovered = { ...prior, state: 'created', repository, actor: 'operator', issue: { number: issue.number, url: issue.url, missing_labels: [] } };
+        const recovered = upstreamReceipts.get(requestId);
+        assert.ok(recovered, 'recovery only finds an already-created upstream issue');
         receipts.set(requestId, recovered);
         return jsonResponse(recovered);
       }
@@ -217,7 +222,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   await click(statusFilter);
   assert.equal(statusFilter.getAttribute('aria-pressed'), 'true');
 
-  async function createFromTemplate(title, lostResponse = false) {
+  async function createFromTemplate(title, lostResponse = false, recovery = null) {
     const priorListReads = issueListReads;
     await click(document.querySelector('.new-issue-action'));
     await waitFor(() => buttonMatching(document, text => text.includes('Feature request')), 'template chooser should load');
@@ -234,7 +239,30 @@ test('Inbox refreshes from created receipts without losing filters, board choice
     assert.match(document.querySelector('.issue-publish').textContent, /acme\/factory[\s\S]*operator/);
     const receiptReadsBeforeCreate = requests.filter(request => request.pathname === '/api/v1/issue-submissions' && request.method === 'GET').length;
     await click(buttonMatching(document, text => text.startsWith('Create issue on')));
+    if (recovery) {
+      await waitFor(() => buttonMatching(document, text => text === 'Check submission'), 'uncertain creation should offer explicit recovery');
+      assert.equal(document.querySelector('.issue-created'), null, 'an uncertain receipt is not completion');
+      const issueCount = issues.length;
+      const createCount = requests.filter(request => request.pathname === '/api/v1/issues' && request.method === 'POST').length;
+      if (recovery === 'edited') {
+        await act(async () => { setValue(document.querySelector('textarea.work-brief'), 'Changed scope that has not been submitted.', window); });
+      }
+      await click(buttonMatching(document, text => text === 'Check submission'));
+      assert.equal(issues.length, issueCount, 'recovery must not create another upstream issue');
+      assert.equal(requests.filter(request => request.pathname === '/api/v1/issues' && request.method === 'POST').length, createCount, 'recovery must not replay creation');
+      if (recovery === 'edited') {
+        await waitFor(() => document.querySelector('.issue-publish [role="status"]')?.textContent.includes(title), 'recovery identifies the original issue separately from an edited draft');
+        assert.equal(document.querySelector('.issue-created'), null, 'a prior submitted key must not confirm changed content');
+        assert.equal(document.querySelector('fieldset')?.disabled, false);
+        assert.equal(document.querySelector('textarea.work-brief')?.value, 'Changed scope that has not been submitted.');
+        await waitFor(() => issueListReads > priorListReads, 'recovered original issue still refreshes the Inbox');
+        await click(document.querySelector('button[aria-label="Close issue form"]'));
+        return;
+      }
+    }
     await waitFor(() => document.querySelector('.issue-created strong')?.textContent.includes('created'), 'creation receipt should be shown');
+    assert.equal(document.querySelector('fieldset')?.disabled, true, 'a confirmed current submission locks the form');
+    assert.equal(buttonMatching(document, text => text.startsWith('Create issue on')), undefined, 'confirmed submission cannot be re-created from this form');
     if (lostResponse) assert.ok(requests.filter(request => request.pathname === '/api/v1/issue-submissions' && request.method === 'GET').length > receiptReadsBeforeCreate, 'lost POST response should reconcile against stored receipts');
     await waitFor(() => issueListReads > priorListReads, 'successful receipt should reload the repository issue page');
     assert.equal(document.querySelector('input[aria-label="Search loaded work"]')?.value, 'preserved search phrase');
@@ -269,6 +297,9 @@ test('Inbox refreshes from created receipts without losing filters, board choice
 
   const manualRequestId = 'browser_existing_receipt_0001';
   receipts.set(manualRequestId, { request_id: manualRequestId, state: 'uncertain', title: 'Manual receipt recovered issue' });
+  const manualIssue = repositoryIssue(nextIssueNumber++, 'Manual receipt recovered issue');
+  issues.push(manualIssue);
+  upstreamReceipts.set(manualRequestId, { request_id: manualRequestId, state: 'created', title: manualIssue.title, repository, actor: 'operator', issue: { number: manualIssue.number, url: manualIssue.url, missing_labels: [] } });
   await act(async () => { setValue(document.querySelector('input[aria-label="Search loaded work"]'), 'preserved search phrase', window); });
   await click([...document.querySelectorAll('.filter-card-main')].find(button => button.textContent.includes('Needs review')));
   const readsBeforeManualRecovery = issueListReads;
@@ -300,11 +331,18 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   await click(buttonMatching(document, text => text.startsWith('Clear filters')));
   await waitFor(() => [...document.querySelectorAll('.run-card-link')].some(link => link.textContent.includes('Manual receipt recovered issue')), 'explicitly recovered issue should appear after clearing filters');
 
+  await act(async () => { setValue(document.querySelector('input[aria-label="Search loaded work"]'), 'preserved search phrase', window); });
+  await click([...document.querySelectorAll('.filter-card-main')].find(button => button.textContent.includes('Needs review')));
+  await createFromTemplate('Unconfirmed current issue', false, 'current');
+  await createFromTemplate('Unconfirmed edited issue', false, 'edited');
+  await click(buttonMatching(document, text => text.startsWith('Clear filters')));
+  await waitFor(() => [...document.querySelectorAll('.run-card-link')].some(link => link.textContent.includes('Unconfirmed current issue')), 'explicitly confirmed current issue appears after clearing filters');
+
   const reopenedTarget = [...document.querySelectorAll('.run-card-link')].find(link => link.textContent.includes('Draft target issue'));
   await click(reopenedTarget);
   await waitFor(() => document.querySelector('.issue-context textarea[maxlength="16000"]')?.value === operatorBrief, 'existing issue detail draft should survive receipt refreshes');
   assert.deepEqual(jobs.map(job => job.state), ['needs_review', 'failed', 'interrupted']);
   assert.equal(statusReads >= 3, true, 'receipt callbacks refresh native status as before');
   assert.deepEqual(requests.filter(request => request.pathname.endsWith('/start') || /\/api\/v1\/jobs\/[^/]+\/(?:continue|resume|interrupt)$/.test(request.pathname)), []);
-  assert.equal(requests.filter(request => request.pathname === '/api/v1/issues' && request.method === 'POST').length, 2);
+  assert.equal(requests.filter(request => request.pathname === '/api/v1/issues' && request.method === 'POST').length, 4);
 });

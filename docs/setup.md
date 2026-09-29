@@ -94,7 +94,9 @@ factory issues recover REQUEST_ID --state PATH
 Keep the original request ID; do not submit the same content again with a new ID
 while its outcome is uncertain. Reloading the browser is not a way to preserve an
 unsent form. **Check submission** can recover an earlier issue without replacing
-the draft currently in the composer; follow its recovered-issue link.
+the draft currently in the composer; follow its recovered-issue link. When the
+recovered submission matches the current content, the form confirms it as created
+and prevents another submission.
 
 After the issue appears in the Inbox, open it, review its current content and
 readiness, then choose **Start work** deliberately. The result shows the native
