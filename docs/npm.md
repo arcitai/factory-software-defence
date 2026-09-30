@@ -129,11 +129,11 @@ Adoption holds admissions, replaces the owned unit, reconnects to its new bridge
 and requires native readiness. A failed target may restore the previous verified
 service only after the new process is reconciled idle or stopped. Results use
 `adopted`, `no_op`, `adoption_failed` with an explicit rollback disposition, or
-`unresolved`; failures exit nonzero. A prior package must declare startup admission gating to restart during rollback.
-Older packages such as 0.18.3 are restored **stopped**, with `rollback: restored_stopped`
-and `health: old_stopped`; inspect and deliberately start them after reconciliation.
-Their original enabled setting remains, so a later login/boot can start them.
-The old pin and private operation evidence are retained. An unresolved operation requires [manual reconciliation](recovery.md#service-adoption)
+`unresolved`; failures exit nonzero. The prior package must declare startup admission gating; older packages such as
+0.18.3 need an explicit one-off migration before this command can be used. The
+new private gate is published before old-owner preparation, so an automatic
+restart cannot reopen admission while adoption is pending. The old pin and
+private operation evidence are retained. An unresolved operation requires [manual reconciliation](recovery.md#service-adoption)
 before another service change. A healthy process alone is insufficient.
 
 An npm upgrade alone does not change a pinned service. Compare native

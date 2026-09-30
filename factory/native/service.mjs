@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, linkSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join } from 'node:path';
@@ -24,6 +24,12 @@ function atomicJSON(path,value) {
 }
 function atomicText(path,value) {
   const temp=`${path}.${randomUUID()}`;writeFileSync(temp,value,{flag:'wx',mode:0o600});renameSync(temp,path);
+}
+function publishAdoption(state,operation) {
+  const staged=join(state,`.service-adoption-${randomUUID()}.json`);
+  writeFileSync(staged,`${JSON.stringify(operation,null,2)}\n`,{flag:'wx',mode:0o600});
+  // Publish complete bytes exclusively; a torn staging write never becomes a gate.
+  try {linkSync(staged,adoptionFile(state));}finally {rmSync(staged,{force:true});}
 }
 function readAdoption(state) {
   const path=adoptionFile(state);
@@ -116,12 +122,12 @@ function ownedRecord(state) {
     throw new Error('Native systemd unit changed; preserve and reconcile it before operating the service.');
   return {...value,file};
 }
-async function prepareIdle(state,repo,{connect=connectBridge}={}) {
+async function prepareIdle(state,repo,{connect=connectBridge,maintenanceToken}={}) {
   const bridge=await connect(state,repo);
   const path=join(state,'maintenance.json');
   let operation=existsSync(path)?JSON.parse(readFileSync(path,'utf8')):null;
   if(!operation||operation.instance!==bridge.instance) {
-    operation={instance:bridge.instance,token:randomUUID()};
+    operation={instance:bridge.instance,token:maintenanceToken || randomUUID()};
     atomicJSON(path,operation);
   }
   const {token}=operation;
@@ -332,20 +338,11 @@ async function rollbackAdoption(state,config,oldRecord,newRecord,operation,reaso
     const stopped=await stoppedOwner(state,newRecord,ops);
     if(!stopped.enabled||stopped.fragment!==newRecord.unit_file||stopped.reload_needed!=='no')throw Error();
   } catch {return unresolvedAdoption(state,operation,`${reason} Replacement unit changed before restoring the prior definition.`);}
-  const gated=JSON.parse(readFileSync(join(oldRecord.runtime,'package.json'),'utf8')).factoryService?.adoptionGate===1;
   operation=updateAdoption(state,operation,'rollback_restoring_old',{reason});
   atomicText(oldRecord.file,operation.old_definition);
   atomicJSON(join(state,'service.json'),recordData(oldRecord));
   try {ops.systemctl(['daemon-reload']);}
   catch {return unresolvedAdoption(state,operation,`${reason} Prior unit reload outcome is uncertain.`,'incomplete');}
-  if(!gated) {
-    try {assertServiceRecord(state,config,oldRecord);await stoppedOwner(state,oldRecord,ops);}
-    catch {return unresolvedAdoption(state,operation,`${reason} Prior restored unit is not confirmed stopped.`,'incomplete');}
-    rmSync(join(state,'maintenance.json'),{force:true});
-    archiveAdoption(state,operation,'rolled_back_stopped',{reason,rollback:'restored_stopped'});
-    return adoptionResult('adoption_failed',operation,{reason,rollback:'restored_stopped',health:'old_stopped',
-      recovery:'Prior runtime has no startup admission gate. The original enabled unit is restored but not started; inspect service status and deliberately start it after reconciliation. It can still start on a later login/boot.'});
-  }
   try {ops.systemctl(['start',oldRecord.unit]);}
   catch {return unresolvedAdoption(state,operation,`${reason} Prior service restart outcome is uncertain.`,'incomplete');}
   const restored=await waitForOwner(state,oldRecord,operation,ops,operation.old_instance);
@@ -380,19 +377,40 @@ export async function adoptInstalledService(statePath,{read=readNative,sourceRoo
       throw new Error('Prior service is not an active, enabled, verified owning bridge; adoption refused.');
     if(decision==='same')return {status:'no_op',old_version:oldRecord.release_version,new_version:source.version,
       health:'bridge_connected',rollback:'not_needed',native_instance:before.native_instance};
+    if(JSON.parse(readFileSync(join(oldRecord.runtime,'package.json'),'utf8')).factoryService?.adoptionGate!==1)
+      throw new Error('Prior runtime has no startup admission gate; an explicit migration is required before adoption.');
     const bridge=await connect(state,config.repo);
     if(bridge.instance!==before.native_instance)throw new Error('Prior service bridge instance changed before maintenance.');
     assertSettledIssueReceipts(state);
     const oldStatus=await bridge.request('/api/v1/status');
     if(oldStatus.native_instance!==bridge.instance||oldStatus.native_readiness?.ready!==true)
       throw new Error('Prior native readiness is not confirmed; adoption refused.');
+    const token=randomUUID();
+    const newRecord={version:1,id:oldRecord.id,unit:oldRecord.unit,port:oldRecord.port,state,repo:config.repo,node:config.node,
+      runtime,runtime_sha256:manifest.runtime_sha256,release_version:source.version,
+      unit_file:oldRecord.file,definition_sha256:manifest.definition_sha256};
+    let operation={version:1,token,state,phase:'preparing',old_version:oldRecord.release_version,new_version:source.version,
+      old_instance:before.native_instance,old_pid:before.pid,old_record:recordData(oldRecord),old_definition:readFileSync(oldRecord.file,'utf8'),
+      new_record:newRecord,new_definition:manifest.definition,receipts_sha256:null,created_at:new Date().toISOString()};
+    // Gate admission and automatic restart before preparing the current owner.
+    publishAdoption(state,operation);
     let prepared;
-    try {prepared=await prepareIdle(state,config.repo,{connect});}
+    try {prepared=await prepareIdle(state,config.repo,{connect,maintenanceToken:token});}
     catch(error) {
-      if(error.status===409)rmSync(join(state,'maintenance.json'),{force:true});
+      if(error.status===409) {
+        try {
+          assertServiceRecord(state,config,oldRecord);
+          const current=await snapshot(state,oldRecord,ops);
+          if(!current.healthy||current.pid!==before.pid||current.native_instance!==bridge.instance)throw Error();
+          const cancelled=await bridge.request('/api/v1/maintenance/cancel',{instance:bridge.instance,token});
+          if(cancelled.instance!==bridge.instance||cancelled.prepared!==false)throw Error();
+          rmSync(join(state,'maintenance.json'),{force:true});
+          archiveAdoption(state,operation,'aborted_before_stop',{rollback:'not_needed'});
+        } catch {updateAdoption(state,operation,'unresolved',{reason:'Prior maintenance refusal could not be reconciled.',rollback:'blocked'});}
+      } else updateAdoption(state,operation,'unresolved',{reason:'Prior maintenance outcome is unknown.',rollback:'blocked'});
       throw error;
     }
-    if(prepared.instance!==before.native_instance)
+    if(prepared.instance!==before.native_instance||prepared.maintenanceToken!==token)
       throw new Error(`Prior service instance changed during maintenance. ${recovery}`);
     assertSettledIssueReceipts(state);
     assertServiceRecord(state,config,oldRecord);
@@ -400,14 +418,7 @@ export async function adoptInstalledService(statePath,{read=readNative,sourceRoo
     const current=await snapshot(state,oldRecord,ops);
     if(!current.active||!current.healthy||!current.enabled||current.pid!==before.pid||current.native_instance!==prepared.instance)
       throw new Error(`Prior service identity changed after maintenance preparation. ${recovery}`);
-    const token=prepared.maintenanceToken,receiptHash=receiptDigest(state);
-    const newRecord={version:1,id:oldRecord.id,unit:oldRecord.unit,port:oldRecord.port,state,repo:config.repo,node:config.node,
-      runtime,runtime_sha256:manifest.runtime_sha256,release_version:source.version,
-      unit_file:oldRecord.file,definition_sha256:manifest.definition_sha256};
-    let operation={version:1,token,state,phase:'prepared',old_version:oldRecord.release_version,new_version:source.version,
-      old_instance:before.native_instance,old_pid:before.pid,old_record:recordData(oldRecord),old_definition:readFileSync(oldRecord.file,'utf8'),
-      new_record:newRecord,new_definition:manifest.definition,receipts_sha256:receiptHash,created_at:new Date().toISOString()};
-    writeFileSync(adoptionFile(state),`${JSON.stringify(operation,null,2)}\n`,{flag:'wx',mode:0o600});
+    operation=updateAdoption(state,operation,'prepared',{receipts_sha256:receiptDigest(state)});
     try {
       assertServiceRecord(state,config,oldRecord);
       if(runtimeDigest(runtime)!==manifest.runtime_sha256)throw Error();
@@ -460,7 +471,11 @@ async function serviceAction(action,statePath,port) {
   if(!['install','status','start','stop','restart','remove','cancel-maintenance'].includes(action))throw new Error('Use service install|status|start|stop|restart|remove|cancel-maintenance.');
   const {state,config}=readNative(statePath),{folder,record:recordPath}=configPaths(state);
   if(action==='status') {
-    const pending=readAdoption(state),adoption_pending=pending?{phase:pending.phase,old_version:pending.old_version,new_version:pending.new_version}:null;
+    let pending;
+    try {pending=readAdoption(state);}catch {
+      return {installed:null,state,healthy:false,ownership:'unresolved',adoption_pending:{phase:'unreadable'},recovery};
+    }
+    const adoption_pending=pending?{phase:pending.phase,old_version:pending.old_version,new_version:pending.new_version}:null;
     let existing;
     try {existing=ownedRecord(state);}catch(error) {
       if(!pending)throw error;

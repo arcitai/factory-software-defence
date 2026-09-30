@@ -10,7 +10,7 @@ import { adoptInstalledService, pinInstalledRuntime, serviceManifest, manageNati
 function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPrepare=false,
   startUncertain=false,newBridgeUnknown=false,newBridgeDisappears=false,newPrepareBusy=false,
   changeReceipts=false,wrongFragment=false,lingeringTasks=false,reloadNeeded=false,
-  tasksUnset=false,groupRetained=false,groupUnknown=false,rollbackGate=true,afterPrepare=()=>{},afterStop=()=>{},afterNewPrepare=()=>{}}={}) {
+  tasksUnset=false,groupRetained=false,groupUnknown=false,rollbackGate=true,afterPrepare=()=>{},afterStop=()=>{},afterNewPrepare=()=>{},afterOldStatus=()=>{},inspectBeforePrepare=()=>{}}={}) {
   const root=mkdtempSync(join(tmpdir(),'factory-adopt-'));
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const state=join(root,'state'),repo=join(root,'repo'),unitFolder=join(root,'systemd','user');
@@ -64,6 +64,7 @@ function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPr
     return {instance:owner,request:async(path,input)=>{
       calls.push(`bridge ${owner} ${path}`);
       if(path==='/api/v1/maintenance/prepare') {
+        if(owner==='old-instance')inspectBeforePrepare();
         if(busy&&owner==='old-instance')throw Object.assign(new Error('Native work is active'),{status:409});
         if(owner==='target-instance')newPrepares++;
         if(newPrepareBusy&&owner==='target-instance'&&newPrepares>=2)throw Object.assign(new Error('New native work is active'),{status:409});
@@ -73,9 +74,9 @@ function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPr
         return {instance:owner,token:input.token,prepared:true};
       }
       if(path==='/api/v1/maintenance/cancel')return {instance:owner,prepared:false};
-      if(path==='/api/v1/status')return {native:true,native_instance:owner,repo,
+      if(path==='/api/v1/status') {if(owner==='old-instance')afterOldStatus();return {native:true,native_instance:owner,repo,
         native_readiness:{ready:owner==='target-instance'?targetReady:true},
-        infrastructure:{native:{connected:true}},jobs:[]};
+        infrastructure:{native:{connected:true}},jobs:[]};}
       throw new Error(`Unexpected bridge request ${path}`);
     }};
   };
@@ -251,14 +252,17 @@ test('status reports pending adoption when unit and record replacement was parti
   const result=await manageNativeService('status',state);
   assert.equal(result.ownership,'unresolved');assert.equal(result.healthy,false);assert.equal(result.adoption_pending.phase,'old_stopped');
   assert.equal(readFileSync(file,'utf8'),'new unit written before record');
+  writeFileSync(join(state,'service-adoption.json'),'partial JSON',{mode:0o600});
+  const unreadable=await manageNativeService('status',state);
+  assert.equal(unreadable.ownership,'unresolved');assert.equal(unreadable.adoption_pending.phase,'unreadable');
+  assert.equal(readFileSync(join(state,'service-adoption.json'),'utf8'),'partial JSON');
 });
 
 
-test('rollback without an older startup gate restores the unit stopped, never opening admissions',async t=>{
-  const h=fixture(t,{targetReady:false,rollbackGate:false}),result=await h.run();
-  assert.equal(result.status,'adoption_failed');assert.equal(result.rollback,'restored_stopped');assert.equal(result.health,'old_stopped');
-  assert.equal(h.active,false);assert.equal(h.selected,'0.18.3');assert.equal(h.calls.filter(call=>call.startsWith('start ')).length,1);
-  assert.equal(existsSync(join(h.state,'service-adoption.json')),false);
+test('an older runtime without startup gating needs explicit migration before adoption',async t=>{
+  const h=fixture(t,{targetReady:false,rollbackGate:false});
+  await assert.rejects(h.run(),/startup admission gate.*migration/);
+  assert.equal(h.active,true);assert.equal(h.selected,'0.18.3');assert.equal(h.calls.some(call=>call.startsWith('stop ')),false);
 });
 
 test('rollback refuses a different replacement owner after maintenance preparation',async t=>{
@@ -276,4 +280,18 @@ test('rollback preserves a unit changed while stopping the replacement',async t=
 test('selected target pin changed during idle preparation refuses stop',async t=>{
   const h=fixture(t,{afterPrepare:({file})=>{writeFileSync(join(h.state,'runtime','0.18.4','bin','software-defence-factory.mjs'),'changed target');}});
   await assert.rejects(h.run(),/Target pinned release changed/);assert.equal(h.calls.filter(call=>call.startsWith('stop ')).length,0);
+});
+
+
+test('the adoption startup gate is published before old bridge preparation',async t=>{
+  const h=fixture(t,{inspectBeforePrepare:()=>assert.equal(JSON.parse(readFileSync(join(h.state,'service-adoption.json'))).phase,'preparing')});
+  assert.equal((await h.run()).status,'adopted');
+});
+
+test('exclusive initial adoption receipt publication never overwrites another owner',async t=>{
+  const other=JSON.stringify({version:1,token:'other-service-operation',phase:'preparing'});
+  const h=fixture(t,{afterOldStatus:()=>writeFileSync(join(h.state,'service-adoption.json'),other,{mode:0o600})});
+  await assert.rejects(h.run(),/EEXIST/);
+  assert.equal(readFileSync(join(h.state,'service-adoption.json'),'utf8'),other);
+  assert.equal(h.calls.some(call=>call.startsWith('stop ')),false);
 });

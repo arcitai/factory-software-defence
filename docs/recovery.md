@@ -99,23 +99,24 @@ adopt --state PATH` only after selecting a compatible patch release. `no_op`
 means the already pinned bytes match. `adopted` means the replacement bridge
 and native readiness were confirmed. `adoption_failed` with `rollback: restored`
 means the earlier service was verified and restored, but the target failed; the
-command exits nonzero. `rollback: restored_stopped` with `health: old_stopped`
-means the prior package lacks the startup admission gate: its original unit is
-restored without starting it. Inspect status and deliberately use `service start`
-after reconciliation; its original enabled setting also permits a later login/boot
-to start it. This is not restored native readiness. `unresolved` means ownership, stop/start outcome, native
+command exits nonzero. `unresolved` means ownership, stop/start outcome, native
 work or admission state could not be proved; do not rerun adoption as a retry.
 
 An interrupted adoption leaves private `service-adoption.json` and possibly
 `maintenance.json` beside `service.json`. `factory service status --state PATH`
 shows the pending phase. Preserve those files, both pinned releases, the user
 unit, native writer/issue receipts and service journal before investigating.
-The target bridge starts with admissions blocked while this record is pending.
+A compatible prior or target bridge starts with admissions blocked while this
+record is pending. Status reports an unreadable pending record without overwriting it.
 `cancel-maintenance`, restart, remove and another adopt are refused until the
 operation is explicitly reconciled; deleting the record merely to unlock a
 command is unsafe. Inspect the exact systemd unit and MainPID, bridge instance,
 native thread states and receipts. Never stop active or unknown work to force a
 rollback. Systemd or host shutdown can still interrupt a native turn; adoption
-does not replay it. A restored older binary cannot be assumed to enforce the
-new target's startup gate after a later restart, so unresolved rollback needs
-operator control of the unit before any further start.
+does not replay it. Packages without the startup admission gate are refused before adoption. Their
+one-off migration must prevent OS restart while reconciling the exact old owner;
+preserve the unit, native state and pin. A Linux user-systemd runtime mask can
+prevent restart, but it is not proof of idle native work. Reconcile ownership,
+then deliberately replace the stopped service with a qualified installed package
+and remove the mask only when the old unit cannot restart. Verify native
+readiness and history before accepting the migration.
