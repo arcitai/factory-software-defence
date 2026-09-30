@@ -53,8 +53,9 @@ jobs:
       - id: release
         run: node scripts/release.mjs
       - if: steps.release.outputs.publish == 'true'
-        run: npm publish --access public --ignore-scripts
-        # npm OIDC is bound to arcitai/software-and-defence-factory + ci.yml.
+        run: npm publish --access public --ignore-scripts --tag "$FACTORY_RELEASE_CHANNEL"
+        # npm OIDC must match arcitai/factory-software-defence + ci.yml.
         # npm provenance is not currently emitted; OIDC authenticates publication.
         env:
+          FACTORY_RELEASE_CHANNEL: ${{ steps.release.outputs.channel }}
           NPM_CONFIG_PROVENANCE: 'false'
