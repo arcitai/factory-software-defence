@@ -115,8 +115,10 @@ native thread states and receipts. Never stop active or unknown work to force a
 rollback. Systemd or host shutdown can still interrupt a native turn; adoption
 does not replay it. Packages without the startup admission gate are refused before adoption. Their
 one-off migration must prevent OS restart while reconciling the exact old owner;
-preserve the unit, native state and pin. A Linux user-systemd runtime mask can
+preserve the unit, native state and pin. A mask of the owned Linux user unit, confirmed by `LoadState=masked`, can
 prevent restart, but it is not proof of idle native work. Reconcile ownership,
 then deliberately replace the stopped service with a qualified installed package
-and remove the mask only when the old unit cannot restart. Verify native
+and remove the mask only when the old unit cannot restart. A runtime mask can be
+ignored when a higher-priority user unit exists; creating a mask is not proof
+that it took effect. Verify native
 readiness and history before accepting the migration.

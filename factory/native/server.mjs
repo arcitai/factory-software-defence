@@ -23,7 +23,7 @@ export function createNativeServer(state,config,{harness,provider,instance=rando
   const invoke=(name,...args)=>{if(typeof engine[name]!=='function')throw new FactoryError('This harness capability is unavailable.',404);return engine[name](...args);};
   if(maintenanceToken!==null && (typeof maintenanceToken!=='string'||!/^[a-zA-Z0-9-]{16,100}$/.test(maintenanceToken)))
     throw new Error('Pending service adoption has an invalid maintenance token.');
-  let maintenance=maintenanceToken?{token:maintenanceToken,phase:'prepared'}:null,inFlight=0;
+  let maintenance=maintenanceToken?{token:maintenanceToken,phase:'startup'}:null,inFlight=0;
   const waitForWrites=()=>new Promise((resolve,reject)=>{
     if(inFlight===0)return resolve();
     const poll=setInterval(()=>{if(inFlight===0){clearInterval(poll);clearTimeout(deadline);resolve();}},20);
@@ -43,6 +43,9 @@ export function createNativeServer(state,config,{harness,provider,instance=rando
       if(!hosts.includes(request.headers.host))throw new FactoryError('Host is not allowed',403);
       if(request.headers.origin && !hosts.map(host=>`http://${host}`).includes(request.headers.origin))throw new FactoryError('Origin is not allowed',403);
       if(request.headers['sec-fetch-site']==='cross-site')throw new FactoryError('Cross-site access is not allowed',403);
+      // A restart-only gate follows the durable receipt; explicit maintenance
+      // remains held until its owner cancels it.
+      if(maintenance?.phase==='startup'&&!existsSync(join(state,'service-adoption.json')))maintenance=null;
       const url=new URL(request.url,`http://${request.headers.host}`);
       const authenticated=equal(request.headers['x-factory-session'],csrf);
       if(request.method==='GET'&&url.pathname==='/api/v1/bridge/status')
@@ -91,8 +94,8 @@ export function createNativeServer(state,config,{harness,provider,instance=rando
         if(url.pathname==='/api/v1/maintenance/prepare') {
           if(input.instance!==instance)throw new FactoryError('Native instance changed.',409);
           if(typeof input.token!=='string'||!/^[a-zA-Z0-9-]{16,100}$/.test(input.token))throw new FactoryError('Maintenance needs a unique operation token.',400);
-          if(maintenance?.token===input.token && maintenance.phase==='prepared') {
-            await waitForWrites();await assertIdle();
+          if(maintenance?.token===input.token && ['prepared','startup'].includes(maintenance.phase)) {
+            await waitForWrites();await assertIdle();maintenance.phase='prepared';
             return send(200,{instance,token:maintenance.token,prepared:true});
           }
           if(maintenance)throw new FactoryError('Maintenance is already prepared.',409);

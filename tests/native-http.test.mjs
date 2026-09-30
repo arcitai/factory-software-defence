@@ -87,6 +87,7 @@ test('pending service adoption closes admissions before the replacement bridge i
   const state=mkdtempSync(join(tmpdir(),'factory-native-adoption-gate-'));
   t.after(()=>rmSync(state,{recursive:true,force:true}));
   mkdirSync(join(state,'receipts'));mkdirSync(join(state,'issue-submissions'));
+  writeFileSync(join(state,'service-adoption.json'),'pending');
   let starts=0,idleChecks=0;
   const harness={name:'fixture',available:true,jobs:async()=>[],doctor:async()=>({ready:true,gaps:[]}),
     assertWorkspaceIdle:async()=>{idleChecks++;},start:async()=>{starts++;return {id:'job_abcdef'};}};
@@ -109,4 +110,19 @@ test('pending service adoption closes admissions before the replacement bridge i
   rmSync(join(state,'service-adoption.json'));
   assert.equal((await post('/api/v1/issues/start',{})).status,201);
   assert.equal(starts,1);
+});
+
+
+test('a restarted startup gate releases when its adoption receipt is archived',async t=>{
+  const state=mkdtempSync(join(tmpdir(),'factory-adoption-startup-release-'));t.after(()=>rmSync(state,{recursive:true,force:true}));
+  mkdirSync(join(state,'receipts'));mkdirSync(join(state,'issue-submissions'));writeFileSync(join(state,'service-adoption.json'),'pending');
+  let starts=0;const harness={name:'fixture',available:true,jobs:async()=>[],doctor:async()=>({ready:true,gaps:[]}),assertWorkspaceIdle:async()=>{},start:async()=>{starts++;return {id:'job_abcdef'};}};
+  const provider={id:'unsupported',label:'Test',repository:null,host:null,supported:false,capabilities:{create:false}};
+  const {server}=createNativeServer(state,{repo:join(state,'repo')},{harness,provider,instance:'restarted',maintenanceToken:'pending-adoption-token'});
+  await new Promise((resolve,reject)=>server.once('error',reject).listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const root=`http://127.0.0.1:${server.address().port}`,before=await (await fetch(root+'/api/v1/status')).json();assert.equal(before.maintenance_prepared,true);
+  const post=()=>fetch(root+'/api/v1/issues/start',{method:'POST',headers:{'content-type':'application/json','x-factory-session':before.csrf_token},body:'{}'});
+  assert.equal((await post()).status,409);rmSync(join(state,'service-adoption.json'));
+  assert.equal((await (await fetch(root+'/api/v1/status')).json()).maintenance_prepared,false);
+  assert.equal((await post()).status,201);assert.equal(starts,1);
 });

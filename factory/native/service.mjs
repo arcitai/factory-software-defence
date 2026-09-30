@@ -9,6 +9,7 @@ import { connectBridge } from './bridge-client.mjs';
 import { acquireProcessLock, activeProcessLock, inspectProcessLock } from './process-lock.mjs';
 
 const packageRoot=fileURLToPath(new URL('../../',import.meta.url));
+const adoptionPhases=new Set(['preparing','prepared','old_stop_requested','old_stopped','new_unit_written','new_start_requested','new_ready','rollback_stopping_new','rollback_restoring_old','reopening','unresolved','adopted','rolled_back','aborted_before_stop']);
 const adoptionFile=state=>join(state,'service-adoption.json');
 const recovery='Preserve service-adoption.json, service.json, both pinned releases and native receipts. Inspect the user unit, process identity and owning bridge before any manual recovery; never replay a native turn.';
 const serviceHash=value=>createHash('sha256').update(value).digest('hex').slice(0,16);
@@ -37,7 +38,8 @@ function readAdoption(state) {
   const stat=lstatSync(path);
   if(!stat.isFile()||(stat.mode&0o077))throw new Error(`Private service adoption record is unsafe. ${recovery}`);
   let value;try {value=JSON.parse(readFileSync(path,'utf8'));}catch {throw new Error(`Private service adoption record is unreadable. ${recovery}`);}
-  if(value?.version!==1||typeof value.token!=='string'||!/^[a-zA-Z0-9-]{16,100}$/.test(value.token))
+  if(value?.version!==1||typeof value.token!=='string'||!/^[a-zA-Z0-9-]{16,100}$/.test(value.token)
+    ||!adoptionPhases.has(value.phase)||!/^0\.\d+\.\d+$/.test(value.old_version||'')||!/^0\.\d+\.\d+$/.test(value.new_version||''))
     throw new Error(`Private service adoption record is invalid. ${recovery}`);
   return value;
 }
@@ -292,6 +294,32 @@ function unresolvedAdoption(state,operation,reason,rollback='blocked') {
   updateAdoption(state,operation,'unresolved',{reason,rollback});
   return adoptionResult('unresolved',operation,{reason,rollback,recovery,health:'unknown'});
 }
+async function finishAdoption(state,config,record,operation,owner,phase,extra,ops) {
+  const confirm=async()=>{
+    assertServiceRecord(state,config,record);
+    const current=await snapshot(state,record,ops);
+    if(!current.healthy||!current.enabled||current.pid!==owner.current.pid||current.native_instance!==owner.bridge.instance)
+      throw new Error('Service owner changed during admission reopening.');
+    const bridge=await ops.connect(state,config.repo),status=await bridge.request('/api/v1/status');
+    if(bridge.instance!==owner.bridge.instance||status.native_instance!==bridge.instance||status.repo!==config.repo
+      ||status.native_readiness?.ready!==true||status.infrastructure?.native?.connected!==true||status.maintenance_prepared!==false)
+      throw new Error('Current bridge admission or readiness is unconfirmed.');
+  };
+  let archived=false;
+  try {
+    await confirm();
+    rmSync(join(state,'maintenance.json'),{force:true});
+    archiveAdoption(state,operation,'reopening',extra);archived=true;
+    await confirm();
+    atomicJSON(join(state,'service-adoptions',`${operation.token}.json`),
+      {...operation,...extra,phase,updated_at:new Date().toISOString()});
+    return null;
+  } catch(error) {
+    // A changed owner is preserved, never stopped or replayed to force success.
+    if(archived&&!existsSync(adoptionFile(state)))publishAdoption(state,operation);
+    return unresolvedAdoption(state,operation,error.message,phase==='rolled_back'?'incomplete':'blocked');
+  }
+}
 async function rollbackAdoption(state,config,oldRecord,newRecord,operation,reason,ops) {
   let owned;
   try {owned=ownedRecord(state);}catch {return unresolvedAdoption(state,operation,`${reason} Replacement unit ownership is unknown.`);}
@@ -351,8 +379,9 @@ async function rollbackAdoption(state,config,oldRecord,newRecord,operation,reaso
     const cancelled=await restored.bridge.request('/api/v1/maintenance/cancel',{instance:restored.bridge.instance,token:operation.token});
     if(cancelled.instance!==restored.bridge.instance||cancelled.prepared!==false)throw new Error('Maintenance cancel was ambiguous.');
   } catch {return unresolvedAdoption(state,operation,`${reason} Prior service was restored but admission reopening is uncertain.`,'incomplete');}
-  rmSync(join(state,'maintenance.json'),{force:true});
-  archiveAdoption(state,operation,'rolled_back',{reason,rollback:'restored',restored_instance:restored.bridge.instance});
+  const reopening=await finishAdoption(state,config,oldRecord,operation,restored,'rolled_back',
+    {reason,rollback:'restored',restored_instance:restored.bridge.instance},ops);
+  if(reopening)return reopening;
   return adoptionResult('adoption_failed',operation,{reason,rollback:'restored',health:'old_ready',native_instance:restored.bridge.instance});
 }
 
@@ -454,8 +483,9 @@ export async function adoptInstalledService(statePath,{read=readNative,sourceRoo
       const cancelled=await started.bridge.request('/api/v1/maintenance/cancel',{instance:started.bridge.instance,token});
       if(cancelled.instance!==started.bridge.instance||cancelled.prepared!==false)throw new Error('Maintenance cancel was ambiguous.');
     } catch {return unresolvedAdoption(state,operation,'New service is ready but admission reopening is uncertain.');}
-    rmSync(join(state,'maintenance.json'),{force:true});
-    archiveAdoption(state,operation,'adopted',{rollback:'not_needed',new_instance:started.bridge.instance});
+    const reopening=await finishAdoption(state,config,newRecord,operation,started,'adopted',
+      {rollback:'not_needed',new_instance:started.bridge.instance},ops);
+    if(reopening)return reopening;
     return adoptionResult('adopted',operation,{health:'native_ready',rollback:'not_needed',native_instance:started.bridge.instance});
   } finally {release();}
 }

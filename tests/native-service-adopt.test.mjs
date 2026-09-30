@@ -10,7 +10,7 @@ import { adoptInstalledService, pinInstalledRuntime, serviceManifest, manageNati
 function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPrepare=false,
   startUncertain=false,newBridgeUnknown=false,newBridgeDisappears=false,newPrepareBusy=false,
   changeReceipts=false,wrongFragment=false,lingeringTasks=false,reloadNeeded=false,
-  tasksUnset=false,groupRetained=false,groupUnknown=false,rollbackGate=true,afterPrepare=()=>{},afterStop=()=>{},afterNewPrepare=()=>{},afterOldStatus=()=>{},inspectBeforePrepare=()=>{}}={}) {
+  tasksUnset=false,groupRetained=false,groupUnknown=false,rollbackGate=true,afterPrepare=()=>{},afterStop=()=>{},afterNewPrepare=()=>{},afterOldStatus=()=>{},inspectBeforePrepare=()=>{},restartAfterCancel=false}={}) {
   const root=mkdtempSync(join(tmpdir(),'factory-adopt-'));
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const state=join(root,'state'),repo=join(root,'repo'),unitFolder=join(root,'systemd','user');
@@ -73,10 +73,10 @@ function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPr
         if(owner==='old-instance')afterPrepare({file:manifest.file,disable:()=>{enabled=false;}});
         return {instance:owner,token:input.token,prepared:true};
       }
-      if(path==='/api/v1/maintenance/cancel')return {instance:owner,prepared:false};
+      if(path==='/api/v1/maintenance/cancel') {if(restartAfterCancel&&owner==='target-instance'){pid=999;instance='new-after-cancel';}return {instance:owner,prepared:false};}
       if(path==='/api/v1/status') {if(owner==='old-instance')afterOldStatus();return {native:true,native_instance:owner,repo,
         native_readiness:{ready:owner==='target-instance'?targetReady:true},
-        infrastructure:{native:{connected:true}},jobs:[]};}
+        infrastructure:{native:{connected:true}},maintenance_prepared:false,jobs:[]};}
       throw new Error(`Unexpected bridge request ${path}`);
     }};
   };
@@ -256,6 +256,8 @@ test('status reports pending adoption when unit and record replacement was parti
   const unreadable=await manageNativeService('status',state);
   assert.equal(unreadable.ownership,'unresolved');assert.equal(unreadable.adoption_pending.phase,'unreadable');
   assert.equal(readFileSync(join(state,'service-adoption.json'),'utf8'),'partial JSON');
+  writeFileSync(join(state,'service-adoption.json'),JSON.stringify({version:1,token:'structurally-partial-token',old_version:'0.18.3',new_version:'0.18.4'}),{mode:0o600});
+  assert.equal((await manageNativeService('status',state)).adoption_pending.phase,'unreadable');
 });
 
 
@@ -294,4 +296,12 @@ test('exclusive initial adoption receipt publication never overwrites another ow
   await assert.rejects(h.run(),/EEXIST/);
   assert.equal(readFileSync(join(h.state,'service-adoption.json'),'utf8'),other);
   assert.equal(h.calls.some(call=>call.startsWith('stop ')),false);
+});
+
+
+test('a replacement restart during reopening cannot be reported as adopted',async t=>{
+  const h=fixture(t,{restartAfterCancel:true}),result=await h.run();
+  assert.equal(result.status,'unresolved');assert.equal(h.active,true);assert.equal(h.selected,'0.18.4');
+  assert.equal(existsSync(join(h.state,'service-adoption.json')),true);
+  assert.equal(h.calls.filter(call=>call.startsWith('stop ')).length,1);
 });
