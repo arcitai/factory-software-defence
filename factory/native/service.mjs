@@ -147,7 +147,8 @@ export function assertStoppedReconciled(state) {
   // Starting the bridge only reconnects history. Receipts are deliberately
   // retained; admission still reconciles native ownership before a new turn.
 }
-async function snapshot(state,record,{systemctl=callSystemctl,connect=connectBridge,processOwner=activeProcessLock}={}) {
+const readProcessCommand=pid=>readFileSync(`/proc/${pid}/cmdline`,'utf8').split('\0').filter(Boolean);
+async function snapshot(state,record,{systemctl=callSystemctl,connect=connectBridge,processOwner=activeProcessLock,processCommand=readProcessCommand}={}) {
   const unitFile=record.file || record.unit_file;
   let active='unknown',pid=0,enabled='unknown',fragment='',tasks=null,controlGroup=null,reloadNeeded='unknown';
   try {active=systemctl(['show',record.unit,'--property=ActiveState','--value']);}catch {active='unknown';}
@@ -160,7 +161,10 @@ async function snapshot(state,record,{systemctl=callSystemctl,connect=connectBri
   let healthy=false,native_instance=null;
   try {
     const bridge=await connect(state,record.repo),owner=processOwner(join(state,'serve.lock'));
-    native_instance=bridge.instance;healthy=active==='active'&&pid>0&&owner?.pid===pid&&fragment===unitFile&&reloadNeeded==='no';
+    const expected=[record.node,join(record.runtime,'bin/software-defence-factory.mjs'),'serve','--state',state,'--port',String(record.port)];
+    const executing=pid>0?processCommand(pid):[];
+    native_instance=bridge.instance;healthy=active==='active'&&pid>0&&owner?.pid===pid&&fragment===unitFile&&reloadNeeded==='no'
+      &&JSON.stringify(executing)===JSON.stringify(expected);
   }catch {}
   return {installed:true,id:record.id,unit:record.unit,state,runtime:record.runtime,version:record.release_version,
     port:record.port,loopback:`http://127.0.0.1:${record.port}`,active:active==='active',active_state:active,pid,
@@ -388,10 +392,10 @@ async function rollbackAdoption(state,config,oldRecord,newRecord,operation,reaso
 // The executing installed package is the only candidate. No registry lookup,
 // download, harness change, or native turn operation is part of adoption.
 export async function adoptInstalledService(statePath,{read=readNative,sourceRoot=packageRoot,
-  systemctl=callSystemctl,connect=connectBridge,processOwner=activeProcessLock,delay=pause,startupAttempts=20}={}) {
+  systemctl=callSystemctl,connect=connectBridge,processOwner=activeProcessLock,processCommand=readProcessCommand,delay=pause,startupAttempts=20}={}) {
   if(process.platform!=='linux')throw new Error('Native services currently support Linux user systemd only.');
   const {state,config}=read(statePath),release=acquireProcessLock(join(state,'service-operation.lock'),'Factory service operation');
-  const ops={systemctl,connect,processOwner,delay,startupAttempts};
+  const ops={systemctl,connect,processOwner,processCommand,delay,startupAttempts};
   try {
     if(readAdoption(state))throw new Error(`A prior service adoption is unresolved. ${recovery}`);
     if(existsSync(join(state,'maintenance.json')))throw new Error('Existing maintenance needs explicit reconciliation before adoption.');

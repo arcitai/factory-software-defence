@@ -10,7 +10,7 @@ import { adoptInstalledService, pinInstalledRuntime, serviceManifest, manageNati
 function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPrepare=false,
   startUncertain=false,newBridgeUnknown=false,newBridgeDisappears=false,newPrepareBusy=false,
   changeReceipts=false,wrongFragment=false,lingeringTasks=false,reloadNeeded=false,
-  tasksUnset=false,groupRetained=false,groupUnknown=false,rollbackGate=true,afterPrepare=()=>{},afterStop=()=>{},afterNewPrepare=()=>{},afterOldStatus=()=>{},inspectBeforePrepare=()=>{},restartAfterCancel=false}={}) {
+  tasksUnset=false,groupRetained=false,groupUnknown=false,rollbackGate=true,afterPrepare=()=>{},afterStop=()=>{},afterNewPrepare=()=>{},afterOldStatus=()=>{},inspectBeforePrepare=()=>{},restartAfterCancel=false,oldRuntimeOnTargetStart=false}={}) {
   const root=mkdtempSync(join(tmpdir(),'factory-adopt-'));
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const state=join(root,'state'),repo=join(root,'repo'),unitFolder=join(root,'systemd','user');
@@ -81,7 +81,7 @@ function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPr
     }};
   };
   const run=(sourceRoot=targetPackage)=>adoptInstalledService(state,{read:()=>({state,config}),sourceRoot,
-    systemctl,connect,processOwner:()=>active?{pid}:null,delay:async()=>{},startupAttempts:1});
+    systemctl,connect,processOwner:()=>active?{pid}:null,delay:async()=>{},startupAttempts:1,processCommand:()=>[config.node,join(state,'runtime',oldRuntimeOnTargetStart?'0.18.3':selected(),'bin/software-defence-factory.mjs'),'serve','--state',state,'--port','7332']});
   return {root,state,repo,config,oldPackage,targetPackage,manifest,oldRecord,calls,run,
     get active(){return active;},get selected(){return selected();},set unknown(value){unknown=value;}};
 }
@@ -304,4 +304,11 @@ test('a replacement restart during reopening cannot be reported as adopted',asyn
   assert.equal(result.status,'unresolved');assert.equal(h.active,true);assert.equal(h.selected,'0.18.4');
   assert.equal(existsSync(join(h.state,'service-adoption.json')),true);
   assert.equal(h.calls.filter(call=>call.startsWith('stop ')).length,1);
+});
+
+test('an old runtime restarted under the new record cannot pass replacement readiness',async t=>{
+  const h=fixture(t,{oldRuntimeOnTargetStart:true}),result=await h.run();
+  assert.equal(result.status,'unresolved');assert.equal(h.active,true);
+  assert.equal(h.calls.filter(call=>call.startsWith('stop ')).length,1,'mismatched active runtime must not be stopped for rollback');
+  assert.equal(existsSync(join(h.state,'service-adoption.json')),true);
 });
