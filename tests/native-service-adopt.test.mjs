@@ -10,7 +10,7 @@ import { adoptInstalledService, pinInstalledRuntime, serviceManifest, manageNati
 function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPrepare=false,
   startUncertain=false,newBridgeUnknown=false,newBridgeDisappears=false,newPrepareBusy=false,
   changeReceipts=false,wrongFragment=false,lingeringTasks=false,reloadNeeded=false,
-  tasksUnset=false,groupRetained=false,groupUnknown=false,rollbackGate=true,afterPrepare=()=>{},afterStop=()=>{},afterNewPrepare=()=>{},afterOldStatus=()=>{},inspectBeforePrepare=()=>{},restartAfterCancel=false,oldRuntimeOnTargetStart=false}={}) {
+  tasksUnset=false,groupRetained=false,groupUnknown=false,rollbackGate=true,afterPrepare=()=>{},afterStop=()=>{},afterNewPrepare=()=>{},afterOldStatus=()=>{},inspectBeforePrepare=()=>{},restartAfterCancel=false,oldRuntimeOnTargetStart=false,dropIns='',dropInsUnknown=false}={}) {
   const root=mkdtempSync(join(tmpdir(),'factory-adopt-'));
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const state=join(root,'state'),repo=join(root,'repo'),unitFolder=join(root,'systemd','user');
@@ -34,7 +34,7 @@ function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPr
     definition_sha256:manifest.definition_sha256};
   writeFileSync(join(state,'service.json'),JSON.stringify(oldRecord),{mode:0o600});
   writeFileSync(join(state,'receipts','retained.json'),'prior native history',{mode:0o600});
-  const calls=[];let enabled=true,active=true,pid=101,instance='old-instance',unknown=newBridgeUnknown,newConnections=0,newPrepares=0;
+  const calls=[];let enabled=true,active=true,pid=101,instance='old-instance',unknown=newBridgeUnknown,newConnections=0,newPrepares=0,loadedDropIns=dropIns;
   const selected=()=>JSON.parse(readFileSync(join(state,'service.json'),'utf8')).release_version;
   const systemctl=args=>{
     calls.push(args.join(' '));
@@ -46,8 +46,9 @@ function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPr
       if(args.includes('--property=TasksCurrent'))return active||lingeringTasks?'2':tasksUnset?'[not set]':'0';
       if(args.includes('--property=ControlGroup')) {if(groupUnknown)throw Error('Unknown cgroup');return active||groupRetained?'/user.slice/fixture':'';}
       if(args.includes('--property=NeedDaemonReload'))return reloadNeeded?'yes':'no';
+      if(args.includes('--property=DropInPaths')){if(dropInsUnknown)throw Error('Drop-ins unavailable');return loadedDropIns;}
     }
-    if(args[0]==='stop'){active=false;pid=0;instance=null;afterStop({file:manifest.file,version:selected()});return '';}
+    if(args[0]==='stop'){active=false;pid=0;instance=null;afterStop({file:manifest.file,version:selected(),setDropIns:value=>{loadedDropIns=value;}});return '';}
     if(args[0]==='daemon-reload')return '';
     if(args[0]==='start') {
       if(startUncertain)throw new Error('systemctl response lost');
@@ -311,4 +312,14 @@ test('an old runtime restarted under the new record cannot pass replacement read
   assert.equal(result.status,'unresolved');assert.equal(h.active,true);
   assert.equal(h.calls.filter(call=>call.startsWith('stop ')).length,1,'mismatched active runtime must not be stopped for rollback');
   assert.equal(existsSync(join(h.state,'service-adoption.json')),true);
+});
+
+test('unowned or unreadable loaded drop-ins refuse stop and late overrides refuse replacement',async t=>{
+  for(const options of [{dropIns:'/unowned/override.conf'},{dropInsUnknown:true}]) {
+    const h=fixture(t,options);await assert.rejects(h.run(),/verified owning bridge/);
+    assert.equal(h.calls.some(call=>call.startsWith('stop ')),false);
+  }
+  const h=fixture(t,{afterStop:({setDropIns})=>setDropIns('/unowned/late.conf')}),result=await h.run();
+  assert.equal(result.status,'unresolved');assert.equal(h.selected,'0.18.3');
+  assert.equal(h.calls.some(call=>call.startsWith('start ')),false);
 });

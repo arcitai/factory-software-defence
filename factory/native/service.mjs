@@ -150,7 +150,7 @@ export function assertStoppedReconciled(state) {
 const readProcessCommand=pid=>readFileSync(`/proc/${pid}/cmdline`,'utf8').split('\0').filter(Boolean);
 async function snapshot(state,record,{systemctl=callSystemctl,connect=connectBridge,processOwner=activeProcessLock,processCommand=readProcessCommand}={}) {
   const unitFile=record.file || record.unit_file;
-  let active='unknown',pid=0,enabled='unknown',fragment='',tasks=null,controlGroup=null,reloadNeeded='unknown';
+  let active='unknown',pid=0,enabled='unknown',fragment='',tasks=null,controlGroup=null,reloadNeeded='unknown',dropIns=null;
   try {active=systemctl(['show',record.unit,'--property=ActiveState','--value']);}catch {active='unknown';}
   try {pid=Number(systemctl(['show',record.unit,'--property=MainPID','--value']))||0;}catch {}
   try {enabled=systemctl(['show',record.unit,'--property=UnitFileState','--value']);}catch {enabled='unknown';}
@@ -158,17 +158,18 @@ async function snapshot(state,record,{systemctl=callSystemctl,connect=connectBri
   try {const value=systemctl(['show',record.unit,'--property=TasksCurrent','--value']);tasks=/^\d+$/.test(value)?Number(value):null;}catch {}
   try {controlGroup=systemctl(['show',record.unit,'--property=ControlGroup','--value']);}catch {}
   try {reloadNeeded=systemctl(['show',record.unit,'--property=NeedDaemonReload','--value']);}catch {}
+  try {dropIns=systemctl(['show',record.unit,'--property=DropInPaths','--value']);}catch {}
   let healthy=false,native_instance=null;
   try {
     const bridge=await connect(state,record.repo),owner=processOwner(join(state,'serve.lock'));
     const expected=[record.node,join(record.runtime,'bin/software-defence-factory.mjs'),'serve','--state',state,'--port',String(record.port)];
     const executing=pid>0?processCommand(pid):[];
-    native_instance=bridge.instance;healthy=active==='active'&&pid>0&&owner?.pid===pid&&fragment===unitFile&&reloadNeeded==='no'
+    native_instance=bridge.instance;healthy=active==='active'&&pid>0&&owner?.pid===pid&&fragment===unitFile&&reloadNeeded==='no'&&dropIns===''
       &&JSON.stringify(executing)===JSON.stringify(expected);
   }catch {}
   return {installed:true,id:record.id,unit:record.unit,state,runtime:record.runtime,version:record.release_version,
     port:record.port,loopback:`http://127.0.0.1:${record.port}`,active:active==='active',active_state:active,pid,
-    fragment,tasks,control_group:controlGroup,reload_needed:reloadNeeded,enabled:enabled==='enabled',healthy,native_instance};
+    fragment,tasks,control_group:controlGroup,reload_needed:reloadNeeded,drop_ins:dropIns,enabled:enabled==='enabled',healthy,native_instance};
 }
 function receiptDigest(state) {
   const digest=createHash('sha256');
@@ -368,7 +369,7 @@ async function rollbackAdoption(state,config,oldRecord,newRecord,operation,reaso
   try {
     assertServiceRecord(state,config,newRecord);
     const stopped=await stoppedOwner(state,newRecord,ops);
-    if(!stopped.enabled||stopped.fragment!==newRecord.unit_file||stopped.reload_needed!=='no')throw Error();
+    if(!stopped.enabled||stopped.fragment!==newRecord.unit_file||stopped.reload_needed!=='no'||stopped.drop_ins!=='')throw Error();
   } catch {return unresolvedAdoption(state,operation,`${reason} Replacement unit changed before restoring the prior definition.`);}
   operation=updateAdoption(state,operation,'rollback_restoring_old',{reason});
   atomicText(oldRecord.file,operation.old_definition);
@@ -464,7 +465,7 @@ export async function adoptInstalledService(statePath,{read=readNative,sourceRoo
     try {
       const stopped=await stoppedOwner(state,oldRecord,ops);
       assertServiceRecord(state,config,oldRecord);
-      if(!stopped.enabled||stopped.fragment!==oldRecord.file||stopped.reload_needed!=='no')throw Error();
+      if(!stopped.enabled||stopped.fragment!==oldRecord.file||stopped.reload_needed!=='no'||stopped.drop_ins!=='')throw Error();
     } catch {return unresolvedAdoption(state,operation,'Prior stopped owner or unit identity could not be confirmed.');}
     operation=updateAdoption(state,operation,'old_stopped');
     if(receiptDigest(state)!==operation.receipts_sha256)
