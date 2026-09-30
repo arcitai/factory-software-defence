@@ -74,6 +74,7 @@ test('unresolved lock reconciliation preserves a stale lock instead of replacing
   t.after(()=>rmSync(state,{recursive:true,force:true}));
   const path=join(state,'serve.lock'),stale=JSON.stringify({pid:process.pid,boot_id:'old-boot',start_time:'1'});
   writeFileSync(path,stale);mkdirSync(`${path}.reconcile`);
+  assert.throws(()=>assertStoppedReconciled(state),/unresolved process-lock reconciliation/);
   assert.throws(()=>acquireProcessLock(path),/reconciliation is in progress or unresolved/);
   assert.equal(readFileSync(path,'utf8'),stale);
   rmSync(`${path}.reconcile`,{recursive:true});

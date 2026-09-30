@@ -52,7 +52,7 @@ export async function connectBridge(state, repo) {
     let result;
     try { result = await response.json(); }
     catch { throw new Error('Factory returned an unreadable response. Preserve the operation as unresolved; no retry was attempted.'); }
-    if (!response.ok) throw new Error(result.error || `Factory operation failed (HTTP ${response.status}).`);
+    if (!response.ok) throw Object.assign(new Error(result.error || `Factory operation failed (HTTP ${response.status}).`),{status:response.status});
     return result;
   };
   const { csrf_token, ...publicStatus } = status;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import http from 'node:http';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createNativeServer } from '../factory/native/server.mjs';
@@ -74,11 +74,39 @@ test('maintenance prepare waits for admitted writes, then rejects new writes unt
   finish();assert.equal((await first).status,201);
   assert.equal((await prepare).status,200);
   assert.equal((await post('/api/v1/maintenance/prepare',{instance:'one',token:'operation-token-one'})).status,200);
-  assert.equal(idleChecks,1);
+  assert.equal(idleChecks,2,'idempotent preparation must recheck native idle state');
   assert.equal(starts,1);
   assert.equal((await post('/api/v1/maintenance/cancel',{instance:'one',token:'operation-token-two'})).status,409);
   assert.equal((await post('/api/v1/issues/start',{})).status,409);
   assert.equal((await post('/api/v1/maintenance/cancel',{instance:'one',token:'operation-token-one'})).status,200);
   assert.equal((await post('/api/v1/issues/start',{})).status,201);
   assert.equal(starts,2);
+});
+
+test('pending service adoption closes admissions before the replacement bridge is visible',async t=>{
+  const state=mkdtempSync(join(tmpdir(),'factory-native-adoption-gate-'));
+  t.after(()=>rmSync(state,{recursive:true,force:true}));
+  mkdirSync(join(state,'receipts'));mkdirSync(join(state,'issue-submissions'));
+  let starts=0,idleChecks=0;
+  const harness={name:'fixture',available:true,jobs:async()=>[],doctor:async()=>({ready:true,gaps:[]}),
+    assertWorkspaceIdle:async()=>{idleChecks++;},start:async()=>{starts++;return {id:'job_abcdef'};}};
+  const provider={id:'unsupported',label:'Test',repository:null,host:null,supported:false,capabilities:{create:false}};
+  const {server}=createNativeServer(state,{repo:join(state,'repo')},
+    {harness,provider,instance:'replacement',maintenanceToken:'adoption-token-one'});
+  await new Promise((resolve,reject)=>server.once('error',reject).listen(0,'127.0.0.1',resolve));
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const root=`http://127.0.0.1:${server.address().port}`;
+  const status=await (await fetch(`${root}/api/v1/status`)).json();
+  assert.equal(status.maintenance_prepared,true);
+  const post=(path,input)=>fetch(`${root}${path}`,{method:'POST',headers:{'content-type':'application/json','x-factory-session':status.csrf_token},body:JSON.stringify(input)});
+  assert.equal((await post('/api/v1/issues/start',{})).status,409);
+  assert.equal(starts,0);
+  assert.equal((await post('/api/v1/maintenance/prepare',{instance:'replacement',token:'adoption-token-one'})).status,200);
+  assert.equal(idleChecks,1);
+  assert.equal((await post('/api/v1/maintenance/cancel',{instance:'replacement',token:'adoption-token-one'})).status,200);
+  writeFileSync(join(state,'service-adoption.json'),'pending');
+  assert.equal((await post('/api/v1/issues/start',{})).status,409);
+  rmSync(join(state,'service-adoption.json'));
+  assert.equal((await post('/api/v1/issues/start',{})).status,201);
+  assert.equal(starts,1);
 });

@@ -84,9 +84,34 @@ reconciliation. Confirm the service and its native child have stopped, preserve
 the directory and lock as evidence, then move that directory aside explicitly.
 Factory never guesses that an unresolved reconciliation owner is safe to replace.
 
-If a service maintenance request loses its response, its operation token is
-retained in private `maintenance.json`. Retry the same service command to
-reconcile that operation, or run `factory service cancel-maintenance --state PATH`
-to reopen admission explicitly. A changed process instance never reuses the old
+If an ordinary stop/restart/removal maintenance request loses its response, its
+operation token is retained in private `maintenance.json`. Reconcile the same
+operation or run `factory service cancel-maintenance --state PATH` to reopen
+admission explicitly. An adoption with `service-adoption.json` pending follows
+the stricter procedure below. A changed process instance never reuses the old
 operation. Preserve unresolved `service-operation.lock` reconciliation records
 just like the serving lock; do not guess that another process is inactive.
+
+## Service adoption
+
+Run a reviewed **installed target CLI**, not a checkout, with `factory service
+adopt --state PATH` only after selecting a compatible patch release. `no_op`
+means the already pinned bytes match. `adopted` means the replacement bridge
+and native readiness were confirmed. `adoption_failed` with `rollback: restored`
+means the earlier service was verified and restored, but the target failed; the
+command exits nonzero. `unresolved` means ownership, stop/start outcome, native
+work or admission state could not be proved; do not rerun adoption as a retry.
+
+An interrupted adoption leaves private `service-adoption.json` and possibly
+`maintenance.json` beside `service.json`. `factory service status --state PATH`
+shows the pending phase. Preserve those files, both pinned releases, the user
+unit, native writer/issue receipts and service journal before investigating.
+The target bridge starts with admissions blocked while this record is pending.
+`cancel-maintenance`, restart, remove and another adopt are refused until the
+operation is explicitly reconciled; deleting the record merely to unlock a
+command is unsafe. Inspect the exact systemd unit and MainPID, bridge instance,
+native thread states and receipts. Never stop active or unknown work to force a
+rollback. Systemd or host shutdown can still interrupt a native turn; adoption
+does not replay it. A restored older binary cannot be assumed to enforce the
+new target's startup gate after a later restart, so unresolved rollback needs
+operator control of the unit before any further start.

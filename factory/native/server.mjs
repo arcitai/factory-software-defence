@@ -17,11 +17,13 @@ async function body(request) {
   try { const parsed=JSON.parse(data);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error();return parsed; }
   catch { throw new FactoryError('Expected a JSON object',400); }
 }
-export function createNativeServer(state,config,{harness,provider,instance=randomBytes(16).toString('hex')}={}) {
+export function createNativeServer(state,config,{harness,provider,instance=randomBytes(16).toString('hex'),maintenanceToken=null}={}) {
   if(!harness||!provider||typeof harness.jobs!=='function'||typeof harness.doctor!=='function')throw new Error('Native server needs an owning harness and issue provider.');
   const engine=harness,submissions=new NativeIssueSubmissions(state,provider),csrf=randomBytes(32).toString('hex');
   const invoke=(name,...args)=>{if(typeof engine[name]!=='function')throw new FactoryError('This harness capability is unavailable.',404);return engine[name](...args);};
-  let maintenance=null,inFlight=0;
+  if(maintenanceToken!==null && (typeof maintenanceToken!=='string'||!/^[a-zA-Z0-9-]{16,100}$/.test(maintenanceToken)))
+    throw new Error('Pending service adoption has an invalid maintenance token.');
+  let maintenance=maintenanceToken?{token:maintenanceToken,phase:'prepared'}:null,inFlight=0;
   const waitForWrites=()=>new Promise((resolve,reject)=>{
     if(inFlight===0)return resolve();
     const poll=setInterval(()=>{if(inFlight===0){clearInterval(poll);clearTimeout(deadline);resolve();}},20);
@@ -89,13 +91,17 @@ export function createNativeServer(state,config,{harness,provider,instance=rando
         if(url.pathname==='/api/v1/maintenance/prepare') {
           if(input.instance!==instance)throw new FactoryError('Native instance changed.',409);
           if(typeof input.token!=='string'||!/^[a-zA-Z0-9-]{16,100}$/.test(input.token))throw new FactoryError('Maintenance needs a unique operation token.',400);
-          if(maintenance?.token===input.token && maintenance.phase==='prepared')return send(200,{instance,token:maintenance.token,prepared:true});
+          if(maintenance?.token===input.token && maintenance.phase==='prepared') {
+            await waitForWrites();await assertIdle();
+            return send(200,{instance,token:maintenance.token,prepared:true});
+          }
           if(maintenance)throw new FactoryError('Maintenance is already prepared.',409);
           const owner={token:input.token,phase:'preparing'};maintenance=owner;
           try {await waitForWrites();await assertIdle();owner.phase='prepared';return send(200,{instance,token:owner.token,prepared:true});}
           catch(error){if(maintenance===owner)maintenance=null;throw error;}
         }
-        if(maintenance)throw new FactoryError('Maintenance is prepared; new writes are blocked.',409);
+        if(maintenance||existsSync(join(state,'service-adoption.json')))
+          throw new FactoryError('Service adoption or maintenance is pending; new writes are blocked.',409);
         inFlight++;
         try {
         if(url.pathname==='/api/v1/issues')return send(201,await submissions.create(input));
