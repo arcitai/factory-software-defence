@@ -44,7 +44,9 @@ the existing issue/task record, not a second project registry.
   manager and authenticated SSH forwarding for remote access. Record boot/login
   prerequisites and test restart recovery without starting another native turn.
   Updating or stopping an active or unknown writer must not silently interrupt
-  it. Native history and local references remain outside the package.
+  it. Native history and local references remain outside the package. Offer the
+  [optional OS release check](../../../docs/npm.md#optional-linux-release-check-timer)
+  only when selected; a metadata lookup does not install or activate a release.
 - **Proof:** start one bounded issue through the installed Inbox or CLI; inspect
   its native result, explicitly continue it, then run the project's checks and
   independent review against the exact candidate. Qualify only the authorized

@@ -13,6 +13,7 @@ import { connectBridge, registerBridge } from '../factory/native/bridge-client.m
 import { acquireProcessLock } from '../factory/native/process-lock.mjs';
 import { manageNativeService } from '../factory/native/service.mjs';
 import { issueProvider } from '../factory/issue-provider.mjs';
+import { checkRelease } from '../factory/release-check.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const version=JSON.parse(readFileSync(join(root,'package.json'),'utf8')).version;
@@ -36,6 +37,7 @@ Usage:
   factory continue ID --turn TURN_ID --feedback TEXT [--state PATH]
   factory interrupt ID --turn TURN_ID [--state PATH]
   factory service install|status|start|stop|restart|remove|cancel-maintenance [--state PATH] [--port PORT]
+  factory updates check --channel latest|next
   factory kit --output NEW_DIRECTORY
   factory foundation
   factory probe codex
@@ -184,6 +186,11 @@ async function command(args) {
   if(name==='reconnect') {
     const {values,flags}=parse(rest,{positionals:1,allowed:['--state']});
     return online(stateFrom(flags),async bridge=>print(await bridge.request(`/api/v1/jobs/${jobID(values[0])}/resume`,{})));
+  }
+  if(name==='updates') {
+    if(rest[0]!=='check')throw new Error('Use updates check --channel latest|next; release activation remains manual.');
+    const {flags}=parse(rest.slice(1),{allowed:['--channel']});
+    print(await checkRelease({version,channel:flags['--channel']}));return;
   }
   if(name==='runtime') {
     const {flags}=parse(rest,{allowed:['--state']});
