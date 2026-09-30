@@ -141,12 +141,13 @@ export function assertStoppedReconciled(state) {
 }
 async function snapshot(state,record,{systemctl=callSystemctl,connect=connectBridge,processOwner=activeProcessLock}={}) {
   const unitFile=record.file || record.unit_file;
-  let active='unknown',pid=0,enabled='unknown',fragment='',tasks=null,reloadNeeded='unknown';
+  let active='unknown',pid=0,enabled='unknown',fragment='',tasks=null,controlGroup=null,reloadNeeded='unknown';
   try {active=systemctl(['show',record.unit,'--property=ActiveState','--value']);}catch {active='unknown';}
   try {pid=Number(systemctl(['show',record.unit,'--property=MainPID','--value']))||0;}catch {}
   try {enabled=systemctl(['show',record.unit,'--property=UnitFileState','--value']);}catch {enabled='unknown';}
   try {fragment=systemctl(['show',record.unit,'--property=FragmentPath','--value']);}catch {}
   try {const value=systemctl(['show',record.unit,'--property=TasksCurrent','--value']);tasks=/^\d+$/.test(value)?Number(value):null;}catch {}
+  try {controlGroup=systemctl(['show',record.unit,'--property=ControlGroup','--value']);}catch {}
   try {reloadNeeded=systemctl(['show',record.unit,'--property=NeedDaemonReload','--value']);}catch {}
   let healthy=false,native_instance=null;
   try {
@@ -155,7 +156,7 @@ async function snapshot(state,record,{systemctl=callSystemctl,connect=connectBri
   }catch {}
   return {installed:true,id:record.id,unit:record.unit,state,runtime:record.runtime,version:record.release_version,
     port:record.port,loopback:`http://127.0.0.1:${record.port}`,active:active==='active',active_state:active,pid,
-    fragment,tasks,reload_needed:reloadNeeded,enabled:enabled==='enabled',healthy,native_instance};
+    fragment,tasks,control_group:controlGroup,reload_needed:reloadNeeded,enabled:enabled==='enabled',healthy,native_instance};
 }
 function receiptDigest(state) {
   const digest=createHash('sha256');
@@ -170,6 +171,19 @@ function receiptDigest(state) {
   }
   return digest.digest('hex');
 }
+function assertSettledIssueReceipts(state) {
+  const folder=join(state,'issue-submissions');
+  if(!existsSync(folder))return;
+  for(const name of readdirSync(folder).filter(name=>name.endsWith('.json'))) {
+    const path=join(folder,name);
+    let record;
+    try {if(!lstatSync(path).isFile())throw Error();record=JSON.parse(readFileSync(path,'utf8'));}catch {
+      throw new Error('Issue submission state is unresolved; preserve and reconcile it before adoption.');
+    }
+    if(!['created','rejected'].includes(record?.state))
+      throw new Error('Issue submission outcome is unresolved; reconcile it before adoption.');
+  }
+}
 function assertOwnedAdoption(state,config,record) {
   if(record.id!==serviceID(state,config.repo)||record.unit!==`${record.id}.service`||record.state!==state
     ||record.repo!==config.repo||record.node!==config.node||!validPort(record.port)
@@ -181,6 +195,14 @@ function assertOwnedAdoption(state,config,record) {
   if(expected.definition_sha256!==record.definition_sha256||expected.runtime_sha256!==record.runtime_sha256
     ||expected.file!==record.file)
     throw new Error('Owned unit or prior pinned release identity changed; adoption refused.');
+}
+function assertPriorUnit(state,config,prior) {
+  const current=ownedRecord(state);
+  if(!current)throw new Error('Prior owned unit disappeared during adoption.');
+  assertOwnedAdoption(state,config,current);
+  if(current.definition_sha256!==prior.definition_sha256||current.runtime_sha256!==prior.runtime_sha256
+    ||current.release_version!==prior.release_version||current.file!==prior.file)
+    throw new Error('Prior unit or installed release changed during adoption.');
 }
 const recordData=record=>{const {file,...value}=record;return value;};
 function versionDecision(previous,next) {
@@ -244,7 +266,10 @@ async function waitForOwner(state,record,operation,ops,previousInstance) {
 }
 function stoppedOwner(state,record,ops) {
   return snapshot(state,record,ops).then(current=>{
-    if(!['inactive','failed'].includes(current.active_state)||current.pid!==0||current.tasks!==0||current.healthy)
+    // Inactive systemd units may have unset task accounting after their cgroup
+    // is released. An unavailable read or a retained group is not a stopped proof.
+    const empty=current.tasks===0||(current.tasks===null&&current.control_group==='');
+    if(!['inactive','failed'].includes(current.active_state)||current.pid!==0||!empty||current.healthy)
       throw new Error('Service stop outcome is not a reconciled inactive process.');
     assertStoppedReconciled(state);
     return current;
@@ -336,6 +361,7 @@ export async function adoptInstalledService(statePath,{read=readNative,sourceRoo
       health:'bridge_connected',rollback:'not_needed',native_instance:before.native_instance};
     const bridge=await connect(state,config.repo);
     if(bridge.instance!==before.native_instance)throw new Error('Prior service bridge instance changed before maintenance.');
+    assertSettledIssueReceipts(state);
     const oldStatus=await bridge.request('/api/v1/status');
     if(oldStatus.native_instance!==bridge.instance||oldStatus.native_readiness?.ready!==true)
       throw new Error('Prior native readiness is not confirmed; adoption refused.');
@@ -347,8 +373,10 @@ export async function adoptInstalledService(statePath,{read=readNative,sourceRoo
     }
     if(prepared.instance!==before.native_instance)
       throw new Error(`Prior service instance changed during maintenance. ${recovery}`);
+    assertSettledIssueReceipts(state);
+    assertPriorUnit(state,config,oldRecord);
     const current=await snapshot(state,oldRecord,ops);
-    if(!current.active||current.pid!==before.pid||current.native_instance!==prepared.instance)
+    if(!current.active||!current.healthy||!current.enabled||current.pid!==before.pid||current.native_instance!==prepared.instance)
       throw new Error(`Prior service identity changed after maintenance preparation. ${recovery}`);
     const token=prepared.maintenanceToken,receiptHash=receiptDigest(state);
     const newRecord={version:1,id:oldRecord.id,unit:oldRecord.unit,port:oldRecord.port,state,repo:config.repo,node:config.node,
@@ -358,11 +386,19 @@ export async function adoptInstalledService(statePath,{read=readNative,sourceRoo
       old_instance:before.native_instance,old_pid:before.pid,old_record:recordData(oldRecord),old_definition:readFileSync(oldRecord.file,'utf8'),
       new_record:newRecord,new_definition:manifest.definition,receipts_sha256:receiptHash,created_at:new Date().toISOString()};
     writeFileSync(adoptionFile(state),`${JSON.stringify(operation,null,2)}\n`,{flag:'wx',mode:0o600});
+    try {
+      assertPriorUnit(state,config,oldRecord);
+      const boundary=await snapshot(state,oldRecord,ops);
+      if(!boundary.healthy||!boundary.enabled||boundary.pid!==before.pid||boundary.native_instance!==prepared.instance)throw Error();
+    } catch {return unresolvedAdoption(state,operation,'Prior unit or startup ownership changed before stop.');}
     operation=updateAdoption(state,operation,'old_stop_requested');
     try {systemctl(['stop',oldRecord.unit]);}
     catch {return unresolvedAdoption(state,operation,'Prior service stop outcome is uncertain.');}
-    try {await stoppedOwner(state,oldRecord,ops);}
-    catch {return unresolvedAdoption(state,operation,'Prior service did not confirm a stopped owner.');}
+    try {
+      const stopped=await stoppedOwner(state,oldRecord,ops);
+      assertPriorUnit(state,config,oldRecord);
+      if(!stopped.enabled||stopped.fragment!==oldRecord.file||stopped.reload_needed!=='no')throw Error();
+    } catch {return unresolvedAdoption(state,operation,'Prior stopped owner or unit identity could not be confirmed.');}
     operation=updateAdoption(state,operation,'old_stopped');
     if(receiptDigest(state)!==operation.receipts_sha256)
       return unresolvedAdoption(state,operation,'Native or issue receipts changed while stopping the prior service.');
@@ -401,10 +437,14 @@ async function serviceAction(action,statePath,port) {
   if(!['install','status','start','stop','restart','remove','cancel-maintenance'].includes(action))throw new Error('Use service install|status|start|stop|restart|remove|cancel-maintenance.');
   const {state,config}=readNative(statePath),{folder,record:recordPath}=configPaths(state);
   if(action==='status') {
-    const existing=ownedRecord(state);
-    const pending=readAdoption(state);
-    return existing ? {...await snapshot(state,existing),adoption_pending:pending?{phase:pending.phase,old_version:pending.old_version,new_version:pending.new_version}:null}
-      : {installed:false,state,repository:config.repo,adoption_pending:pending?{phase:pending.phase,old_version:pending.old_version,new_version:pending.new_version}:null};
+    const pending=readAdoption(state),adoption_pending=pending?{phase:pending.phase,old_version:pending.old_version,new_version:pending.new_version}:null;
+    let existing;
+    try {existing=ownedRecord(state);}catch(error) {
+      if(!pending)throw error;
+      return {installed:null,state,healthy:false,ownership:'unresolved',adoption_pending,recovery};
+    }
+    return existing ? {...await snapshot(state,existing),adoption_pending}
+      : {installed:false,state,repository:config.repo,adoption_pending};
   }
   if(readAdoption(state))throw new Error(`Service adoption is unresolved. ${recovery}`);
   if(action==='install') {

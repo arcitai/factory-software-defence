@@ -3,11 +3,14 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { adoptInstalledService, pinInstalledRuntime, serviceManifest } from '../factory/native/service.mjs';
+import { execFileSync } from 'node:child_process';
+import { setupNative } from '../factory/native/setup.mjs';
+import { adoptInstalledService, pinInstalledRuntime, serviceManifest, manageNativeService } from '../factory/native/service.mjs';
 
 function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPrepare=false,
   startUncertain=false,newBridgeUnknown=false,newBridgeDisappears=false,newPrepareBusy=false,
-  changeReceipts=false,wrongFragment=false,lingeringTasks=false,reloadNeeded=false}={}) {
+  changeReceipts=false,wrongFragment=false,lingeringTasks=false,reloadNeeded=false,
+  tasksUnset=false,groupRetained=false,groupUnknown=false,afterPrepare=()=>{},afterStop=()=>{}}={}) {
   const root=mkdtempSync(join(tmpdir(),'factory-adopt-'));
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const state=join(root,'state'),repo=join(root,'repo'),unitFolder=join(root,'systemd','user');
@@ -31,19 +34,20 @@ function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPr
     definition_sha256:manifest.definition_sha256};
   writeFileSync(join(state,'service.json'),JSON.stringify(oldRecord),{mode:0o600});
   writeFileSync(join(state,'receipts','retained.json'),'prior native history',{mode:0o600});
-  const calls=[];let active=true,pid=101,instance='old-instance',unknown=newBridgeUnknown,newConnections=0;
+  const calls=[];let enabled=true,active=true,pid=101,instance='old-instance',unknown=newBridgeUnknown,newConnections=0;
   const selected=()=>JSON.parse(readFileSync(join(state,'service.json'),'utf8')).release_version;
   const systemctl=args=>{
     calls.push(args.join(' '));
     if(args[0]==='show') {
       if(args.includes('--property=ActiveState'))return active?'active':'inactive';
       if(args.includes('--property=MainPID'))return active?String(pid):'0';
-      if(args.includes('--property=UnitFileState'))return 'enabled';
+      if(args.includes('--property=UnitFileState'))return enabled?'enabled':'disabled';
       if(args.includes('--property=FragmentPath'))return wrongFragment?join(root,'other.service'):manifest.file;
-      if(args.includes('--property=TasksCurrent'))return active||lingeringTasks?'2':'0';
+      if(args.includes('--property=TasksCurrent'))return active||lingeringTasks?'2':tasksUnset?'[not set]':'0';
+      if(args.includes('--property=ControlGroup')) {if(groupUnknown)throw Error('Unknown cgroup');return active||groupRetained?'/user.slice/fixture':'';}
       if(args.includes('--property=NeedDaemonReload'))return reloadNeeded?'yes':'no';
     }
-    if(args[0]==='stop'){active=false;pid=0;instance=null;return '';}
+    if(args[0]==='stop'){active=false;pid=0;instance=null;afterStop({file:manifest.file});return '';}
     if(args[0]==='daemon-reload')return '';
     if(args[0]==='start') {
       if(startUncertain)throw new Error('systemctl response lost');
@@ -63,6 +67,7 @@ function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPr
         if(busy&&owner==='old-instance')throw Object.assign(new Error('Native work is active'),{status:409});
         if(newPrepareBusy&&owner==='target-instance')throw Object.assign(new Error('New native work is active'),{status:409});
         if(unknownPrepare&&owner==='old-instance')throw new Error('Response lost');
+        if(owner==='old-instance')afterPrepare({file:manifest.file,disable:()=>{enabled=false;}});
         return {instance:owner,token:input.token,prepared:true};
       }
       if(path==='/api/v1/maintenance/cancel')return {instance:owner,prepared:false};
@@ -199,4 +204,49 @@ test('new native work during rollback preparation blocks service stop',async t=>
   assert.equal(h.active,true);assert.equal(h.selected,'0.18.4');
   assert.equal(h.calls.filter(call=>call===`stop ${h.manifest.unit}`).length,1);
   assert.equal(existsSync(join(h.state,'service-adoption.json')),true);
+});
+
+
+test('a stopped unit with unset task accounting needs an absent control group',async t=>{
+  const empty=fixture(t,{tasksUnset:true});assert.equal((await empty.run()).status,'adopted');
+  for(const options of [{tasksUnset:true,groupRetained:true},{tasksUnset:true,groupUnknown:true}]) {
+    const h=fixture(t,options),result=await h.run();assert.equal(result.status,'unresolved');
+    assert.equal(h.calls.some(call=>call.startsWith('start ')),false);
+  }
+});
+
+test('unsettled issue submission outcomes block adoption before stop',async t=>{
+  for(const state of ['pending','uncertain','unexpected']) {
+    const h=fixture(t);writeFileSync(join(h.state,'issue-submissions','retained-request.json'),JSON.stringify({state}));
+    await assert.rejects(h.run(),/Issue submission.*unresolved/);
+    assert.equal(h.calls.some(call=>call.startsWith('stop ')),false);
+  }
+  const settled=fixture(t);writeFileSync(join(settled.state,'issue-submissions','retained-request.json'),JSON.stringify({state:'created'}));
+  assert.equal((await settled.run()).status,'adopted');
+});
+
+test('unit changes or disabled startup during preparation refuse the stop',async t=>{
+  const changed=fixture(t,{afterPrepare:({file})=>writeFileSync(file,'operator changed unit')});
+  await assert.rejects(changed.run(),/unit changed/);assert.equal(changed.calls.some(call=>call.startsWith('stop ')),false);
+  const disabled=fixture(t,{afterPrepare:({disable})=>disable()});
+  await assert.rejects(disabled.run(),/identity changed/);assert.equal(disabled.calls.some(call=>call.startsWith('stop ')),false);
+});
+
+test('unit changed after stop is preserved instead of overwritten',async t=>{
+  const h=fixture(t,{afterStop:({file})=>writeFileSync(file,'operator changed after stop')}),result=await h.run();
+  assert.equal(result.status,'unresolved');assert.equal(readFileSync(h.manifest.file,'utf8'),'operator changed after stop');
+  assert.equal(h.selected,'0.18.3');assert.equal(h.calls.some(call=>call.startsWith('start ')),false);
+});
+
+test('status reports pending adoption when unit and record replacement was partial',async t=>{
+  const root=mkdtempSync(join(tmpdir(),'factory-adoption-partial-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const repo=join(root,'repo'),state=join(root,'state'),folder=join(root,'systemd','user');mkdirSync(repo);mkdirSync(folder,{recursive:true});
+  execFileSync('git',['init','-q',repo]);setupNative(repo,state,process.execPath);
+  const unit='factory-native-partial.service',file=join(folder,unit);
+  writeFileSync(file,'new unit written before record');
+  writeFileSync(join(state,'service.json'),JSON.stringify({version:1,unit,unit_file:file,definition_sha256:'a'.repeat(64)}));
+  writeFileSync(join(state,'service-adoption.json'),JSON.stringify({version:1,token:'partial-adoption-token',phase:'old_stopped',old_version:'0.18.3',new_version:'0.18.4'}),{mode:0o600});
+  const result=await manageNativeService('status',state);
+  assert.equal(result.ownership,'unresolved');assert.equal(result.healthy,false);assert.equal(result.adoption_pending.phase,'old_stopped');
+  assert.equal(readFileSync(file,'utf8'),'new unit written before record');
 });
