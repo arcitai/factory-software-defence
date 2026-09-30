@@ -58,8 +58,10 @@ NoNewPrivileges=true
 ```
 
 Replace both executable paths with the selected Node and installed package paths;
-`factory runtime` reports the CLI entrypoint. A version-pinned package can be used
-instead of the global installation. Keep the chosen channel explicit. This unit
+`factory runtime` reports the package directory as `entrypoint`; append
+`/bin/software-defence-factory.mjs` for the script path and confirm
+`source_checkout` is false. A version-pinned package can be used instead of the
+global installation. Keep the chosen channel explicit. This unit
 only reads metadata; it never invokes `npm install` or `factory service restart`.
 
 `factory-release-check.timer`:
