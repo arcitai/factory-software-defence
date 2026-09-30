@@ -108,14 +108,44 @@ or background loop is installed by the CLI.
 breaking migration. Disable those old updaters before local adoption. There is no
 Factory scheduler or replacement background update daemon in this release.
 
-Inspect a new release and compare native requirements and staged skills. Preserve
-the previous pinned package/state, reconcile idle work through the owning bridge,
-then perform the supported service replacement and verify readiness/history/UI.
-Keep access/profile changes explicit. An npm upgrade alone does not change a
-pinned running service. See [migration](migration.md) and [recovery](recovery.md).
+Inspect and explicitly select a reviewed installed package that includes the
+`service adopt` command. Invoke **that target package's CLI** with the existing
+private state:
 
-The optional timer above checks only. Unattended activation remains deferred
-until safe maintenance and rollback are qualified.
+```sh
+/absolute/selected/node /absolute/installed-target/bin/software-defence-factory.mjs service adopt --state /absolute/private/factory-state
+```
+
+There is no package URL, registry or download option on this command. It pins
+the executing installed package before stopping the old service. It accepts a
+newer patch in the same 0.x minor line; identical bytes at the same version
+return `no_op`. Changed bytes at the same version, a downgrade, a different
+minor line, a mutable checkout, an unowned unit, busy or unknown native work,
+and uncertain service ownership are refused. A different minor line needs an
+explicit migration policy, not this command. The existing Node, port, unit,
+repository, Codex setup, credentials, receipts and native history remain selected.
+
+Adoption holds admissions, replaces the owned unit, reconnects to its new bridge
+and requires native readiness. A failed target may restore the previous verified
+service only after the new process is reconciled idle or stopped. Results use
+`adopted`, `no_op`, `adoption_failed` with an explicit rollback disposition, or
+`unresolved`; failures exit nonzero. The prior package must declare startup admission gating; older packages such as
+0.18.3 need an explicit one-off migration before this command can be used. The
+new private gate is published before old-owner preparation, so an automatic
+restart cannot reopen admission while adoption is pending. The old pin and
+private operation evidence are retained. An unresolved operation requires [manual reconciliation](recovery.md#service-adoption)
+before another service change. A healthy process alone is insufficient.
+
+An npm upgrade alone does not change a pinned service. Compare native
+requirements and staged skills before selecting the target; access/profile
+changes still require separate qualification. Review installed history and UI
+after a successful adoption. This command does not approve a release, run an
+update check, change native permissions or replay agent work. Source support
+remains a candidate until a reviewed package is published and installed.
+
+The optional timer above checks only. An opt-in OS download/check/activation
+recipe remains a separate qualification slice; this command is a deliberate
+activation primitive, not automatic updating.
 Do not describe a manual update procedure as an automatic updater.
 
 ## Repository delivery

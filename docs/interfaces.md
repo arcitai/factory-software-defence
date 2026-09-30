@@ -19,6 +19,7 @@ There is no second CLI execution engine.
 | Interrupt the identified active turn | `factory interrupt ID --turn TURN_ID --state PATH` |
 | Reconnect without starting work | `factory reconnect ID --state PATH` |
 | Export the portable method | `factory kit --output NEW_DIRECTORY` |
+| Adopt a reviewed installed patch into the owned user service | `factory service adopt --state PATH` |
 
 `factory help` owns exact supported options. Software and scoped defensive work
 share the same issue surface. Work type selects guidance, not another executor.
@@ -44,6 +45,11 @@ creation or start an agent.
 Release checking is an operator read: `factory updates check --channel next`
 compares public npm metadata with the executing CLI package. It does not activate
 the pinned service or invoke the harness. See [packages and releases](npm.md).
+`service adopt` is a separate explicit activation from the selected installed
+target CLI. It pins bytes, requires idle ownership and native readiness, and
+retains private rollback evidence. It does not download or choose a release.
+Same-version unchanged adoption is a no-op; an unresolved result is not a
+fallback success. See [service adoption recovery](recovery.md#service-adoption).
 
 ## State is observable, not invented
 

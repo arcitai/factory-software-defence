@@ -34,6 +34,14 @@ export function inspectProcessLock(path) {
     return current===true?'active':current===false?'stale':'unknown';
   } catch {return 'unknown';}
 }
+export function activeProcessLock(path) {
+  try {
+    const stat=lstatSync(path);
+    if(!stat.isFile())return null;
+    const owner=JSON.parse(readFileSync(path,'utf8'));
+    return alive(owner)===true?owner:null;
+  } catch {return null;}
+}
 export function acquireProcessLock(path,purpose='Factory service') {
   const owner=identity(),payload={...owner,purpose};
   mkdirSync(dirname(path),{recursive:true,mode:0o700});

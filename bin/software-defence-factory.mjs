@@ -11,7 +11,7 @@ import { AppServer, nativeReadiness } from '../factory/native/app-server.mjs';
 import { NativeEngine } from '../factory/native/engine.mjs';
 import { connectBridge, registerBridge } from '../factory/native/bridge-client.mjs';
 import { acquireProcessLock } from '../factory/native/process-lock.mjs';
-import { manageNativeService } from '../factory/native/service.mjs';
+import { manageNativeService, pendingServiceAdoptionToken } from '../factory/native/service.mjs';
 import { issueProvider } from '../factory/issue-provider.mjs';
 import { checkRelease } from '../factory/release-check.mjs';
 
@@ -37,6 +37,7 @@ Usage:
   factory continue ID --turn TURN_ID --feedback TEXT [--state PATH]
   factory interrupt ID --turn TURN_ID [--state PATH]
   factory service install|status|start|stop|restart|remove|cancel-maintenance [--state PATH] [--port PORT]
+  factory service adopt --state PATH
   factory updates check --channel latest|next
   factory kit --output NEW_DIRECTORY
   factory foundation
@@ -77,7 +78,7 @@ async function serve(state,port) {
     const provider=issueProvider(config.repo),engine=new NativeEngine(realState,config,client,provider);
     Object.defineProperties(engine,{name:{value:'codex'},available:{get:()=>client.available}});
     const instance=randomUUID();
-    ({server}=createNativeServer(realState,config,{harness:engine,provider,instance}));
+    ({server}=createNativeServer(realState,config,{harness:engine,provider,instance,maintenanceToken:pendingServiceAdoptionToken(realState)}));
     await new Promise((done,reject)=>server.once('error',reject).listen(port,'127.0.0.1',done));
     unregister=registerBridge(realState,config.repo,server.address().port,instance);
     console.log(`Factory Inbox: http://127.0.0.1:${port}`);
@@ -125,9 +126,12 @@ async function command(args) {
   }
   if(name==='service') {
     const [action,...options]=rest;
-    if(!action)throw new Error('Use service install|status|start|stop|restart|remove|cancel-maintenance.');
-    const {flags}=parse(options,{allowed:['--state','--port']});
-    const result=await manageNativeService(action,stateFrom(flags),Number(flags['--port'] || 7332));print(result);return;
+    if(!action)throw new Error('Use service install|status|start|stop|restart|remove|cancel-maintenance|adopt.');
+    const {flags}=parse(options,{allowed:action==='adopt'?['--state']:['--state','--port']});
+    if(action==='adopt'&&!flags['--state'])throw new Error('Service adoption requires an explicit --state PATH.');
+    const result=await manageNativeService(action,stateFrom(flags),Number(flags['--port'] || 7332));print(result);
+    if(action==='adopt'&&!['adopted','no_op'].includes(result.status))process.exitCode=1;
+    return;
   }
   if(name==='issues') {
     const [action,...options]=rest;

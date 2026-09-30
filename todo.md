@@ -12,9 +12,11 @@ and architecture in 0.18.0. [PR #122](https://github.com/arcitai/software-and-de
 delivered Inbox qualification in 0.18.2 and closed #37. Remaining work:
 
 - [ ] [#113](https://github.com/arcitai/software-and-defence-factory/issues/113):
-  metadata-only release checks and an optional OS timer recipe are the 0.18.3
-  checking slice. Automatic download, idle activation/health and rollback remain
-  unqualified; a timer does not deliver automatic service updates.
+  0.18.3 delivered metadata-only checks and an optional OS timer recipe. 0.18.4
+  adds deliberate installed-package adoption between compatible gated runtimes,
+  native readiness and bounded rollback. Older ungated runtimes need an explicit
+  migration. Automatic download/activation and other OS recipes remain separate
+  qualifications. A timer does not deliver automatic service updates.
 - [ ] [#114](https://github.com/arcitai/software-and-defence-factory/issues/114):
   prove sustained native credential refresh/coexistence and qualify any separately
   selected Desktop integration; these are not delivered.
