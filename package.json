@@ -13,9 +13,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/arcitai/software-and-defence-factory.git"
+    "url": "https://github.com/arcitai/factory-software-defence.git"
   },
-  "homepage": "https://github.com/arcitai/software-and-defence-factory#readme",
+  "homepage": "https://github.com/arcitai/factory-software-defence#readme",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/",
