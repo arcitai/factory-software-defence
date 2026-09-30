@@ -196,12 +196,12 @@ function assertOwnedAdoption(state,config,record) {
     ||expected.file!==record.file)
     throw new Error('Owned unit or prior pinned release identity changed; adoption refused.');
 }
-function assertPriorUnit(state,config,prior) {
+function assertServiceRecord(state,config,prior) {
   const current=ownedRecord(state);
   if(!current)throw new Error('Prior owned unit disappeared during adoption.');
   assertOwnedAdoption(state,config,current);
   if(current.definition_sha256!==prior.definition_sha256||current.runtime_sha256!==prior.runtime_sha256
-    ||current.release_version!==prior.release_version||current.file!==prior.file)
+    ||current.release_version!==prior.release_version||current.file!==(prior.file||prior.unit_file))
     throw new Error('Prior unit or installed release changed during adoption.');
 }
 const recordData=record=>{const {file,...value}=record;return value;};
@@ -308,6 +308,11 @@ async function rollbackAdoption(state,config,oldRecord,newRecord,operation,reaso
     }
     if(receiptDigest(state)!==operation.receipts_sha256)
       return unresolvedAdoption(state,operation,`${reason} Receipts changed after new startup; rollback refused.`);
+    try {
+      assertServiceRecord(state,config,newRecord);
+      const boundary=await snapshot(state,newRecord,ops);
+      if(!boundary.healthy||!boundary.enabled||boundary.pid!==current.pid||boundary.native_instance!==current.native_instance)throw Error();
+    } catch {return unresolvedAdoption(state,operation,`${reason} Replacement owner or unit changed before rollback stop.`);}
     operation=updateAdoption(state,operation,'rollback_stopping_new',{reason});
     try {ops.systemctl(['stop',newRecord.unit]);}
     catch {return unresolvedAdoption(state,operation,`${reason} New service stop outcome is uncertain.`);}
@@ -322,10 +327,26 @@ async function rollbackAdoption(state,config,oldRecord,newRecord,operation,reaso
   if(runtimeDigest(oldRecord.runtime)!==oldRecord.runtime_sha256
     ||createHash('sha256').update(operation.old_definition).digest('hex')!==oldRecord.definition_sha256)
     return unresolvedAdoption(state,operation,`${reason} Prior unit or pin no longer matches its verified backup.`);
+  try {
+    assertServiceRecord(state,config,newRecord);
+    const stopped=await stoppedOwner(state,newRecord,ops);
+    if(!stopped.enabled||stopped.fragment!==newRecord.unit_file||stopped.reload_needed!=='no')throw Error();
+  } catch {return unresolvedAdoption(state,operation,`${reason} Replacement unit changed before restoring the prior definition.`);}
+  const gated=JSON.parse(readFileSync(join(oldRecord.runtime,'package.json'),'utf8')).factoryService?.adoptionGate===1;
   operation=updateAdoption(state,operation,'rollback_restoring_old',{reason});
   atomicText(oldRecord.file,operation.old_definition);
   atomicJSON(join(state,'service.json'),recordData(oldRecord));
-  try {ops.systemctl(['daemon-reload']);ops.systemctl(['start',oldRecord.unit]);}
+  try {ops.systemctl(['daemon-reload']);}
+  catch {return unresolvedAdoption(state,operation,`${reason} Prior unit reload outcome is uncertain.`,'incomplete');}
+  if(!gated) {
+    try {assertServiceRecord(state,config,oldRecord);await stoppedOwner(state,oldRecord,ops);}
+    catch {return unresolvedAdoption(state,operation,`${reason} Prior restored unit is not confirmed stopped.`,'incomplete');}
+    rmSync(join(state,'maintenance.json'),{force:true});
+    archiveAdoption(state,operation,'rolled_back_stopped',{reason,rollback:'restored_stopped'});
+    return adoptionResult('adoption_failed',operation,{reason,rollback:'restored_stopped',health:'old_stopped',
+      recovery:'Prior runtime has no startup admission gate. The original enabled unit is restored but not started; inspect service status and deliberately start it after reconciliation. It can still start on a later login/boot.'});
+  }
+  try {ops.systemctl(['start',oldRecord.unit]);}
   catch {return unresolvedAdoption(state,operation,`${reason} Prior service restart outcome is uncertain.`,'incomplete');}
   const restored=await waitForOwner(state,oldRecord,operation,ops,operation.old_instance);
   if(!restored.ready)return unresolvedAdoption(state,operation,`${reason} Prior service readiness remains unconfirmed: ${restored.reason}`,'incomplete');
@@ -353,7 +374,7 @@ export async function adoptInstalledService(statePath,{read=readNative,sourceRoo
     assertOwnedAdoption(state,config,oldRecord);
     const source=verifyPackageRoot(sourceRoot),decision=versionDecision(oldRecord.release_version,source.version);
     const runtime=pinInstalledRuntime(state,source);
-    const manifest=serviceManifest({state,config,root:source.root,port:oldRecord.port,runtime,folder:dirname(oldRecord.file)});
+    const manifest=serviceManifest({state,config,root:runtime,port:oldRecord.port,runtime,folder:dirname(oldRecord.file)});
     const before=await snapshot(state,oldRecord,ops);
     if(!before.active||!before.healthy||!before.enabled||before.pid<=0||!before.native_instance)
       throw new Error('Prior service is not an active, enabled, verified owning bridge; adoption refused.');
@@ -374,7 +395,8 @@ export async function adoptInstalledService(statePath,{read=readNative,sourceRoo
     if(prepared.instance!==before.native_instance)
       throw new Error(`Prior service instance changed during maintenance. ${recovery}`);
     assertSettledIssueReceipts(state);
-    assertPriorUnit(state,config,oldRecord);
+    assertServiceRecord(state,config,oldRecord);
+    if(runtimeDigest(runtime)!==manifest.runtime_sha256)throw new Error('Target pinned release changed before stop; adoption refused.');
     const current=await snapshot(state,oldRecord,ops);
     if(!current.active||!current.healthy||!current.enabled||current.pid!==before.pid||current.native_instance!==prepared.instance)
       throw new Error(`Prior service identity changed after maintenance preparation. ${recovery}`);
@@ -387,7 +409,8 @@ export async function adoptInstalledService(statePath,{read=readNative,sourceRoo
       new_record:newRecord,new_definition:manifest.definition,receipts_sha256:receiptHash,created_at:new Date().toISOString()};
     writeFileSync(adoptionFile(state),`${JSON.stringify(operation,null,2)}\n`,{flag:'wx',mode:0o600});
     try {
-      assertPriorUnit(state,config,oldRecord);
+      assertServiceRecord(state,config,oldRecord);
+      if(runtimeDigest(runtime)!==manifest.runtime_sha256)throw Error();
       const boundary=await snapshot(state,oldRecord,ops);
       if(!boundary.healthy||!boundary.enabled||boundary.pid!==before.pid||boundary.native_instance!==prepared.instance)throw Error();
     } catch {return unresolvedAdoption(state,operation,'Prior unit or startup ownership changed before stop.');}
@@ -396,7 +419,7 @@ export async function adoptInstalledService(statePath,{read=readNative,sourceRoo
     catch {return unresolvedAdoption(state,operation,'Prior service stop outcome is uncertain.');}
     try {
       const stopped=await stoppedOwner(state,oldRecord,ops);
-      assertPriorUnit(state,config,oldRecord);
+      assertServiceRecord(state,config,oldRecord);
       if(!stopped.enabled||stopped.fragment!==oldRecord.file||stopped.reload_needed!=='no')throw Error();
     } catch {return unresolvedAdoption(state,operation,'Prior stopped owner or unit identity could not be confirmed.');}
     operation=updateAdoption(state,operation,'old_stopped');

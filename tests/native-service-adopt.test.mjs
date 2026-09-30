@@ -10,7 +10,7 @@ import { adoptInstalledService, pinInstalledRuntime, serviceManifest, manageNati
 function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPrepare=false,
   startUncertain=false,newBridgeUnknown=false,newBridgeDisappears=false,newPrepareBusy=false,
   changeReceipts=false,wrongFragment=false,lingeringTasks=false,reloadNeeded=false,
-  tasksUnset=false,groupRetained=false,groupUnknown=false,afterPrepare=()=>{},afterStop=()=>{}}={}) {
+  tasksUnset=false,groupRetained=false,groupUnknown=false,rollbackGate=true,afterPrepare=()=>{},afterStop=()=>{},afterNewPrepare=()=>{}}={}) {
   const root=mkdtempSync(join(tmpdir(),'factory-adopt-'));
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const state=join(root,'state'),repo=join(root,'repo'),unitFolder=join(root,'systemd','user');
@@ -19,7 +19,7 @@ function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPr
   const makePackage=(name,version,content)=>{
     const path=join(root,name);mkdirSync(join(path,'node_modules','yaml'),{recursive:true});mkdirSync(join(path,'bin'));
     writeFileSync(join(path,'package.json'),JSON.stringify({name:'software-defence-factory',version,
-      dependencies:{yaml:'2.9.1'},bundleDependencies:['yaml']}));
+      dependencies:{yaml:'2.9.1'},bundleDependencies:['yaml'],...(rollbackGate?{factoryService:{adoptionGate:1}}:{})}));
     writeFileSync(join(path,'node_modules','yaml','package.json'),JSON.stringify({name:'yaml',version:'2.9.1'}));
     writeFileSync(join(path,'bin','software-defence-factory.mjs'),content);
     return path;
@@ -34,7 +34,7 @@ function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPr
     definition_sha256:manifest.definition_sha256};
   writeFileSync(join(state,'service.json'),JSON.stringify(oldRecord),{mode:0o600});
   writeFileSync(join(state,'receipts','retained.json'),'prior native history',{mode:0o600});
-  const calls=[];let enabled=true,active=true,pid=101,instance='old-instance',unknown=newBridgeUnknown,newConnections=0;
+  const calls=[];let enabled=true,active=true,pid=101,instance='old-instance',unknown=newBridgeUnknown,newConnections=0,newPrepares=0;
   const selected=()=>JSON.parse(readFileSync(join(state,'service.json'),'utf8')).release_version;
   const systemctl=args=>{
     calls.push(args.join(' '));
@@ -47,7 +47,7 @@ function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPr
       if(args.includes('--property=ControlGroup')) {if(groupUnknown)throw Error('Unknown cgroup');return active||groupRetained?'/user.slice/fixture':'';}
       if(args.includes('--property=NeedDaemonReload'))return reloadNeeded?'yes':'no';
     }
-    if(args[0]==='stop'){active=false;pid=0;instance=null;afterStop({file:manifest.file});return '';}
+    if(args[0]==='stop'){active=false;pid=0;instance=null;afterStop({file:manifest.file,version:selected()});return '';}
     if(args[0]==='daemon-reload')return '';
     if(args[0]==='start') {
       if(startUncertain)throw new Error('systemctl response lost');
@@ -65,8 +65,10 @@ function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPr
       calls.push(`bridge ${owner} ${path}`);
       if(path==='/api/v1/maintenance/prepare') {
         if(busy&&owner==='old-instance')throw Object.assign(new Error('Native work is active'),{status:409});
-        if(newPrepareBusy&&owner==='target-instance')throw Object.assign(new Error('New native work is active'),{status:409});
+        if(owner==='target-instance')newPrepares++;
+        if(newPrepareBusy&&owner==='target-instance'&&newPrepares>=2)throw Object.assign(new Error('New native work is active'),{status:409});
         if(unknownPrepare&&owner==='old-instance')throw new Error('Response lost');
+        if(owner==='target-instance')afterNewPrepare({count:newPrepares,file:manifest.file,restart:()=>{pid=999;instance='other-owner';}});
         if(owner==='old-instance')afterPrepare({file:manifest.file,disable:()=>{enabled=false;}});
         return {instance:owner,token:input.token,prepared:true};
       }
@@ -249,4 +251,29 @@ test('status reports pending adoption when unit and record replacement was parti
   const result=await manageNativeService('status',state);
   assert.equal(result.ownership,'unresolved');assert.equal(result.healthy,false);assert.equal(result.adoption_pending.phase,'old_stopped');
   assert.equal(readFileSync(file,'utf8'),'new unit written before record');
+});
+
+
+test('rollback without an older startup gate restores the unit stopped, never opening admissions',async t=>{
+  const h=fixture(t,{targetReady:false,rollbackGate:false}),result=await h.run();
+  assert.equal(result.status,'adoption_failed');assert.equal(result.rollback,'restored_stopped');assert.equal(result.health,'old_stopped');
+  assert.equal(h.active,false);assert.equal(h.selected,'0.18.3');assert.equal(h.calls.filter(call=>call.startsWith('start ')).length,1);
+  assert.equal(existsSync(join(h.state,'service-adoption.json')),false);
+});
+
+test('rollback refuses a different replacement owner after maintenance preparation',async t=>{
+  const h=fixture(t,{targetReady:false,afterNewPrepare:({count,restart})=>{if(count===2)restart();}}),result=await h.run();
+  assert.equal(result.status,'unresolved');assert.equal(h.calls.filter(call=>call.startsWith('stop ')).length,1);
+  assert.equal(h.active,true);assert.equal(h.selected,'0.18.4');
+});
+
+test('rollback preserves a unit changed while stopping the replacement',async t=>{
+  const h=fixture(t,{targetReady:false,afterStop:({file,version})=>{if(version==='0.18.4')writeFileSync(file,'operator changed rollback unit');}}),result=await h.run();
+  assert.equal(result.status,'unresolved');assert.equal(readFileSync(h.manifest.file,'utf8'),'operator changed rollback unit');
+  assert.equal(h.selected,'0.18.4');assert.equal(h.calls.filter(call=>call.startsWith('start ')).length,1);
+});
+
+test('selected target pin changed during idle preparation refuses stop',async t=>{
+  const h=fixture(t,{afterPrepare:({file})=>{writeFileSync(join(h.state,'runtime','0.18.4','bin','software-defence-factory.mjs'),'changed target');}});
+  await assert.rejects(h.run(),/Target pinned release changed/);assert.equal(h.calls.filter(call=>call.startsWith('stop ')).length,0);
 });

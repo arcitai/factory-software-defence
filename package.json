@@ -53,5 +53,8 @@
   ],
   "dependencies": {
     "yaml": "2.9.1"
+  },
+  "factoryService": {
+    "adoptionGate": 1
   }
 }

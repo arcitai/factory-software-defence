@@ -99,7 +99,11 @@ adopt --state PATH` only after selecting a compatible patch release. `no_op`
 means the already pinned bytes match. `adopted` means the replacement bridge
 and native readiness were confirmed. `adoption_failed` with `rollback: restored`
 means the earlier service was verified and restored, but the target failed; the
-command exits nonzero. `unresolved` means ownership, stop/start outcome, native
+command exits nonzero. `rollback: restored_stopped` with `health: old_stopped`
+means the prior package lacks the startup admission gate: its original unit is
+restored without starting it. Inspect status and deliberately use `service start`
+after reconciliation; its original enabled setting also permits a later login/boot
+to start it. This is not restored native readiness. `unresolved` means ownership, stop/start outcome, native
 work or admission state could not be proved; do not rerun adoption as a retry.
 
 An interrupted adoption leaves private `service-adoption.json` and possibly
