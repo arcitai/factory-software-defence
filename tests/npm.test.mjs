@@ -30,6 +30,8 @@ test('real tarball installs offline, carries yaml and documentation, and exports
  const cli=join(installed,'bin/software-defence-factory.mjs');
  assert.equal(execFileSync(process.execPath,[cli,'--version'],{encoding:'utf8'}).trim(),packed.version);
  assert.match(execFileSync(process.execPath,[cli,'foundation'],{encoding:'utf8'}),/Factory Foundation/);
+ assert.match(execFileSync(process.execPath,[cli,'help'],{encoding:'utf8'}),/updates check --channel latest\|next/);
+ assert.throws(()=>execFileSync(process.execPath,[cli,'updates','check','--channel','unknown'],{encoding:'utf8',stdio:['ignore','pipe','pipe']}),error=>error.status===1&&/Choose the release channel explicitly/.test(error.stderr));
  const staged=join(scratch,'kit');execFileSync(process.execPath,[cli,'kit','--output',staged]);
  assert.equal(readdirSync(join(staged,'.agents','skills')).length,6);
  const walk=dir=>readdirSync(dir,{withFileTypes:true}).flatMap(entry=>entry.name==='node_modules'?[]:entry.isDirectory()?walk(join(dir,entry.name)):[join(dir,entry.name)]);

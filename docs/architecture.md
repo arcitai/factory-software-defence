@@ -13,7 +13,7 @@ The native harness remains the execution engine.
 | Small bridge | Authenticate local requests, associate issues with native sessions, refuse ambiguous or duplicate operations |
 | Codex | Agent loop, context, tools, permissions, sessions and execution history |
 | GitHub | Repository issues, templates, PRs, checks and authorized publication |
-| OS service manager | Start the pinned bridge after login/boot and supervise its process |
+| OS service manager | Start the pinned bridge after login/boot, supervise its process and optionally schedule metadata-only release checks |
 
 ## Small integration boundaries
 
@@ -37,6 +37,10 @@ Factory keeps small private receipts for issue creation/admission and native IDs
 These receipts prevent uncertain writes being replayed; they are not a queue or
 copy of native conversation history. There is one writer per project workspace.
 The repository's normal Git tools own commits and branches.
+
+Operator release checks read public npm metadata independently of the bridge or
+native harness. An optional OS timer only schedules that read; activation remains
+manual and must preserve native work. See [packages and releases](npm.md).
 
 ## Deployment
 

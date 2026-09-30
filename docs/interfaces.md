@@ -1,7 +1,8 @@
 # Interfaces and state
 
 The Inbox and operational CLI commands use one running loopback bridge. Setup,
-login, diagnostics, method export and OS-service management are operator commands.
+login, diagnostics, method export, release checking and OS-service management
+are operator commands.
 There is no second CLI execution engine.
 
 | Intent | CLI |
@@ -39,6 +40,10 @@ letters, digits, underscores or hyphens) when reconciling an uncertain response.
 Never generate a fresh ID merely to retry. Inspect `issues submissions` and use
 `issues recover` to look for the existing upstream issue; recovery does not repeat
 creation or start an agent.
+
+Release checking is an operator read: `factory updates check --channel next`
+compares public npm metadata with the executing CLI package. It does not activate
+the pinned service or invoke the harness. See [packages and releases](npm.md).
 
 ## State is observable, not invented
 
