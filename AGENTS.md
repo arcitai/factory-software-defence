@@ -54,6 +54,23 @@ Inspect affected UI flows at desktop and narrow widths. Exercise native startup,
 continuation and recovery through the installed CLI/API when changing those
 boundaries. Mock tests cannot prove live native integration or isolation.
 
+## Cross-layer review for Factory contributors
+
+When a change materially affects shared concepts, interfaces, ownership or a
+cross-layer flow, trace the affected path through its source/catalog, native or
+provider boundary, CLI/API, Inbox, Foundation/method/export/templates, and
+docs/diagrams/setup or package/install/delivery guidance as applicable. Note
+unaffected layers when that clarifies scope; do not edit every layer
+mechanically. Find the true upstream owner, keep one shared definition with
+derived projections instead of duplicating status/label/config rules in React,
+and distinguish source lifecycle, native execution and accepted delivery.
+Carry compatibility/migration and stale/failure/rollback behavior where affected.
+Check the actual candidate and affected journey with existing checks and
+independent review; distinguish source-only, synthetic and live/installed
+evidence, gather installed proof when relevant, and state material gaps. Routine
+repairs use the ordinary path. This is repo-only contributor guidance: do not
+export or install this rule in adopting projects.
+
 Use the [setup guide](docs/setup.md) for installation and the
 [recovery guide](docs/recovery.md) for interrupted work. Preserve private
 installation evidence and historical states before migration. Keep current
