@@ -4,6 +4,15 @@
 this file preserves order, not a second execution queue. Historical releases and
 retired implementation evidence remain in Git and private installation records.
 
+## Current scoped work
+
+- [ ] [#131](https://github.com/arcitai/factory-software-defence/issues/131):
+  add the repository-only cross-layer contributor rule. The source change is
+  prepared; exact-candidate review and normal protected-PR delivery remain.
+- [ ] [#130](https://github.com/arcitai/factory-software-defence/issues/130):
+  status/labels, Foundation and Inbox UI implementation; start after #131 is
+  complete and follow #130's accepted scope.
+
 ## Native product
 
 [PR #120](https://github.com/arcitai/factory-software-defence/pull/120)
@@ -13,12 +22,12 @@ delivered Inbox qualification in 0.18.2 and closed #37. Remaining work:
 
 - [ ] [#113](https://github.com/arcitai/factory-software-defence/issues/113):
   0.18.3 under the former npm name delivered metadata-only checks and an optional
-  OS timer recipe. The canonical `factory-software-defence` 0.18.4 source candidate
-  retains deliberate adoption between compatible gated runtimes,
-  native readiness and bounded rollback. Older ungated runtimes need an explicit
-  migration. Independent review, canonical publication and installed-byte proof
-  remain. Automatic download/activation and other OS recipes remain separate
-  qualifications. A timer does not deliver automatic service updates.
+  OS timer recipe. Canonical `factory-software-defence` 0.18.4 source and npm
+  package are delivered, including deliberate adoption between compatible gated
+  runtimes, native readiness and bounded rollback. Installed-byte proof and the
+  current Z13 legacy migration are qualified. Future genuine canonical OIDC
+  publication, reboot/power-loss proof, automatic download/activation and other
+  OS recipes remain open. A timer does not deliver automatic service updates.
 - [ ] [#114](https://github.com/arcitai/factory-software-defence/issues/114):
   prove sustained native credential refresh/coexistence and qualify any separately
   selected Desktop integration; these are not delivered.
