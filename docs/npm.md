@@ -21,13 +21,27 @@ an npx cache being retained.
 ## Switch global package names
 
 An older global `software-defence-factory` install can own the same `factory`
-command. After confirming that any running service uses its pinned copy and
-recording the old installation for recovery, switch the global command deliberately:
+command. Keep it installed while qualifying the canonical package in a separate
+directory. Choose an explicit reviewed version; for this release:
+
+```sh
+npm install --prefix /absolute/qualification-directory --ignore-scripts factory-software-defence@0.18.4
+/absolute/node /absolute/qualification-directory/node_modules/factory-software-defence/bin/software-defence-factory.mjs runtime
+```
+
+Complete the applicable installed CLI and service checks before removing the old
+global package. Confirm that any running service uses its pinned copy, and record
+the old global package/version and command ownership for recovery. Then install
+the same qualified version globally:
 
 ```sh
 npm uninstall --global software-defence-factory
-npm install --global factory-software-defence@next
+npm install --global factory-software-defence@0.18.4
 ```
+
+Compare the global installation with the qualified package before adopting a
+service. If the global install fails, restore the recorded old package/version
+and inspect the failure; do not force an overwrite or change the running pin.
 
 The uninstall affects the old global npm command, not the pinned service runtime,
 private state, Codex home, credentials or history. Do not remove a service pin or
