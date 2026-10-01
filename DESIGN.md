@@ -81,7 +81,7 @@ Prefer flat surfaces and rare shadows; do not shrink the entire interface.
 Default light: white,#0a0a0a text,#e5e5e5 borders. Default dark:#101012 surfaces,
 #f5f5f5 text,subtle charcoal borders. Primary creation uses restrained blue.
 Status colors also have text labels. Optional reviewed project accent remains
-[#27](https://github.com/arcitai/software-and-defence-factory/issues/27); arbitrary
+[#27](https://github.com/arcitai/factory-software-defence/issues/27); arbitrary
 Markdown is not executable CSS and missing theme data retains the full default.
 
 At320–390px collapse navigation/status into labelled controls; wrap row metadata

@@ -12,11 +12,12 @@ test('user systemd manifest pins an installed release and a loopback serve comma
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const installed=join(root,'installed'),state=join(root,'state'),repo=join(root,'repo');
   mkdirSync(installed);mkdirSync(state);mkdirSync(repo);
-  writeFileSync(join(installed,'package.json'),JSON.stringify({name:'software-defence-factory',version:'0.18.0',dependencies:{yaml:'2.9.1'},bundleDependencies:['yaml']}));
+  writeFileSync(join(installed,'package.json'),JSON.stringify({name:'factory-software-defence',version:'0.18.0',dependencies:{yaml:'2.9.1'},bundleDependencies:['yaml']}));
   mkdirSync(join(installed,'node_modules','yaml'),{recursive:true});
   writeFileSync(join(installed,'node_modules','yaml','package.json'),JSON.stringify({name:'yaml',version:'2.9.1'}));
   const manifest=serviceManifest({state,config:{repo,node:process.execPath},root:installed,home:root,port:7332});
   assert.match(manifest.definition,/ExecStart=.*serve.*--state.*--port/);
+  assert.match(manifest.definition,/bin\/software-defence-factory\.mjs/);
   assert.match(manifest.definition,/NoNewPrivileges=true/);
   assert.equal(manifest.runtime,join(state,'runtime','0.18.0'));
   assert.match(manifest.definition,/ExecStartPre=/);
@@ -50,7 +51,7 @@ test('same-version service pin refuses changed installed bytes',t=>{
   const root=mkdtempSync(join(tmpdir(),'factory-pin-test-'));
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const installed=join(root,'installed'),state=join(root,'state');mkdirSync(installed);mkdirSync(state);
-  writeFileSync(join(installed,'package.json'),JSON.stringify({name:'software-defence-factory',version:'0.18.0',dependencies:{yaml:'2.9.1'},bundleDependencies:['yaml']}));
+  writeFileSync(join(installed,'package.json'),JSON.stringify({name:'factory-software-defence',version:'0.18.0',dependencies:{yaml:'2.9.1'},bundleDependencies:['yaml']}));
   mkdirSync(join(installed,'node_modules','yaml'),{recursive:true});
   writeFileSync(join(installed,'node_modules','yaml','package.json'),JSON.stringify({name:'yaml',version:'2.9.1'}));
   writeFileSync(join(installed,'entry.mjs'),'export const value = 1;');

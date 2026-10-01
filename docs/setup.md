@@ -16,7 +16,9 @@ that shared OS access remains a limitation. Keep application services separate.
 
 ## Configure Codex deliberately
 
-Install the [native release](npm.md). Choose absolute paths for an existing Git
+Install the canonical `factory-software-defence` [native release](npm.md). If an
+older global install owns `factory`, follow the [explicit package switch](npm.md#switch-global-package-names).
+Choose absolute paths for an existing Git
 root and a **new** private state directory whose parent exists:
 
 ```sh
@@ -91,6 +93,9 @@ factory service status --state /absolute/private/factory-state
 ```
 
 The service pins package bytes and the selected Node/state/repository paths.
+The package rename does not rename an existing service unit, state directory,
+Codex home, credentials or native history. Preserve an old pin until its owner
+is reconciled and a new installed package is qualified.
 Every systemd start verifies the runtime, including its bundled dependency,
 against the recorded digest. Unused npm executable shims are excluded; changed
 runtime bytes block startup. This detects drift, not a hostile shared OS user.

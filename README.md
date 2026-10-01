@@ -22,17 +22,19 @@ need their own qualified integration; the method can be used independently.
 
 ## Install
 
-The native-only 0.18 release is an explicit migration channel:
+Install the native-only 0.18 release through its explicit migration channel:
 
 ```sh
-npm install --global software-defence-factory@next
+npm install --global factory-software-defence@next
 factory help
 factory foundation
 ```
 
-For occasional use, `npm exec --package=software-defence-factory@next -- factory help`.
-The package name is `software-defence-factory`; its command is `factory`.
-An existing command with that name should not be overwritten with `--force`.
+For occasional use, `npm exec --package=factory-software-defence@next -- factory help`.
+The package name is `factory-software-defence`; its commands include `factory`
+and `factory-software-defence`. If the former npm package owns a global `factory`
+command, follow the explicit [package switch](docs/npm.md#switch-global-package-names)
+before installing. Do not overwrite that command with `--force`.
 
 Follow [setup](docs/setup.md) to prepare native Codex and a project Inbox.
 Existing installations must follow [migration](docs/migration.md); old histories

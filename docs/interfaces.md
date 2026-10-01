@@ -43,7 +43,8 @@ Never generate a fresh ID merely to retry. Inspect `issues submissions` and use
 creation or start an agent.
 
 Release checking is an operator read: `factory updates check --channel next`
-compares public npm metadata with the executing CLI package. It does not activate
+compares public `factory-software-defence` metadata with the executing CLI package.
+It does not activate
 the pinned service or invoke the harness. See [packages and releases](npm.md).
 `service adopt` is a separate explicit activation from the selected installed
 target CLI. It pins bytes, requires idle ownership and native readiness, and

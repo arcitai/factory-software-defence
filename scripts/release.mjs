@@ -9,9 +9,10 @@ const newer = (a,b) => {
 };
 export async function releaseDecision(pkg,request=fetch) {
   const tag=pkg.publishConfig?.tag || 'latest';
-  if(pkg.name!=='software-defence-factory'||!stable(pkg.version)||!['next','latest'].includes(tag))
+  if(pkg.name!=='factory-software-defence'||pkg.repository?.url!=='https://github.com/arcitai/factory-software-defence.git'
+    ||!stable(pkg.version)||!['next','latest'].includes(tag))
     throw new Error('Unexpected release identity or channel');
-  const registry='https://registry.npmjs.org/software-defence-factory';
+  const registry='https://registry.npmjs.org/factory-software-defence';
   const lookup=path=>request(`${registry}/${path}`,{signal:AbortSignal.timeout(15000),redirect:'error'});
   const exact=await lookup(pkg.version);
   if(exact.ok)return {publish:false,channel:tag};
