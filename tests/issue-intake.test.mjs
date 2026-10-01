@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { listIssues, readIssue, validateIssueURL } from '../factory/issue-intake.mjs';
+import { githubIssueProvider } from '../factory/providers/github.mjs';
 
 test('issue intake confines reads to the configured origin and preserves literal untrusted instructions',async t=>{
   const repo=mkdtempSync(join(tmpdir(),'sdf-issue-'));t.after(()=>rmSync(repo,{recursive:true,force:true}));
@@ -21,6 +22,20 @@ test('issue intake confines reads to the configured origin and preserves literal
   assert.equal(imported.assignees[0].profile_url,'https://github.com/builder');assert.equal(imported.assignees[1].profile_url,null);
   assert.equal(imported.assignees[1].avatar_url,null);assert.equal(imported.state,'closed');assert.equal(imported.state_reason,'completed');
   assert.equal(imported.created_at,fixture.createdAt);assert.equal(imported.updated_at,fixture.updatedAt);assert.equal(imported.body,fixture.body);assert.match(imported.spec,/A scoped change/);assert.equal(reads,1);
+  for (const [name, mutate, expected] of [
+    ['omitted assignee data', issue => { delete issue.assignees; }, null],
+    ['malformed assignee field', issue => { issue.assignees = 'builder'; }, null],
+    ['incomplete assignee list', issue => { issue.assignees = [{ login: 'builder' }, { login: 'not a GitHub login' }]; }, null],
+    ['incomplete sparse assignee list', issue => { issue.assignees = new Array(1); }, null],
+    ['known empty assignee list', issue => { issue.assignees = []; }, []],
+  ]) {
+    const source = { ...fixture };
+    mutate(source);
+    const listIssue = { ...source, html_url: url, number: 42, labels: [] };
+    const provider = githubIssueProvider(repo, { read: async args => args[0] === 'api' ? [listIssue] : source });
+    assert.deepEqual((await provider.preview(url)).assignees, expected, `${name} stays distinct in issue preview`);
+    assert.deepEqual((await provider.list(1, 'open')).issues[0].assignees, expected, `${name} stays distinct in issue listing`);
+  }
   for(const value of ['https://github.com/example/other/issues/1','https://evil.test/example/project/issues/1',url+'?token=secret',url+'/../1',url.replace('/42','/-1')]) await assert.rejects(readIssue(repo,value,read));
   assert.equal(reads,1,'invalid URLs cannot invoke gh');
   await assert.rejects(readIssue(repo,url,async()=>({...fixture,url:url.replace('/42','/43')})),/unexpected/);

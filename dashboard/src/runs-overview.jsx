@@ -158,10 +158,10 @@ function NativeFilterButton({ job, filter, setFilter }) {
 }
 
 function RunCard({ job, phaseFilter, selectPhase, filter, setFilter }) {
-  const title = jobDisplayTitle(job), phase = job.work?.phase, hasNativeHistory = Boolean(job.work?.executions?.length);
+  const title = jobDisplayTitle(job), phase = job.work?.phase;
   return <Card className="run-card">
     <div className="run-card-top"><PhaseFilterButton phase={phase} phaseFilter={phaseFilter} selectPhase={selectPhase} compact />
-      {hasNativeHistory && <NativeFilterButton job={job} filter={filter} setFilter={setFilter} />}</div>
+      <NativeFilterButton job={job} filter={filter} setFilter={setFilter} /></div>
     <a href={job.href || `#/runs/${encodeURIComponent(job.id)}`} className="run-card-link" aria-label={`Open work ${title}, repository phase ${phase?.label || 'unresolved'}, native state ${stateLabel(job.state)}`}>
       <p className="run-card-title">{title}</p>
     </a>
@@ -171,7 +171,7 @@ function RunCard({ job, phaseFilter, selectPhase, filter, setFilter }) {
 }
 
 function RunRow({ job, phaseFilter, selectPhase, filter, setFilter }) {
-  const title = jobDisplayTitle(job), phase = job.work?.phase, hasNativeHistory = Boolean(job.work?.executions?.length);
+  const title = jobDisplayTitle(job), phase = job.work?.phase;
   return <article className="task-row" role="listitem">
     <PhaseIconButton phase={phase} phaseFilter={phaseFilter} selectPhase={selectPhase} />
     <div className="task-row-content">
@@ -181,7 +181,7 @@ function RunRow({ job, phaseFilter, selectPhase, filter, setFilter }) {
       <WorkMetadata job={job} />
     </div>
     <div className="task-row-actions"><PhaseFilterButton phase={phase} phaseFilter={phaseFilter} selectPhase={selectPhase} compact />
-      {hasNativeHistory && <NativeFilterButton job={job} filter={filter} setFilter={setFilter} />}</div>
+      <NativeFilterButton job={job} filter={filter} setFilter={setFilter} /></div>
   </article>;
 }
 

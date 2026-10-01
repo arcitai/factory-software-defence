@@ -145,7 +145,7 @@ test('issue API returns catalogued source phase separately from native state and
     list:async(page,sourceState)=>({repository,next_page:sourceState==='open'&&page===1?2:null,issues:sourceState==='closed'
       ?reopened?[]:[{number:2,title:'Completed closure',url:`${repository}/issues/2`,state:'closed',state_reason:'completed',labels:[{name:'factory:review'}]}]
       :page===2?[{number:5,title:'Second provider page',url:`${repository}/issues/5`,state:'open',state_reason:null,labels:[{name:'factory:spec'}]}]
-      :[{number:1,title:'Ready for work',url:`${repository}/issues/1`,state:'open',state_reason:null,labels:[{name:'factory:ready'}]},
+      :[{number:1,title:'Ready for work',url:`${repository}/issues/1`,state:'open',state_reason:null,assignees:null,labels:[{name:'factory:ready'}]},
         {number:3,title:'Conflicting labels',url:`${repository}/issues/3`,state:'open',state_reason:null,labels:[{name:'factory:ready'},{name:'factory:review'}]},
         ...(reopened?[{number:2,title:'Reopened work',url:`${repository}/issues/2`,state:'open',state_reason:'reopened',labels:[{name:'factory:ready'}]}]:[])]})};
   const {server}=createNativeServer(state,{repo:join(state,'repo')},{harness,provider,instance:'lifecycle-api'});
@@ -157,7 +157,9 @@ test('issue API returns catalogued source phase separately from native state and
   const open=await get('page=1&state=open');
   assert.equal(open.next_page,2);
   assert.equal(open.issues[0].phase.id,'ready_to_implement');
+  assert.equal(open.issues[0].assignees,null,'issue API preserves unavailable assignment metadata');
   assert.equal(open.work_records.find(record=>record.identity?.number===1).phase.id,'ready_to_implement');
+  assert.equal(open.work_records.find(record=>record.identity?.number===1).issue.assignees,null,'issue API work records preserve unavailable assignment metadata');
   assert.equal(open.work_records.find(record=>record.identity?.number===1).state,'needs_review');
   assert.equal(open.work_records.find(record=>record.identity?.number===1).native_state.label,'Native turn completed · needs review');
   assert.equal(open.issues[1].phase.resolution,'conflicting');

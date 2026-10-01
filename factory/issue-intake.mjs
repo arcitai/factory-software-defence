@@ -61,8 +61,10 @@ function stateReason(value) {
 function issueMetadata(issue) {
   const date = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
   const author = contributor(issue.user || issue.author);
-  const assignees = Array.isArray(issue.assignees) ? issue.assignees.map(contributor).filter(Boolean)
-    .filter((person, index, people) => people.findIndex(candidate => candidate.login.toLowerCase() === person.login.toLowerCase()) === index) : [];
+  const normalizedAssignees = Array.isArray(issue.assignees) ? Array.from(issue.assignees, contributor) : null;
+  const assignees = normalizedAssignees && normalizedAssignees.every(Boolean)
+    ? normalizedAssignees.filter((person, index, people) => people.findIndex(candidate => candidate.login.toLowerCase() === person.login.toLowerCase()) === index)
+    : null;
   return { author: author?.login || null, author_profile_url: author?.profile_url || null, author_avatar_url: author?.avatar_url || null, assignees,
     created_at: date(issue.created_at || issue.createdAt), updated_at: date(issue.updated_at || issue.updatedAt) };
 }

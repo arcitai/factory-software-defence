@@ -81,7 +81,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   ];
   issues.find(issue => issue.number === 120).author_profile_url = 'javascript:alert(1)';
   issues.find(issue => issue.number === 120).author_avatar_url = 'data:text/html,unsafe';
-  issues.find(issue => issue.number === 120).assignees = undefined;
+  issues.find(issue => issue.number === 120).assignees = null;
   for (const [number, reason] of [[113, 'completed'], [112, 'not_planned'], [111, null], [110, 'future_reason']]) {
     const closed = repositoryIssue(number, `Closed fixture ${number}`, []);
     closed.state = 'closed';
@@ -238,6 +238,10 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   await act(async () => { reviewPhaseCard.blur(); });
   assert.ok(document.querySelector('.run-card .native-filter-badge[aria-label="Filter by native state: Native turn completed · needs review"]'));
   assert.ok(document.querySelector('.run-card .native-filter-badge svg'), 'native outcome badges reuse their catalogued category glyph');
+  const unstartedCard = [...document.querySelectorAll('.run-card')].find(card => card.querySelector('.run-card-title')?.textContent.includes('Draft target issue'));
+  assert.ok(unstartedCard?.querySelector('.phase-filter-badge[aria-label="Filter by repository phase: Ready to implement"]'));
+  assert.ok(unstartedCard?.querySelector('.native-filter-badge[aria-label="Filter by native state: Not started"] .task-state.tone-neutral'), 'unstarted loaded work keeps its separate neutral native state in Kanban');
+  assert.doesNotMatch(unstartedCard?.textContent || '', /\b\d+ attempts?\b/, 'empty native history does not create an attempt count');
   assert.equal(document.querySelectorAll('a a').length, 0, 'issue detail links never wrap contributor profile links');
   assert.ok(document.querySelector('.run-card .issue-contributors.is-compact .contributor[aria-label="Author: operator"]'));
   assert.ok(document.querySelector('.run-card .issue-contributors.is-compact .contributor[aria-label="Assignee: builder"]'), 'an actual assignee has its own avatar');
@@ -294,6 +298,10 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   assert.ok(document.querySelectorAll('.task-row-title').length > 1);
   assert.equal(requests.filter(request => request.pathname.endsWith('/start') || /\/api\/v1\/jobs\/[^/]+\/(?:continue|resume|interrupt)$/.test(request.pathname)).length,
     nativeActionsBeforeViewChange, 'switching views and phases does not start or continue native work');
+  const unstartedRow = [...document.querySelectorAll('.task-row')].find(row => row.querySelector('.task-row-title')?.textContent.includes('Draft target issue'));
+  assert.ok(unstartedRow?.querySelector('.task-row-actions .phase-filter-badge[aria-label="Filter by repository phase: Ready to implement"]'));
+  assert.ok(unstartedRow?.querySelector('.task-row-actions .native-filter-badge[aria-label="Filter by native state: Not started"] .task-state.tone-neutral'), 'unstarted loaded work keeps its separate neutral native state in list view');
+  assert.doesNotMatch(unstartedRow?.textContent || '', /\b\d+ attempts?\b/, 'empty native history stays out of attempt counts');
   await click(document.querySelector('button[aria-label="Board"]'));
   assert.equal(document.querySelectorAll('a a').length, 0, 'board issue and contributor links also remain valid siblings');
 
