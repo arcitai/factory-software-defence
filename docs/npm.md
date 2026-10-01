@@ -1,19 +1,52 @@
 # Packages and releases
 
-The npm package is `software-defence-factory`; both `factory` and the compatibility
-executable `software-defence-factory` invoke it. Use the explicit package/version
-when another tool already owns the `factory` command.
+The npm package is `factory-software-defence`. It provides `factory` and
+`factory-software-defence`; `software-defence-factory` remains an explicit
+executable alias for existing scripts. All three invoke the same bundled CLI.
+Use the explicit package/version when another tool owns `factory`.
+The canonical 0.18.4 package is a source candidate until reviewed publication;
+the former package's 0.18.4 candidate was never published.
 
 ```sh
-npm install --global software-defence-factory@next
+npm install --global factory-software-defence@next
 factory --version
 factory runtime --state /absolute/private/factory-state
 ```
 
-`npm exec --package=software-defence-factory@next -- factory help` is convenient
+`npm exec --package=factory-software-defence@next -- factory help` is convenient
 for occasional use. A long-running service pins an installed package and the
 chosen Node binary; it must not run from an editable source checkout or depend on
 an npx cache being retained.
+
+## Switch global package names
+
+An older global `software-defence-factory` install can own the same `factory`
+command. Keep it installed while qualifying the canonical package in a separate
+directory. Choose an explicit reviewed version; for this release:
+
+```sh
+npm install --prefix /absolute/qualification-directory --ignore-scripts factory-software-defence@0.18.4
+/absolute/node /absolute/qualification-directory/node_modules/factory-software-defence/bin/software-defence-factory.mjs runtime
+```
+
+Complete the applicable installed CLI and service checks before removing the old
+global package. Confirm that any running service uses its pinned copy, and record
+the old global package/version and command ownership for recovery. Then install
+the same qualified version globally:
+
+```sh
+npm uninstall --global software-defence-factory
+npm install --global factory-software-defence@0.18.4
+```
+
+Compare the global installation with the qualified package before adopting a
+service. If the global install fails, restore the recorded old package/version
+and inspect the failure; do not force an overwrite or change the running pin.
+
+The uninstall affects the old global npm command, not the pinned service runtime,
+private state, Codex home, credentials or history. Do not remove a service pin or
+run login as part of the rename. Qualify the new installed package before changing
+the service. Do not use `--force` to resolve a global command collision.
 
 ## Check a selected channel
 
@@ -21,14 +54,17 @@ an npx cache being retained.
 factory updates check --channel next
 ```
 
-Choose `next` or `latest` explicitly. The command reads public npm metadata and
-compares it with **the CLI package executing the check**, not the pinned running
+Choose `next` or `latest` explicitly. The command reads public metadata for
+`factory-software-defence` and compares it with **the CLI package executing the
+check**, not the pinned running
 service. Use `factory service status --state PATH` to inspect that service's
 version separately. A global npm upgrade does not activate a service release.
 
 The JSON result distinguishes `newer`, `current` and `older`. An older channel is
-never an upgrade: `latest` remains 0.17 while native 0.18 is on `next`. A different
-0.x minor line requires deliberate migration. A successful lookup exits zero,
+never an upgrade. The former package's `latest` 0.17 and `next` 0.18.3 tags do not
+define the new package's channels. A missing new-package tag is unavailable, not
+a reason to query or install the former package. A different 0.x minor line
+requires deliberate migration. A successful lookup exits zero,
 including when a newer release exists; unavailable, oversized or invalid metadata
 exits nonzero and means availability is unknown. Metadata is not package integrity,
 provenance, review or compatibility proof.
@@ -104,9 +140,9 @@ or background loop is installed by the CLI.
 
 ## Update deliberately
 
-0.18 uses `next` so old auto-updaters following `latest` do not silently activate a
-breaking migration. Disable those old updaters before local adoption. There is no
-Factory scheduler or replacement background update daemon in this release.
+0.18 uses `next` on the new package. Disable old automatic updaters before local
+adoption. There is no Factory scheduler or replacement background update daemon
+in this release.
 
 Inspect and explicitly select a reviewed installed package that includes the
 `service adopt` command. Invoke **that target package's CLI** with the existing
@@ -117,10 +153,14 @@ private state:
 ```
 
 There is no package URL, registry or download option on this command. It pins
-the executing installed package before stopping the old service. It accepts a
+the executing installed `factory-software-defence` package before stopping the
+old service. The retained `bin/software-defence-factory.mjs` path serves both
+package names so existing owned unit definitions remain verifiable. It accepts a
 newer patch in the same 0.x minor line; identical bytes at the same version
-return `no_op`. Changed bytes at the same version, a downgrade, a different
-minor line, a mutable checkout, an unowned unit, busy or unknown native work,
+return `no_op`. A legacy and canonical package at the same version have different
+bytes and cannot replace each other's pin. Changed bytes at the same version,
+a downgrade, a different minor line, a mutable checkout, an unowned unit, busy
+or unknown native work,
 and uncertain service ownership are refused. A different minor line needs an
 explicit migration policy, not this command. The existing Node, port, unit,
 repository, Codex setup, credentials, receipts and native history remain selected.

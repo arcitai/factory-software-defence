@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {checkRelease} from '../factory/release-check.mjs';
-const metadata=version=>new Response(JSON.stringify({name:'software-defence-factory',version}));
+const metadata=version=>new Response(JSON.stringify({name:'factory-software-defence',version}));
 const check=(candidate,version='0.18.2')=>checkRelease({version,channel:'next',request:async()=>metadata(candidate)});
 
 test('release checks compare numeric versions and never recommend a downgrade or activation',async()=>{
@@ -14,7 +14,7 @@ test('release checks compare numeric versions and never recommend a downgrade or
 test('the selected channel uses only the public registry and rejects an implicit channel',async()=>{
   let calls=0;
   const request=async(url,options)=>{
-    calls++;assert.equal(url,'https://registry.npmjs.org/software-defence-factory/latest');
+    calls++;assert.equal(url,'https://registry.npmjs.org/factory-software-defence/latest');
     assert.equal(options.redirect,'error');assert.deepEqual(options.headers,{Accept:'application/json'});
     assert.ok(options.signal);return metadata('0.17.0');
   };
@@ -27,7 +27,7 @@ test('unavailable or untrusted metadata stays an error rather than a current-rel
   await assert.rejects(run(new Response('',{status:503})),/availability is unknown/);
   await assert.rejects(run(new Response('{')),/valid JSON/);
   await assert.rejects(run(new Response('null')),/identity/);
-  await assert.rejects(run(new Response(JSON.stringify({name:'different',version:'0.18.3'}))),/identity/);
+  await assert.rejects(run(new Response(JSON.stringify({name:'software-defence-factory',version:'0.18.3'}))),/identity/);
   await assert.rejects(check('1.0.0'),/migration manually/);
   await assert.rejects(check('0.18.3-beta.1'),/migration manually/);
   await assert.rejects(run(new Response('x'.repeat(256001))),/256 KB/);

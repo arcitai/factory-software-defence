@@ -11,12 +11,12 @@ test('real tarball installs offline, carries yaml and documentation, and exports
  t.after(()=>rmSync(scratch,{recursive:true,force:true}));
  const npm=(args,cwd=root)=>execFileSync('npm',args,{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60000});
  const [packed]=JSON.parse(npm(['pack','--json','--ignore-scripts','--pack-destination',scratch]));
- assert.equal(packed.name,'software-defence-factory');
+ assert.equal(packed.name,'factory-software-defence');
  const paths=packed.files.map(file=>file.path);
  for(const retired of ['factory/queue.mjs','factory/executor.mjs','factory/pins.json','bin/legacy.mjs','factory/updates.mjs','factory/image/Dockerfile'])assert.ok(!paths.includes(retired),retired);
  const prefix=join(scratch,'install');mkdirSync(prefix);
  npm(['install','--prefix',prefix,'--offline','--ignore-scripts','--no-audit','--no-fund',join(scratch,packed.filename)],scratch);
- const installed=join(prefix,'node_modules','software-defence-factory');
+ const installed=join(prefix,'node_modules','factory-software-defence');
  assert.ok(existsSync(join(installed,'node_modules','yaml','package.json')));
  execFileSync(process.execPath,['--input-type=module','-e',`await import(${JSON.stringify(pathToFileURL(join(installed,'factory/native/server.mjs')).href)})`],{encoding:'utf8'});
  const {serviceManifest,pinInstalledRuntime}=await import(pathToFileURL(join(installed,'factory/native/service.mjs')));
@@ -28,6 +28,10 @@ test('real tarball installs offline, carries yaml and documentation, and exports
  assert.equal(existsSync(join(runtime,'node_modules','.bin')),false);
  execFileSync(manifest.verification[0],manifest.verification.slice(1),{encoding:'utf8'});
  const cli=join(installed,'bin/software-defence-factory.mjs');
+ const installedPackage=JSON.parse(readFileSync(join(installed,'package.json'),'utf8'));
+ assert.equal(installedPackage.bin['factory-software-defence'],installedPackage.bin.factory);
+ assert.equal(installedPackage.bin['software-defence-factory'],installedPackage.bin.factory);
+ assert.equal(JSON.parse(execFileSync(process.execPath,[cli,'runtime','--state',join(scratch,'unused-state')],{encoding:'utf8'})).package,packed.name);
  assert.equal(execFileSync(process.execPath,[cli,'--version'],{encoding:'utf8'}).trim(),packed.version);
  assert.match(execFileSync(process.execPath,[cli,'foundation'],{encoding:'utf8'}),/Factory Foundation/);
  assert.match(execFileSync(process.execPath,[cli,'help'],{encoding:'utf8'}),/updates check --channel latest\|next/);

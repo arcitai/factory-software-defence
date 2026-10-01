@@ -1,9 +1,17 @@
 # Migrate to the native-only release
 
-0.18 is a breaking change, published under the explicit npm `next` tag.
-`latest` remains on the earlier line while installations migrate deliberately.
+0.18 is a breaking change on the canonical package's explicit npm `next` tag.
+The former package's `latest` remains on the earlier line while installations
+migrate deliberately.
 The native-only package does not contain the old controller, SQLite queue,
 Docker/Pi executor, workflow/model editors, custom updater or delivery engine.
+
+The canonical npm name is `factory-software-defence`. The former
+`software-defence-factory` package and global `factory` command are separate from
+the new package; use the [explicit global package switch](npm.md#switch-global-package-names)
+only after confirming the old service runs from its retained pin. The source
+CLI file path and private state/writer-lock paths keep their older names for
+compatibility. Do not rename them or copy login/history during this switch.
 
 ## Preserve before changing
 

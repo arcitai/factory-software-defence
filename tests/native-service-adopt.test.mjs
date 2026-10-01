@@ -10,24 +10,24 @@ import { adoptInstalledService, pinInstalledRuntime, serviceManifest, manageNati
 function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPrepare=false,
   startUncertain=false,newBridgeUnknown=false,newBridgeDisappears=false,newPrepareBusy=false,
   changeReceipts=false,wrongFragment=false,lingeringTasks=false,reloadNeeded=false,
-  tasksUnset=false,groupRetained=false,groupUnknown=false,rollbackGate=true,afterPrepare=()=>{},afterStop=()=>{},afterNewPrepare=()=>{},afterOldStatus=()=>{},inspectBeforePrepare=()=>{},restartAfterCancel=false,oldRuntimeOnTargetStart=false,dropIns='',dropInsUnknown=false}={}) {
+  tasksUnset=false,groupRetained=false,groupUnknown=false,rollbackGate=true,oldName='factory-software-defence',afterPrepare=()=>{},afterStop=()=>{},afterNewPrepare=()=>{},afterOldStatus=()=>{},inspectBeforePrepare=()=>{},restartAfterCancel=false,oldRuntimeOnTargetStart=false,dropIns='',dropInsUnknown=false}={}) {
   const root=mkdtempSync(join(tmpdir(),'factory-adopt-'));
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const state=join(root,'state'),repo=join(root,'repo'),unitFolder=join(root,'systemd','user');
   for(const folder of [state,repo,unitFolder,join(state,'receipts'),join(state,'issue-submissions')])mkdirSync(folder,{recursive:true,mode:0o700});
   const config={repo,node:process.execPath};
-  const makePackage=(name,version,content)=>{
-    const path=join(root,name);mkdirSync(join(path,'node_modules','yaml'),{recursive:true});mkdirSync(join(path,'bin'));
-    writeFileSync(join(path,'package.json'),JSON.stringify({name:'software-defence-factory',version,
+  const makePackage=(directory,version,content,packageName='factory-software-defence')=>{
+    const path=join(root,directory);mkdirSync(join(path,'node_modules','yaml'),{recursive:true});mkdirSync(join(path,'bin'));
+    writeFileSync(join(path,'package.json'),JSON.stringify({name:packageName,version,
       dependencies:{yaml:'2.9.1'},bundleDependencies:['yaml'],...(rollbackGate?{factoryService:{adoptionGate:1}}:{})}));
     writeFileSync(join(path,'node_modules','yaml','package.json'),JSON.stringify({name:'yaml',version:'2.9.1'}));
     writeFileSync(join(path,'bin','software-defence-factory.mjs'),content);
     return path;
   };
-  const oldPackage=makePackage('old-package','0.18.3','old installed package');
+  const oldPackage=makePackage('old-package','0.18.3','old installed package',oldName);
   const targetPackage=makePackage('target-package',targetVersion,'selected installed package');
   const runtime=pinInstalledRuntime(state,{root:oldPackage,version:'0.18.3'});
-  const manifest=serviceManifest({state,config,root:oldPackage,runtime,folder:unitFolder,port:7332});
+  const manifest=serviceManifest({state,config,root:oldPackage,runtime,folder:unitFolder,port:7332,allowLegacy:oldName==='software-defence-factory'});
   writeFileSync(manifest.file,manifest.definition,{mode:0o600});
   const oldRecord={version:1,id:manifest.id,unit:manifest.unit,port:7332,state,repo,node:config.node,
     runtime,runtime_sha256:manifest.runtime_sha256,release_version:'0.18.3',unit_file:manifest.file,
@@ -99,6 +99,29 @@ test('adoption refuses mutable source, changed same-version bytes, downgrade and
   await assert.rejects(down.run(),/downgrade/);
   const minor=fixture(t,{targetVersion:'0.19.0'});
   await assert.rejects(minor.run(),/minor release needs an explicit migration/);
+});
+
+test('canonical target verifies a legacy installed pin without replacing its state or unit identity',async t=>{
+  const h=fixture(t,{oldName:'software-defence-factory'}),result=await h.run();
+  assert.equal(result.status,'adopted',JSON.stringify(result));
+  assert.equal(h.selected,'0.18.4');
+  assert.equal(JSON.parse(readFileSync(join(h.oldRecord.runtime,'package.json'),'utf8')).name,'software-defence-factory');
+  assert.equal(JSON.parse(readFileSync(join(h.state,'runtime','0.18.4','package.json'),'utf8')).name,'factory-software-defence');
+  assert.equal(JSON.parse(readFileSync(join(h.state,'service.json'),'utf8')).unit,h.oldRecord.unit);
+  const collision=fixture(t,{oldName:'software-defence-factory',targetVersion:'0.18.3'});
+  await assert.rejects(collision.run(),/different release/);
+  assert.equal(collision.calls.some(call=>call.startsWith('stop ')),false);
+});
+
+test('adoption refuses an arbitrary package identity before service mutation',async t=>{
+  const h=fixture(t),pkg=JSON.parse(readFileSync(join(h.targetPackage,'package.json'),'utf8'));
+  writeFileSync(join(h.targetPackage,'package.json'),JSON.stringify({...pkg,name:'unrelated-package'}));
+  await assert.rejects(h.run(),/installed Factory package/);
+  assert.equal(h.calls.some(call=>call.startsWith('stop ')),false);
+  const legacyTarget=fixture(t),legacyPkg=JSON.parse(readFileSync(join(legacyTarget.targetPackage,'package.json'),'utf8'));
+  writeFileSync(join(legacyTarget.targetPackage,'package.json'),JSON.stringify({...legacyPkg,name:'software-defence-factory'}));
+  await assert.rejects(legacyTarget.run(),/installed Factory package/);
+  assert.equal(legacyTarget.calls.some(call=>call.startsWith('stop ')),false);
 });
 
 test('same-version identical package is a no-op with no maintenance or systemd mutation',async t=>{

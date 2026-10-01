@@ -1,4 +1,4 @@
-const packageName='software-defence-factory';
+const packageName='factory-software-defence';
 const versionParts=value=>{
   if(typeof value!=='string'||!/^0\.(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})$/.test(value))
     throw new Error('Release metadata has an unsupported Factory version; inspect the migration manually.');

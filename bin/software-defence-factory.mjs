@@ -16,7 +16,8 @@ import { issueProvider } from '../factory/issue-provider.mjs';
 import { checkRelease } from '../factory/release-check.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
-const version=JSON.parse(readFileSync(join(root,'package.json'),'utf8')).version;
+const packageIdentity=JSON.parse(readFileSync(join(root,'package.json'),'utf8'));
+const version=packageIdentity.version;
 const stateDefault=join(process.env.XDG_STATE_HOME || join(homedir(),'.local','state'),'software-defence-factory','native');
 const usage=`Factory ${version} · native Codex and GitHub Inbox
 
@@ -198,7 +199,7 @@ async function command(args) {
   }
   if(name==='runtime') {
     const {flags}=parse(rest,{allowed:['--state']});
-    const result={package:'software-defence-factory',version,entrypoint:root,source_checkout:existsSync(join(root,'.git')),native_state:'unknown'};
+    const result={package:packageIdentity.name,version,entrypoint:root,source_checkout:existsSync(join(root,'.git')),native_state:'unknown'};
     if(existsSync(join(stateFrom(flags),'native.json'))) {
       const native=readNative(stateFrom(flags));result.native_state='configured';result.repository=native.config.repo;result.node=native.config.node;result.codex=native.config.codex;
     }

@@ -71,7 +71,7 @@ expand scope, rewrite the vision to justify itself or grant more access.
 **Local Build · Cloud Review** describes inference placement: local inference
 implements, a separate cloud review context assesses the result. A worker's physical
 location is a different choice. This remains a proposed native-harness recipe
-([#69](https://github.com/arcitai/software-and-defence-factory/issues/69)), not a
+([#69](https://github.com/arcitai/factory-software-defence/issues/69)), not a
 bundled local-model engine. Tests, acceptance and protected PR/CI remain separate.
 
 Editable diagrams: [architecture](diagrams/architecture.excalidraw),

@@ -1,5 +1,5 @@
 {
-  "name": "software-defence-factory",
+  "name": "factory-software-defence",
   "version": "0.18.4",
   "description": "Factory: native Codex project Inbox, Foundation and portable ADLC method",
   "type": "module",
@@ -9,6 +9,7 @@
   },
   "bin": {
     "factory": "bin/software-defence-factory.mjs",
+    "factory-software-defence": "bin/software-defence-factory.mjs",
     "software-defence-factory": "bin/software-defence-factory.mjs"
   },
   "repository": {

@@ -9,6 +9,8 @@ import { connectBridge } from './bridge-client.mjs';
 import { acquireProcessLock, activeProcessLock, inspectProcessLock } from './process-lock.mjs';
 
 const packageRoot=fileURLToPath(new URL('../../',import.meta.url));
+const canonicalPackage='factory-software-defence';
+const legacyPackage='software-defence-factory';
 const adoptionPhases=new Set(['preparing','prepared','old_stop_requested','old_stopped','new_unit_written','new_start_requested','new_ready','rollback_stopping_new','rollback_restoring_old','reopening','unresolved','adopted','rolled_back','aborted_before_stop']);
 const adoptionFile=state=>join(state,'service-adoption.json');
 const recovery='Preserve service-adoption.json, service.json, both pinned releases and native receipts. Inspect the user unit, process identity and owning bridge before any manual recovery; never replay a native turn.';
@@ -48,10 +50,11 @@ function configPaths(state) {
   const xdg=process.env.XDG_CONFIG_HOME || join(homedir(),'.config');
   return {folder:join(xdg,'systemd','user'),record:join(state,'service.json')};
 }
-function verifyPackageRoot(root) {
+function verifyPackageRoot(root,{allowLegacy=false}={}) {
   const resolved=realpathSync(root);
   const pkg=JSON.parse(readFileSync(join(resolved,'package.json'),'utf8'));
-  if (existsSync(join(resolved,'.git')) || pkg.name!=='software-defence-factory' || !/^0\.\d+\.\d+$/.test(pkg.version || ''))
+  if (existsSync(join(resolved,'.git')) || !(pkg.name===canonicalPackage || (allowLegacy&&pkg.name===legacyPackage))
+    || !/^0\.\d+\.\d+$/.test(pkg.version || ''))
     throw new Error('Native services can only pin an installed Factory package, never a mutable source checkout.');
   const yamlPath=join(resolved,'node_modules','yaml','package.json');
   if(!pkg.bundleDependencies?.includes('yaml')||!existsSync(yamlPath))
@@ -59,7 +62,7 @@ function verifyPackageRoot(root) {
   const yaml=JSON.parse(readFileSync(yamlPath,'utf8'));
   if(yaml.name!=='yaml'||yaml.version!==pkg.dependencies?.yaml)
     throw new Error('Installed Factory release has an unexpected bundled yaml version.');
-  return {root:resolved,version:pkg.version};
+  return {root:resolved,name:pkg.name,version:pkg.version};
 }
 function runtimeDigest(root) {
   const digest=createHash('sha256');
@@ -77,10 +80,10 @@ function runtimeDigest(root) {
   };
   walk(root);return digest.digest('hex');
 }
-export function serviceManifest({state,config,root=packageRoot,port=7332,home=homedir(),folder=join(home,'.config','systemd','user'),runtime}) {
+export function serviceManifest({state,config,root=packageRoot,port=7332,home=homedir(),folder=join(home,'.config','systemd','user'),runtime,allowLegacy=false}) {
   if(process.platform!=='linux')throw new Error('Native services currently support Linux user systemd only.');
   if(!validPort(port))throw new Error('Choose a loopback dashboard port from 1024 to 65535.');
-  const source=verifyPackageRoot(root),installed=runtime || join(state,'runtime',source.version);
+  const source=verifyPackageRoot(root,{allowLegacy}),installed=runtime || join(state,'runtime',source.version);
   const id=serviceID(state,config.repo),unit=`${id}.service`;
   const runtime_sha256=runtimeDigest(source.root);
   // The verifier is embedded in the owned unit, outside the package it checks.
@@ -94,10 +97,12 @@ export function serviceManifest({state,config,root=packageRoot,port=7332,home=ho
 export function pinInstalledRuntime(state,source) {
   const folder=join(state,'runtime'),target=join(folder,source.version);
   mkdirSync(folder,{recursive:true,mode:0o700});
+  const verified=verifyPackageRoot(source.root,{allowLegacy:true});
+  if(verified.version!==source.version)throw new Error('Installed Factory release identity changed while pinning.');
   const expected=runtimeDigest(source.root);
   if(existsSync(target)) {
     const pkg=JSON.parse(readFileSync(join(target,'package.json'),'utf8'));
-    if(pkg.name!=='software-defence-factory'||pkg.version!==source.version)throw new Error('Pinned Factory runtime path contains a different release; preserve and inspect it.');
+    if(pkg.name!==verified.name||pkg.version!==source.version)throw new Error('Pinned Factory runtime path contains a different release; preserve and inspect it.');
     if(runtimeDigest(target)!==expected)throw new Error('Pinned Factory runtime bytes differ from this installed release; preserve and inspect both.');
     return target;
   }
@@ -105,7 +110,7 @@ export function pinInstalledRuntime(state,source) {
   try {
     cpSync(source.root,staging,{recursive:true,errorOnExist:true,filter:path=>!path.split('/').includes('.git')&&!path.endsWith('/node_modules/.bin')});
     const pkg=JSON.parse(readFileSync(join(staging,'package.json'),'utf8'));
-    if(pkg.name!=='software-defence-factory'||pkg.version!==source.version)throw new Error('Factory runtime changed while it was being pinned.');
+    if(pkg.name!==verified.name||pkg.version!==source.version)throw new Error('Factory runtime changed while it was being pinned.');
     if(runtimeDigest(staging)!==expected)throw new Error('Factory runtime bytes changed while it was being pinned.');
     renameSync(staging,target);
   } catch(error) {rmSync(staging,{recursive:true,force:true});throw error;}
@@ -204,7 +209,7 @@ function assertOwnedAdoption(state,config,record) {
     ||!isAbsolute(record.file)||!lstatSync(record.file).isFile()
     ||typeof record.runtime_sha256!=='string'||!/^[a-f0-9]{64}$/.test(record.runtime_sha256))
     throw new Error('Service identity differs from the selected native state; adoption refused.');
-  const expected=serviceManifest({state,config,root:record.runtime,port:record.port,runtime:record.runtime,folder:dirname(record.file)});
+  const expected=serviceManifest({state,config,root:record.runtime,port:record.port,runtime:record.runtime,folder:dirname(record.file),allowLegacy:true});
   if(expected.definition_sha256!==record.definition_sha256||expected.runtime_sha256!==record.runtime_sha256
     ||expected.file!==record.file)
     throw new Error('Owned unit or prior pinned release identity changed; adoption refused.');
