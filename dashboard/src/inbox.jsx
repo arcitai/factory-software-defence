@@ -5,20 +5,22 @@ import { Labels } from './issue-labels.jsx';
 import { stateLabel, friendlyName, formatTimestamp } from './task-display.jsx';
 import { TaskDetail } from './task-detail.jsx';
 import { RunsOverview } from './runs-overview.jsx';
-import { workRecords, canonicalIssue } from '../../factory/issue-lifecycle.mjs';
-import { filterJobs, searchJobs, jobsByRecentActivity, jobCounts } from './runs-board.js';
+import { workRecords, canonicalIssue, closureReasonLabel, projectIssuePhase } from '../../factory/issue-lifecycle.mjs';
+import { filterJobs, filterPhases, searchJobs, jobsByRecentActivity, jobCounts, phaseCounts } from './runs-board.js';
 import { filterTaskFacets } from './task-filters.jsx';
+import { Contributors } from './contributors.jsx';
 
 const issueHref = key => `#/issues/${encodeURIComponent(key)}`;
+const sourceStateLabel = issue => !issue ? 'Not loaded' : issue.state === 'closed' ? `Closed · ${closureReasonLabel(issue.state_reason ?? issue.stateReason)}` : issue.state === 'open' ? 'Open' : 'Unknown';
 export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarted, onNewIssue, statusError, refreshStatus, nativeReadiness, issueKey, active = true, identity, links, onNavigation, detailProps = {} }) {
   const [state,setState] = useState('open');
   const [snapshot,setSnapshot] = useState(null), [loading,setLoading] = useState(false), [error,setError] = useState('');
-  const [drafts,setDrafts] = useState({}), [previewBusy,setPreviewBusy] = useState(false), [previewError,setPreviewError] = useState(''), [starting,setStarting] = useState(false);
-  const [filter,setFilter] = useState([]), [search,setSearch] = useState(''), [workflowFilter,setWorkflowFilter] = useState([]), [labelFilter,setLabelFilter] = useState([]);
+  const [drafts,setDrafts] = useState({}), [previewBusy,setPreviewBusy] = useState(false), [previewError,setPreviewError] = useState(''), [starting,setStarting] = useState(false), [startError,setStartError] = useState(null);
+  const [filter,setFilter] = useState([]), [phaseFilter,setPhaseFilter] = useState([]), [search,setSearch] = useState(''), [workflowFilter,setWorkflowFilter] = useState([]), [labelFilter,setLabelFilter] = useState([]);
   const [runsView,setRunsView] = useState(()=>window.localStorage.getItem('factory-runs-view') === 'board' ? 'board' : 'list');
   const pending=useRef(null), previewPending=useRef(null), alive=useRef(true);
   const draftsRef=useRef(drafts);draftsRef.current=drafts;
-  const records=useMemo(()=>workRecords(jobs,snapshot?.issues || []),[jobs,snapshot]);
+  const records=useMemo(()=>workRecords(jobs,snapshot?.issues || [],{sourceStale:Boolean(snapshot&&(error||snapshot.state!==state))}),[jobs,snapshot,error,state]);
   const overviewJobs=useMemo(()=>records.map(record=>{
     const job=jobs.find(item=>item.id===record.execution_id);
     return {...job, id:record.key, work:record, state:record.state, task:{...job?.task,title:record.title,source_url:record.url},
@@ -26,10 +28,10 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
       href:record.identity ? issueHref(record.key) : `#/runs/${record.execution_id}`};
   }),[records,jobs]);
   const facetJobs=useMemo(()=>filterTaskFacets(searchJobs(overviewJobs,search),workflowFilter).filter(job=>!labelFilter.length || job.work.issue?.labels.some(label=>labelFilter.includes(label.name))),[overviewJobs,search,workflowFilter,labelFilter]);
-  const visibleJobs=useMemo(()=>jobsByRecentActivity(filterJobs(facetJobs,filter)),[facetJobs,filter]);
+  const visibleJobs=useMemo(()=>jobsByRecentActivity(filterPhases(filterJobs(facetJobs,filter),phaseFilter)),[facetJobs,filter,phaseFilter]);
   const navigation=useMemo(()=>visibleJobs.map(job=>({id:job.id,executionID:job.work.execution_id,title:job.task.title,href:job.href})),[visibleJobs]);
   useEffect(()=>{onNavigation?.(navigation);},[navigation,onNavigation]);
-  const clearFilters=()=>{setFilter([]);setSearch('');setWorkflowFilter([]);setLabelFilter([]);};
+  const clearFilters=()=>{setFilter([]);setPhaseFilter([]);setSearch('');setWorkflowFilter([]);setLabelFilter([]);};
   const fallbackIdentity=issueKey && canonicalIssue(issueKey.replace(/^github:/,'').replace(/:(\d+)$/,'/issues/$1'));
   const selected=records.find(row=>row.key===issueKey) || (fallbackIdentity ? {key:issueKey,identity:fallbackIdentity,title:`Issue #${fallbackIdentity.number}`,url:fallbackIdentity.url,executions:[],source_status:'not_loaded'} : null);
   const edit=patch=>setDrafts(previous=>({...previous,[issueKey]:{...previous[issueKey],...patch}}));
@@ -46,26 +48,32 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
   }
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;pending.current?.abort();previewPending.current?.abort();};},[]);
   useEffect(()=>{if(token)load();},[token,state,refreshKey]);
-  async function open(issue,refresh=false) {
+  async function open(issue,refresh=false,reconcileStart=false) {
     previewPending.current?.abort();setPreviewError('');
     if(!refresh && draftsRef.current[issue.key]?.context){setPreviewBusy(false);return;}
     const controller=new AbortController();previewPending.current=controller;setPreviewBusy(true);
     try {const context=await api('/api/v1/issues/preview',{url:issue.url},controller.signal);
-      if(!controller.signal.aborted && alive.current)setDrafts(previous=>({...previous,[issue.key]:{brief:'',workType:context.recommendation.work_type||context.recommendation.workflow,...previous[issue.key],context}}));
+      if(!controller.signal.aborted && alive.current){setDrafts(previous=>({...previous,[issue.key]:{brief:'',workType:context.recommendation.work_type||context.recommendation.workflow,...previous[issue.key],context}}));if(reconcileStart)setStartError(previous=>previous?.key===issue.key?null:previous);}
     } catch(e) {if(!controller.signal.aborted && alive.current)setPreviewError(e.message);}
     finally {if(!controller.signal.aborted && alive.current)setPreviewBusy(false);}
   }
   useEffect(()=>{
-    if(active && selected && token)open(selected);
+    if(active && selected && token)open(selected,true);
     return()=>{previewPending.current?.abort();};
-  },[issueKey,active,token]);
+  },[issueKey,active,token,selected?.source_status]);
   const draft=selected && drafts[issueKey], context=draft?.context;
+  const detailIssue=selected && (previewBusy || previewError ? selected.issue || context : context || selected.issue);
+  const detailMetadataPending=Boolean(previewError || previewBusy);
+  const startFailure=startError?.key===issueKey?startError.message:'';
+  const detailPhase=selected && (detailMetadataPending
+    ? projectIssuePhase(detailIssue, { sourceStatus: detailIssue ? 'stale' : 'not_loaded' })
+    : context?.phase || selected.phase);
   const blocked=selected?.active_execution ? 'Native work is active or unresolved. Open its history to inspect it.' : context?.start_block_reason || (jobs.some(job=>['running','unknown'].includes(job.state)) ? 'The native workspace has active or unresolved work. Inspect Codex history first.' : null) || (!nativeReadiness?.ready ? `Native Codex unavailable: ${(nativeReadiness?.gaps || ['readiness unknown']).join('; ')}` : null);
   async function start(event) {
-    event.preventDefault();if(starting || !context || blocked || previewError || statusError)return;setStarting(true);setPreviewError('');
+    event.preventDefault();if(starting || !context || blocked || previewError || startFailure || statusError)return;setStarting(true);
     try {const created=await api('/api/v1/issues/start',{url:context.url,expected_spec:context.spec,brief:draft.brief,work_type:draft.workType});
       if(alive.current){await onStarted(created);load(snapshot?.page || 1);}
-    } catch(e) {if(alive.current)setPreviewError(e.message);}
+    } catch(e) {if(alive.current)setStartError({key:selected.key,message:e.message});}
     finally {if(alive.current)setStarting(false);}
   }
   const sourceControls=<RepositoryControls snapshot={snapshot} state={state} setState={setState} loading={loading} token={token} load={load} records={records} />;
@@ -77,12 +85,13 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
     {snapshot && !snapshot.issues?.length && !error && !loading && <p className="source-boundary">No issues on this page. Other pages or states may contain issues.</p>}
   </>;
   const panel=selected && <section className="issue-context" aria-label="Repository issue context">
-    <Button variant="outline" size="sm" disabled={starting || previewBusy} onClick={()=>open(selected,true)}>Refresh issue context</Button>
+    <Button variant="outline" size="sm" disabled={starting || previewBusy} onClick={()=>open(selected,true,true)}>Refresh issue context</Button>
     {previewBusy && <p role="status">Loading issue context…</p>}
-    {previewError && <p role="alert" className="form-error">{context?'Context may be stale. ':''}{previewError}</p>}
+    {previewError && <p role="alert" className="form-error">{context?'Provider preview unavailable. The last loaded issue body and metadata are shown as stale. ':detailIssue?'Provider preview unavailable. The last loaded issue metadata is shown as stale; no preview body was loaded. ':'Provider preview unavailable. No issue details were loaded. '}{previewError}</p>}
+    {startFailure && <p role="alert" className="form-error">Native Start error: {startFailure} The outcome may be unresolved; check native status and issue history before another Start request. No automatic retry was made.</p>}
     {statusError && <p role="alert" className="form-error">Native history status is stale: {statusError}</p>}
     {context && <>
-      <details open={!selected.execution_id}><summary>Issue context</summary><pre className="inbox-body">{context.body}</pre></details>
+      <details open={!selected.execution_id}><summary>Issue context{detailMetadataPending?' · last loaded':''}</summary><pre className="inbox-body">{context.body}</pre></details>
       <details open={!selected.execution_id}><summary>Start work · explicit scope and options</summary>
         <form onSubmit={start} className="inbox-start">
           <p className="work-help">Suggested: {friendlyName(context.recommendation.work_type||context.recommendation.workflow)}. {context.recommendation.reason}</p>
@@ -92,7 +101,7 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
             <label><span className="field-label">Operator brief · optional</span><textarea className="field-control" maxLength={16000} value={draft.brief} onChange={event=>edit({brief:event.target.value})} /></label>
           </details>
           {blocked && <p className="work-help">{blocked}</p>}
-          <Button disabled={starting || previewBusy || !loaded || Boolean(previewError) || Boolean(statusError) || Boolean(blocked)}>{starting?'Starting…':'Start work'}</Button>
+          <Button disabled={starting || previewBusy || !loaded || Boolean(previewError) || Boolean(startFailure) || Boolean(statusError) || Boolean(blocked)}>{starting?'Starting…':'Start work'}</Button>
         </form>
       </details>
     </>}
@@ -102,17 +111,18 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
   </section>;
   const metadata=selected && <dl>
     <div><dt>Repository issue</dt><dd><a href={selected.url} target="_blank" rel="noreferrer">#{selected.identity.number} · View original issue ↗</a></dd></div>
-    <div><dt>Source state</dt><dd>{context?.state || selected.issue?.state || 'Not loaded'}{previewError?' · unavailable / stale':''}</dd></div>
-    <div><dt>Readiness</dt><dd>{context?.readiness.label || selected.issue?.readiness.label || 'Unknown'}</dd></div>
-    <div><dt>Labels</dt><dd><Labels labels={context?.labels || selected.issue?.labels} /></dd></div>
-    <div><dt>Created</dt><dd>{formatTimestamp(context?.created_at || selected.issue?.created_at)}</dd></div>
-    <div><dt>Author</dt><dd>{context?.author || selected.issue?.author || 'Unknown'}</dd></div>
+    <div><dt>Source state</dt><dd>{sourceStateLabel(detailIssue)}{previewError?' · unavailable / stale':''}{previewBusy?' · source refresh pending':''}</dd></div>
+    <div><dt>Repository phase</dt><dd>{detailPhase?.label || 'Source not loaded'}{detailPhase?.detail?` · ${detailPhase.detail}`:''}</dd></div>
+    <div><dt>Readiness{detailMetadataPending && detailIssue?' · last loaded':''}</dt><dd>{detailIssue?.readiness.label || 'Unknown'}</dd></div>
+    <div><dt>Labels{detailMetadataPending && detailIssue?' · last loaded':''}</dt><dd>{detailIssue && Array.isArray(detailIssue.labels) ? <Labels labels={detailIssue.labels} /> : <span>{detailIssue ? 'Labels unavailable' : 'Not loaded'}</span>}</dd></div>
+    <div><dt>Created</dt><dd>{formatTimestamp(detailIssue?.created_at)}</dd></div>
+    <div><dt>Contributors{detailMetadataPending && detailIssue?' · last loaded':''}</dt><dd>{detailIssue ? <Contributors {...detailIssue} /> : <span>Not loaded</span>}</dd></div>
     {!selected.execution_id && <><div><dt>Codex</dt><dd>Not started</dd></div><div><dt>Work type</dt><dd>Choose when starting work</dd></div></>}
   </dl>;
   return <>
     <section className="inbox-page" aria-label="Project Inbox" hidden={Boolean(issueKey)}>
-      <RunsOverview visibleJobs={visibleJobs} jobs={overviewJobs} workflows={['software','defensive']} counts={jobCounts(facetJobs)} loaded={loaded} statusError={statusError}
-        filter={filter} setFilter={setFilter} search={search} setSearch={setSearch} workflowFilter={workflowFilter} setWorkflowFilter={setWorkflowFilter}
+      <RunsOverview visibleJobs={visibleJobs} jobs={overviewJobs} workflows={['software','defensive']} counts={jobCounts(facetJobs)} phaseCounts={phaseCounts(facetJobs)} loaded={loaded} statusError={statusError}
+        filter={filter} setFilter={setFilter} phaseFilter={phaseFilter} setPhaseFilter={setPhaseFilter} search={search} setSearch={setSearch} workflowFilter={workflowFilter} setWorkflowFilter={setWorkflowFilter}
         labelFilter={labelFilter} setLabelFilter={setLabelFilter} clearFilters={clearFilters} runsView={runsView} setRunsView={value=>{setRunsView(value);window.localStorage.setItem('factory-runs-view',value);}}
         refresh={refreshStatus} openComposer={onNewIssue} sourceControls={sourceControls} sourceNotice={sourceNotice} sourceLoading={loading && !snapshot} sourceUnavailable={Boolean(error) && !snapshot} />
     </section>
@@ -132,14 +142,15 @@ function RepositoryControls({ snapshot, state, setState, loading, token, load, r
   },[open]);
   const issues=records.filter(record=>record.identity).length;
   const turns=records.reduce((sum,record)=>sum+record.executions.length,0);
+  const scopeLabel={open:'Open issues',closed:'History',all:'All issues'}[state]||'Open issues';
   return <div className="repository-control" ref={root}>
-    <button type="button" className="repository-trigger" ref={trigger} aria-label="Repository" aria-describedby={`${id}-scope`} aria-expanded={open} aria-controls={id} onClick={()=>setOpen(value=>!value)}>
-      <span>Repository <ChevronDown size={12} aria-hidden="true" /></span>
+    <button type="button" className="repository-trigger" ref={trigger} aria-label={`Repository scope: ${scopeLabel}`} aria-describedby={`${id}-scope`} aria-expanded={open} aria-controls={id} onClick={()=>setOpen(value=>!value)}>
+      <span>Repository · {scopeLabel} <ChevronDown size={12} aria-hidden="true" /></span>
       <span className="repository-scope" id={`${id}-scope`}>{snapshot?`${snapshot.loaded_count} loaded · Page ${snapshot.page}`:'Page not loaded'}</span>
     </button>
     {open && <div id={id} className="repository-popover" role="group" aria-label="Repository tools">
       <div className="source-controls">
-        <label>Issue state <select aria-label="Repository issue state" value={state} onChange={event=>setState(event.target.value)}><option value="open">Open</option><option value="closed">Closed</option><option value="all">All states</option></select></label>
+        <label>Issue scope <select aria-label="Repository issue scope" value={state} onChange={event=>setState(event.target.value)}><option value="open">Open issues</option><option value="closed">History (closed issues)</option><option value="all">All issues</option></select></label>
         <Button variant="ghost" size="sm" disabled={loading || !token} onClick={()=>load(snapshot?.state===state?snapshot.page:1)}>Refresh issues</Button>
         {snapshot?.page>1 && <Button variant="ghost" size="sm" disabled={loading} onClick={()=>load(snapshot.page-1)}>Previous page</Button>}
         {snapshot?.next_page && <Button variant="ghost" size="sm" disabled={loading} onClick={()=>load(snapshot.next_page)}>Next page</Button>}

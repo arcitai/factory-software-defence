@@ -18,3 +18,9 @@ Read issue state and owner replies before re-asking a question.
 Return one disposition: `spec`, `ready-for-owner-review`, `duplicate` with evidence, or `blocked` with the smallest concrete gap. Describe risk from the affected data and behavior, not just a keyword. Select required capabilities from files, shell, git, tests, web, browser, computer, security. Route browser-dependent work only to an environment whose browser capability was exercised.
 
 Do not mark an issue implementation-ready merely because it is a small bug. It still needs an accepted scope and an observable check. The authorized operator or repository integration applies labels; this skill does not make external changes on its own.
+
+Use the adopting repository's reviewed lifecycle catalog for phase labels. Keep
+GitHub source phase separate from native execution: a label declares the
+repository workflow but does not prove an agent is running. Do not infer a phase
+from the issue title, a Codex process or elapsed time. Missing or conflicting
+labels stay unresolved until an authorized maintainer reconciles them.

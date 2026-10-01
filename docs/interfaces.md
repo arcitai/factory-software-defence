@@ -54,12 +54,23 @@ fallback success. See [service adoption recovery](recovery.md#service-adoption).
 
 ## State is observable, not invented
 
-- **Backlog**: a repository issue without execution; labels describe planning.
-- **Running**: the owning native process reports an active turn.
-- **Needs review**: the native turn completed; checks and acceptance remain separate.
-- **Failed / interrupted**: the native history reports that outcome.
-- **Unknown**: an unavailable connection, identity mismatch or uncertain request;
-  preserve it and reconcile instead of guessing or retrying.
+- **Repository phase** comes from the shared [lifecycle catalog](../adlc/lifecycle.json):
+  actual GitHub phase labels, open/closed state and closure reason. The existing
+  triage/spec/ready/blocked readiness mapping remains supported. A ready label
+  allows small accepted work to skip specification.
+- **Unresolved source** covers missing or off-page provider data, stale reads,
+  unlabeled issues and conflicting phase labels. A missing issue is not closed.
+- **Done** requires a closed issue with GitHub's `completed` reason. Declined or
+  reasonless closure stays **Closed**; the provider must supply the reason.
+- **Native state** is separate: Running, native turn completed and needs review,
+  Failed, Interrupted, Unknown or Not started. A completed turn needs checks and
+  independent review. Running or unknown native state remains visible when its
+  repository issue is closed.
+
+`GET /api/v1/issues` and `factory issues list` return this same phase projection
+alongside the native execution state and loaded-page scope. List, Kanban, phase
+filters and native-state filters use the same projection. Changing views,
+filters, page or source state does not start or replay native work.
 
 List and Kanban show the same records and filters. A closed GitHub issue is a
 repository decision, not proof of successful execution. Results show native

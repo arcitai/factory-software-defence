@@ -138,6 +138,13 @@ feedback to that same thread. Prepare a protected pull request through the
 project's normal GitHub process, then wait for its required CI checks and review;
 Factory does not treat a completed turn as acceptance or publish a PR for you.
 
+The Inbox shows the repository phase from actual GitHub labels and open/closed
+metadata, beside Codex's separate native state. Review the exported lifecycle
+catalog against existing repository labels before adopting it. Changing list,
+phase, history or page only reads repository data; phase labels and issue creation
+do not start work. Closed history is paged GitHub data: Done requires a completed
+closure reason, while declined or reasonless issues remain Closed.
+
 ## Qualify one bounded issue
 
 1. Inspect readiness and verify a permitted workspace write plus denial of a

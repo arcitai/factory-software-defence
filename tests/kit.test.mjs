@@ -21,6 +21,10 @@ test("kit exports portable instructions and verifiable provenance without an act
     assert.equal(readdirSync(join(output, ".agents/skills")).length, 6);
     assert.ok(existsSync(join(output, ".factory-kit/examples/github-checks.yml.example")));
     assert.ok(existsSync(join(output, ".factory-kit/VISION.template.md")));
+    assert.ok(existsSync(join(output, ".factory-kit/lifecycle.json")));
+    const lifecycle = JSON.parse(readFileSync(join(output, ".factory-kit/lifecycle.json"), "utf8"));
+    const labels = JSON.parse(readFileSync(join(output, ".factory-kit/labels.json"), "utf8"));
+    assert.deepEqual(labels, lifecycle.labels.map(({ name, color, description }) => ({ name, color, description })));
     for (const forbidden of ["AGENTS.md", "package.json", "src", ".factory", ".github/workflows"])
       assert.equal(existsSync(join(output, forbidden)), false, forbidden);
     for (const { path, sha256 } of manifest.files) {

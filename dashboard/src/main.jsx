@@ -5,7 +5,7 @@ import { TaskDetail } from './task-detail.jsx';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/geist';
-import { Activity, ExternalLink, Menu, Moon, Plus, Sun, CircleHelp } from 'lucide-react';
+import { ExternalLink, Inbox as InboxGlyph, Menu, Moon, Plus, Sun, CircleHelp } from 'lucide-react';
 import { cn } from './lib/utils';
 import { routeFromHash } from './routes.js';
 import { projectIdentity } from './project-identity.js';
@@ -54,7 +54,7 @@ function App() {
     </main>
   </div>;
 }
-function PrimaryLink({view,mobile=false}) {return <a href="#/inbox" aria-current={['runs','task','issue'].includes(view)?'page':undefined} className={cn('nav-item',['runs','task','issue'].includes(view)&&'nav-item-active')} onClick={event=>{if(mobile)event.currentTarget.closest('details')?.removeAttribute('open');}}><Activity className="size-4"/><span>Inbox</span></a>;}
+function PrimaryLink({view,mobile=false}) {return <a href="#/inbox" aria-current={['runs','task','issue'].includes(view)?'page':undefined} className={cn('nav-item',['runs','task','issue'].includes(view)&&'nav-item-active')} onClick={event=>{if(mobile)event.currentTarget.closest('details')?.removeAttribute('open');}}><InboxGlyph className="size-4"/><span>Inbox</span></a>;}
 function ProjectContext({identity,links,compact,loaded,error,showNewIssue,onNewIssue}) {
   const title=identity?.name||(!loaded&&!error?'Loading configured project…':'Project identity unavailable');
   const freshness=error?loaded?'Status stale':'Status unavailable':loaded?'Status current':'Loading status';

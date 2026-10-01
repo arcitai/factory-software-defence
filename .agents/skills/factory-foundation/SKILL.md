@@ -31,7 +31,11 @@ the existing issue/task record, not a second project registry.
   real tests and deployment rules. Adapt [repository readiness](../../../adlc/repository.md),
   issue forms/labels and CI checks to the existing project. Stage the selected
   ADLC method before adoption; do not overwrite application files. Inspect the
-  actual required checks and workflow access, not just file presence.
+  actual required checks and workflow access, not just file presence. Compare
+  the [lifecycle catalog](../../../adlc/lifecycle.json), forms and label names,
+  colors and meanings with the real repository before deliberate adoption.
+  Preserve its conventions. GitHub phases and closure reasons describe repository
+  work; native running/completed state and accepted delivery remain separate.
 - **Native environment:** use separate Factory configuration, native login and
   selected ADLC skills. Do not copy personal login, plugins or connections.
   A dedicated OS user is recommended; a separate configuration directory under

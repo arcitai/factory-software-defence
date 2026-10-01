@@ -19,25 +19,26 @@ controls without changing billing or visibility to obtain them.
 
 ## Adopt issue forms and labels
 
-Review the staged `.github/ISSUE_TEMPLATE/` forms and `.factory-kit/labels.json`.
-The source catalog lives at `adlc/labels.json`. Merge with existing conventions;
-never delete unrelated labels or overwrite templates indiscriminately.
-For an authorized GitHub repository, inspect existing labels before creating or
-editing the selected ones and read back the result.
+Review the staged `.github/ISSUE_TEMPLATE/` forms and
+`.factory-kit/lifecycle.json`. The source catalog is `adlc/lifecycle.json`;
+`adlc/labels.json` and the exported `.factory-kit/labels.json` are its flat label
+projection. Treat the catalog as the single default for stage IDs, label names,
+colors, closure reasons and presentation. Keep the adopting repository's existing
+labels and readiness mapping where they differ; do not replace its conventions
+with an unrelated global scheme.
 
-| Label | Meaning |
-| --- | --- |
-| `factory:triage` | Report or idea needing scope |
-| `factory:spec` | Outcome or acceptance needs definition |
-| `factory:ready` | Accepted scope ready for explicit admission |
-| `factory:review` | Candidate needs independent review |
-| `factory:blocked` | Concrete dependency prevents progress |
-| `track:software` | Software delivery |
-| `track:security` | Scoped security work; sensitive findings stay private |
+Inspect actual labels and issue state before deciding which catalog entries to
+adopt. Preserve unrelated labels and templates. If an authorized operator adopts
+or changes selected labels, use ordinary GitHub edits and read the result back.
+Do not rewrite historical issues as part of catalog adoption. A repository phase
+is resolved from one actual phase label on an open issue; missing, conflicting,
+stale or unloaded source metadata remains unresolved. Closed is Done only when
+GitHub supplies the completed reason. Declined or reasonless closure remains
+Closed.
 
-Use at most one planning-stage label. Actual native execution state is separate.
-Closed issues can represent completion or a declined proposal. Factory does not
-automatically rewrite labels or start a triage agent while browsing.
+Stage labels declare repository intent; they are not proof of a running agent.
+Show Codex running, completed, failed, interrupted or unknown state separately.
+Changing labels and browsing the Inbox do not start or resume work.
 
 ## Admit and deliver
 

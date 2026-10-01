@@ -24,9 +24,12 @@ Use Factory's own wordmark and assets, not Warp logos or source.
 - Keep a stable count line, repository disclosure and compact toolbar. Opening
   filters or loading results must not push the list down. Do not add a misleading
   repository-total badge to the Inbox nav.
-- Rows/cards show the title, compact wrapping metadata and actual colored labels.
-  Unknown assignment/model data stays absent or explicitly unknown. Do not repeat
-  zero attempts and empty fields. Readiness labels remain separate from execution.
+- Rows/cards show the title, catalogued repository phase, separate native state,
+  compact metadata, GitHub author, assignees and actual colored labels. Author is
+  not the person responsible by default. Unknown contributor/model data stays
+  absent or explicitly unknown. Show overlapping label-color dots and an accurate
+  count; expose real label names and hex colors on hover and keyboard focus.
+  Do not repeat zero attempts and empty fields.
 - Detail preserves the list/board, filters and scroll position underneath. Keep
   close/Escape, filtered previous/next, copy link and the metadata column. Display
   native result/history identities and useful actions within that composition.
@@ -34,21 +37,27 @@ Use Factory's own wordmark and assets, not Warp logos or source.
 
 ## Filtering and source state
 
-List and board share search and work-type/model/status/label facets. Values within
-one facet use OR; facets combine by intersection. Whole rows toggle checkboxes.
-Select all, Reset, individual deselection and clearing the selected status work
-without shifting content or unexpectedly closing the filter.
+List and board share search and work-type/model/native-state/repository-phase/
+label facets. Values within one facet use OR; facets combine by intersection.
+Whole rows toggle checkboxes. Select all, Reset, individual deselection and
+clearing the selected phase or state work without shifting content or
+unexpectedly closing the filter.
 
 An anchored Repository disclosure offers open/closed/all, refresh and paging.
 Show loaded scope; do not invent a remote total. Search covers loaded issues and
 retained native associations. Missing/off-page issues retain history and a not
-loaded source state; absence is not closure. Failed refresh marks old data stale.
+loaded source state; absence is not closure. Failed refresh marks old phase and
+contributor data stale until a provider read succeeds.
 Keep loading, initial error, empty page and no filter match distinct.
 
-Planning states and native execution states are different. Show actual Running,
-Needs review, Failed, Interrupted and Unknown states; no native turn means Not
-started. Never map completed inference to accepted/merged. Model/cost/token data
-requires actual evidence, not estimates presented as measurements.
+GitHub labels, open/closed state and closure reason determine repository phase
+through the shared ADLC catalog. Unlabeled, conflicting, stale or unloaded
+source data stays unresolved. Closed with GitHub's completed reason can show
+Done; declined or reasonless closure remains Closed. Keep Codex Running, native
+turn completed, Failed, Interrupted and Unknown visible as separate state,
+including on closed issues. No native turn means Not started. Never infer
+acceptance or merge from a completed turn. Model/cost/token data requires actual
+evidence, not estimates presented as measurements.
 
 ## Issue creation and native actions
 
@@ -80,7 +89,10 @@ Prefer flat surfaces and rare shadows; do not shrink the entire interface.
 
 Default light: white,#0a0a0a text,#e5e5e5 borders. Default dark:#101012 surfaces,
 #f5f5f5 text,subtle charcoal borders. Primary creation uses restrained blue.
-Status colors also have text labels. Optional reviewed project accent remains
+Use blue for implementation/running, violet for review, orange for blockers,
+red for failures, green for completed closure and distinct neutral tones for
+backlog and other closure. Reuse catalog glyphs across phase cards, rows, badges
+and Kanban columns. Status colors also have text labels. Optional reviewed project accent remains
 [#27](https://github.com/arcitai/factory-software-defence/issues/27); arbitrary
 Markdown is not executable CSS and missing theme data retains the full default.
 

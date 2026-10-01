@@ -6,12 +6,14 @@ retired implementation evidence remain in Git and private installation records.
 
 ## Current scoped work
 
-- [ ] [#131](https://github.com/arcitai/factory-software-defence/issues/131):
-  add the repository-only cross-layer contributor rule. The source change is
-  prepared; exact-candidate review and normal protected-PR delivery remain.
+- [x] [#131](https://github.com/arcitai/factory-software-defence/issues/131):
+  repository-only cross-layer contributor rule delivered by merged
+  [PR #132](https://github.com/arcitai/factory-software-defence/pull/132) at
+  `main630ca7a`.
 - [ ] [#130](https://github.com/arcitai/factory-software-defence/issues/130):
-  status/labels, Foundation and Inbox UI implementation; start after #131 is
-  complete and follow #130's accepted scope.
+  shared lifecycle/catalog, Foundation and preserved Inbox changes are the
+  0.18.5 candidate. The linked issue records exact-candidate review, installed
+  qualification and protected release/adoption; source alone is not delivery.
 
 ## Native product
 
@@ -25,9 +27,9 @@ delivered Inbox qualification in 0.18.2 and closed #37. Remaining work:
   OS timer recipe. Canonical `factory-software-defence` 0.18.4 source and npm
   package are delivered, including deliberate adoption between compatible gated
   runtimes, native readiness and bounded rollback. Installed-byte proof and the
-  current Z13 legacy migration are qualified. Future genuine canonical OIDC
-  publication, reboot/power-loss proof, automatic download/activation and other
-  OS recipes remain open. A timer does not deliver automatic service updates.
+  current Z13 legacy migration are qualified. The linked issue records genuine
+  canonical OIDC publication evidence. Reboot/power-loss proof, automatic
+  download/activation and other OS recipes remain open. A timer does not deliver automatic service updates.
 - [ ] [#114](https://github.com/arcitai/factory-software-defence/issues/114):
   prove sustained native credential refresh/coexistence and qualify any separately
   selected Desktop integration; these are not delivered.

@@ -51,6 +51,11 @@ and issue provider, keeping their protocols out of the UI. Native history is the
 execution record; Factory retains only issue associations and operation receipts
 needed to avoid duplicate work. There is no Factory transcript database.
 
+The versioned [ADLC lifecycle catalog](adlc/lifecycle.json) is the single source
+for default repository phases, label identities and semantic presentation. The
+bridge and Inbox share a pure projection; GitHub source phase and Codex execution
+state remain separate.
+
 A completed agent turn needs checks and independent review. It is not automatic
 acceptance, merge or deployment. The [project vision](VISION.md) bounds improvements.
 
