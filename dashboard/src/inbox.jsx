@@ -5,7 +5,7 @@ import { Labels } from './issue-labels.jsx';
 import { stateLabel, friendlyName, formatTimestamp } from './task-display.jsx';
 import { TaskDetail } from './task-detail.jsx';
 import { RunsOverview } from './runs-overview.jsx';
-import { workRecords, canonicalIssue, closureReasonLabel } from '../../factory/issue-lifecycle.mjs';
+import { workRecords, canonicalIssue, closureReasonLabel, projectIssuePhase } from '../../factory/issue-lifecycle.mjs';
 import { filterJobs, filterPhases, searchJobs, jobsByRecentActivity, jobCounts, phaseCounts } from './runs-board.js';
 import { filterTaskFacets } from './task-filters.jsx';
 import { Contributors } from './contributors.jsx';
@@ -63,7 +63,9 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
   },[issueKey,active,token,selected?.source_status]);
   const draft=selected && drafts[issueKey], context=draft?.context;
   const detailIssue=selected && (previewBusy || previewError ? selected.issue || context : context || selected.issue);
-  const detailPhase=selected && (previewBusy || previewError ? selected.phase || context?.phase : context?.phase || selected.phase);
+  const detailPhase=selected && (previewError
+    ? projectIssuePhase(detailIssue, { sourceStatus: detailIssue ? 'stale' : 'not_loaded' })
+    : previewBusy ? selected.phase || context?.phase : context?.phase || selected.phase);
   const blocked=selected?.active_execution ? 'Native work is active or unresolved. Open its history to inspect it.' : context?.start_block_reason || (jobs.some(job=>['running','unknown'].includes(job.state)) ? 'The native workspace has active or unresolved work. Inspect Codex history first.' : null) || (!nativeReadiness?.ready ? `Native Codex unavailable: ${(nativeReadiness?.gaps || ['readiness unknown']).join('; ')}` : null);
   async function start(event) {
     event.preventDefault();if(starting || !context || blocked || previewError || statusError)return;setStarting(true);setPreviewError('');
@@ -83,10 +85,10 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
   const panel=selected && <section className="issue-context" aria-label="Repository issue context">
     <Button variant="outline" size="sm" disabled={starting || previewBusy} onClick={()=>open(selected,true)}>Refresh issue context</Button>
     {previewBusy && <p role="status">Loading issue context…</p>}
-    {previewError && <p role="alert" className="form-error">{context?'Context may be stale. ':''}{previewError}</p>}
+    {previewError && <p role="alert" className="form-error">{context?'Provider preview unavailable. The last loaded issue body and metadata are shown as stale. ':detailIssue?'Provider preview unavailable. The last loaded issue metadata is shown as stale; no preview body was loaded. ':'Provider preview unavailable. No issue details were loaded. '}{previewError}</p>}
     {statusError && <p role="alert" className="form-error">Native history status is stale: {statusError}</p>}
     {context && <>
-      <details open={!selected.execution_id}><summary>Issue context</summary><pre className="inbox-body">{context.body}</pre></details>
+      <details open={!selected.execution_id}><summary>Issue context{previewError?' · last loaded':''}</summary><pre className="inbox-body">{context.body}</pre></details>
       <details open={!selected.execution_id}><summary>Start work · explicit scope and options</summary>
         <form onSubmit={start} className="inbox-start">
           <p className="work-help">Suggested: {friendlyName(context.recommendation.work_type||context.recommendation.workflow)}. {context.recommendation.reason}</p>
@@ -108,10 +110,10 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
     <div><dt>Repository issue</dt><dd><a href={selected.url} target="_blank" rel="noreferrer">#{selected.identity.number} · View original issue ↗</a></dd></div>
     <div><dt>Source state</dt><dd>{sourceStateLabel(detailIssue)}{previewError?' · unavailable / stale':''}{previewBusy?' · source refresh pending':''}</dd></div>
     <div><dt>Repository phase</dt><dd>{detailPhase?.label || 'Source not loaded'}{detailPhase?.detail?` · ${detailPhase.detail}`:''}</dd></div>
-    <div><dt>Readiness</dt><dd>{detailIssue?.readiness.label || 'Unknown'}</dd></div>
-    <div><dt>Labels</dt><dd>{detailIssue && Array.isArray(detailIssue.labels) ? <Labels labels={detailIssue.labels} /> : <span>{detailIssue ? 'Labels unavailable' : 'Not loaded'}</span>}</dd></div>
+    <div><dt>Readiness{previewError && detailIssue?' · last loaded':''}</dt><dd>{detailIssue?.readiness.label || 'Unknown'}</dd></div>
+    <div><dt>Labels{previewError && detailIssue?' · last loaded':''}</dt><dd>{detailIssue && Array.isArray(detailIssue.labels) ? <Labels labels={detailIssue.labels} /> : <span>{detailIssue ? 'Labels unavailable' : 'Not loaded'}</span>}</dd></div>
     <div><dt>Created</dt><dd>{formatTimestamp(detailIssue?.created_at)}</dd></div>
-    <div><dt>Contributors</dt><dd>{detailIssue ? <Contributors {...detailIssue} /> : <span>Not loaded</span>}</dd></div>
+    <div><dt>Contributors{previewError && detailIssue?' · last loaded':''}</dt><dd>{detailIssue ? <Contributors {...detailIssue} /> : <span>Not loaded</span>}</dd></div>
     {!selected.execution_id && <><div><dt>Codex</dt><dd>Not started</dd></div><div><dt>Work type</dt><dd>Choose when starting work</dd></div></>}
   </dl>;
   return <>

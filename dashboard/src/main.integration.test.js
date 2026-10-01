@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { act } from 'react';
 import { JSDOM } from 'jsdom';
 import { createServer } from 'vite';
-import { canonicalIssue } from '../../factory/issue-lifecycle.mjs';
+import { canonicalIssue, projectIssuePhase } from '../../factory/issue-lifecycle.mjs';
 
 const dashboardRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repository = 'https://github.com/acme/factory';
@@ -79,6 +79,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
     repositoryIssue(115, 'Second page fixture', [{ name: 'factory:spec', color: 'd9dde5' }]),
     repositoryIssue(116, 'Second page fixture two', [{ name: 'factory:ready', color: 'd9dde5' }]),
   ];
+  const previewOverrides = new Map();
   issues.find(issue => issue.number === 120).author_profile_url = 'javascript:alert(1)';
   issues.find(issue => issue.number === 120).author_avatar_url = 'data:text/html,unsafe';
   issues.find(issue => issue.number === 120).assignees = null;
@@ -103,6 +104,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   let issueListReads = 0;
   let statusReads = 0;
   let failNextIssueListRead = false;
+  let failNextIssuePreviewRead = false;
   const provider = { id: 'github', label: 'GitHub', repository, supported: true, capabilities: { issues: true, templates: true, create: true } };
   const status = {
     jobs, csrf_token: session, repo: '/workspace/software-and-defence-factory',
@@ -140,8 +142,13 @@ test('Inbox refreshes from created receipts without losing filters, board choice
     if (url.pathname === '/api/v1/issues/preview') {
       const input = JSON.parse(options.body);
       const issue = issues.find(item => item.url === input.url);
+      if (failNextIssuePreviewRead) {
+        failNextIssuePreviewRead = false;
+        return jsonResponse({ error: 'Provider preview timed out.' }, 503);
+      }
+      const current = { ...issue, ...previewOverrides.get(issue.url) };
       return jsonResponse({
-        ...issue, body: `Current body for ${issue.title}`, spec: issue.title,
+        ...current, phase: projectIssuePhase(current), body: current.body || `Current body for ${issue.title}`, spec: issue.title,
         recommendation: { work_type: 'software', reason: 'Use the project software workflow.' },
         start_block_reason: null,
       });
@@ -356,6 +363,41 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   assert.match(contributorDetail?.textContent || '', /Authoroperator[\s\S]*Unassigned/, 'issue detail keeps author and unassigned assignee roles explicit');
   const operatorBrief = 'Keep this unsent detail draft while creating a separate issue.';
   await act(async () => { setValue(document.querySelector('.issue-context textarea[maxlength="16000"]'), operatorBrief, window); });
+  const detailPosition = document.querySelector('.detail-position')?.textContent;
+  const detailField = label => [...document.querySelectorAll('.task-metadata dt')].find(node => node.textContent === label)?.nextElementSibling?.textContent;
+  const failedPreviewStarts = requests.filter(request => request.pathname === '/api/v1/issues/start').length;
+  failNextIssuePreviewRead = true;
+  await click(buttonMatching(document, text => text === 'Refresh issue context'));
+  await waitFor(() => document.querySelector('[aria-label="Repository issue context"] [role="alert"]')?.textContent.includes('Provider preview timed out.'), 'preview failure should be exposed in issue detail');
+  assert.match(detailField('Repository phase') || '', /^Source stale · Last loaded phase: Ready to implement/);
+  assert.equal(detailField('Readiness · last loaded'), 'Readiness unknown', 'retained readiness is identified as last loaded');
+  assert.match(detailField('Labels · last loaded') || '', /factory:ready/, 'retained labels are identified as last loaded');
+  assert.match(detailField('Contributors · last loaded') || '', /Authoroperator[\s\S]*Unassigned/, 'retained contributors are identified as last loaded');
+  assert.equal(document.querySelector('.inbox-body')?.textContent, 'Current body for Draft target issue');
+  assert.match(document.querySelector('.issue-context details summary')?.textContent || '', /last loaded/);
+  assert.equal(document.querySelector('.issue-context textarea[maxlength="16000"]')?.value, operatorBrief, 'preview failure preserves the operator draft');
+  assert.equal(buttonMatching(document, text => text === 'Start work')?.disabled, true, 'start stays disabled while preview data is stale');
+  assert.equal(requests.filter(request => request.pathname === '/api/v1/issues/start').length, failedPreviewStarts, 'failed preview never submits native work');
+  assert.equal(document.querySelector('.detail-position')?.textContent, detailPosition, 'preview failure preserves filtered detail navigation');
+
+  const targetIssue = issues.find(issue => issue.number === 117);
+  previewOverrides.set(targetIssue.url, {
+    labels: [{ name: 'factory:review', color: '8254a8' }], body: 'Refreshed issue body after provider recovery.',
+    author: 'maintainer', author_profile_url: 'https://github.com/maintainer', author_avatar_url: 'https://avatars.githubusercontent.com/u/77?v=4',
+    assignees: [{ login: 'reviewer', profile_url: 'https://github.com/reviewer', avatar_url: 'https://avatars.githubusercontent.com/u/78?v=4' }],
+  });
+  await click(buttonMatching(document, text => text === 'Refresh issue context'));
+  await waitFor(() => detailField('Repository phase') === 'Needs review' && document.querySelector('.inbox-body')?.textContent === 'Refreshed issue body after provider recovery.', 'successful preview recovery restores current phase and body');
+  assert.equal(detailField('Readiness'), 'Readiness unknown');
+  assert.match(detailField('Labels') || '', /factory:review/);
+  const recoveredContributors = document.querySelector('.task-metadata .issue-contributors:not(.is-compact)');
+  assert.ok(recoveredContributors?.querySelector('[aria-label="Author: maintainer"]'), 'preview recovery restores current author data');
+  assert.ok(recoveredContributors?.querySelector('[aria-label="Assignee: reviewer"]'), 'preview recovery restores current assignee data');
+  assert.equal(document.querySelector('.task-metadata dt') && [...document.querySelectorAll('.task-metadata dt')].some(node => /last loaded/.test(node.textContent)), false, 'recovered metadata is no longer marked stale');
+  assert.equal(document.querySelector('.issue-context details summary')?.textContent, 'Issue context');
+  assert.equal(document.querySelector('.issue-context textarea[maxlength="16000"]')?.value, operatorBrief, 'successful preview recovery preserves the operator draft');
+  assert.equal(buttonMatching(document, text => text === 'Start work')?.disabled, false, 'successful preview recovery restores start eligibility');
+  assert.equal(document.querySelector('.detail-position')?.textContent, detailPosition, 'preview recovery preserves filtered detail navigation');
   const closeDetail = document.querySelector('a[aria-label="Close issue detail"]');
   await click(closeDetail);
   await waitFor(() => document.querySelector('.new-issue-action'), 'Inbox should return from issue detail');
