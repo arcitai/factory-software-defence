@@ -37,7 +37,7 @@ export function createNativeServer(state,config,{harness,provider,instance=rando
   const server=http.createServer(async(request,response)=>{
     const send=(status,value,type='application/json; charset=utf-8')=>{response.writeHead(status,{'Content-Type':type});response.end(type.startsWith('application/json')?JSON.stringify(value):value);};
     response.setHeader('Cache-Control','no-store');response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Referrer-Policy','no-referrer');
-    response.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    response.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: https://avatars.githubusercontent.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     try {
       const hosts=[`localhost:${server.address().port}`,`127.0.0.1:${server.address().port}`];
       if(!hosts.includes(request.headers.host))throw new FactoryError('Host is not allowed',403);

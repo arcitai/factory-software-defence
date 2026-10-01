@@ -15,6 +15,15 @@ optional issue forms/labels and an inactive CI example. It does not overwrite an
 application, install global skills, grant access or start work. Foundation is a
 separate setup skill and is not part of the execution catalog.
 
+The default repository-stage and label catalog is [lifecycle.json](lifecycle.json).
+The exported `labels.json` is its flat label projection. Existing
+`factory:triage`, `factory:spec`, `factory:ready` and `factory:blocked` readiness
+labels remain supported; `factory:ready` means ready to implement and allows a
+small accepted task to skip specification. Review the catalog against the
+adopting repository's existing labels before adopting it. Unmatched, conflicting
+or stale source labels stay unresolved in the Inbox. A stage label is a
+repository declaration, never evidence that a native turn is running.
+
 Ask the application's agent to read its existing instructions and adopt only the
 relevant material on a branch. Merge conflicts deliberately and preserve the
 canonical AGENTS.md, design and coding standards. Fill the [installation record](installation.md)

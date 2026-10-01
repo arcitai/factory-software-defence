@@ -1,13 +1,23 @@
 import React from "react";
-import { Code2, CircleAlert, Circle } from "lucide-react";
+import { Circle, CircleAlert, CircleCheck, CircleHelp, CirclePause, CircleX, Code2, Eye, FilePenLine, FileText, Inbox as InboxGlyph, TriangleAlert } from "lucide-react";
+import { nativeState } from '../../factory/issue-lifecycle.mjs';
 
-const stateTone = value => ({ running: "violet", needs_review: "amber", failed: "amber", interrupted: "amber", unknown: "amber" })[value] || "neutral";
+const glyphs = Object.freeze({ inbox: InboxGlyph, file_text: FileText, file_pen: FilePenLine, circle_check: CircleCheck,
+  code: Code2, eye: Eye, triangle_alert: TriangleAlert, circle_x: CircleX, circle_help: CircleHelp, circle: Circle, pause: CirclePause });
+
+export function LifecycleGlyph({ definition, size = 14 }) {
+  const Icon = glyphs[definition?.icon] || CircleHelp;
+  return <Icon size={size} aria-hidden="true" />;
+}
+
 export function TaskStateIcon({ value }) {
-  const Icon = value === "running" ? Code2 : ["failed", "interrupted", "needs_review", "unknown"].includes(value) ? CircleAlert : Circle;
-  return <span className={`task-status-icon tone-${stateTone(value)}`} aria-hidden="true"><Icon size={14} /></span>;
+  const definition = nativeState(value);
+  const Icon = glyphs[definition.icon] || CircleAlert;
+  return <span className={`task-status-icon tone-${definition.tone}`} aria-hidden="true"><Icon size={14} /></span>;
 }
 export function State({ value }) {
-  return <span className={`task-state tone-${stateTone(value)}`}><span className="state-dot" />{stateLabel(value)}</span>;
+  const definition = nativeState(value);
+  return <span className={`task-state tone-${definition.tone}`}><LifecycleGlyph definition={definition} size={12} />{definition.label}</span>;
 }
 
 export function friendlyName(name) {
@@ -38,13 +48,5 @@ export function formatTimestamp(value) {
     : new Date(value).toLocaleString();
 }
 export function stateLabel(value) {
-  const labels = {
-    not_started: "Not started",
-    failed: "Failed",
-    interrupted: "Interrupted",
-    running: "Running",
-    needs_review: "Native turn completed · needs review",
-    unknown: "Unknown",
-  };
-  return labels[value] || (value ? friendlyName(value) : "Unknown");
+  return nativeState(value).label;
 }

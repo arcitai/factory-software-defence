@@ -21,3 +21,8 @@ instead of inventing implementation tickets. Runtime dependency scheduling is
 not implied: the operator still selects and admits ready work.
 
 Use the owner's accepted task or the project's established readiness policy to identify repository, allowed changes, selected execution profile, capability requirements and acceptance criteria. A profile can be a readable installation record; no particular controller is required. Material changes to accepted scope require renewed acceptance. Produce the proposed scope without inventing approval or starting a job merely because this skill was loaded.
+
+When the project uses lifecycle labels, consult its reviewed catalog and map
+only labels that the source actually carries. Specification may be skipped for
+accepted small work. Do not turn a planning label into an execution trigger or
+infer that a Codex process is creating a specification.

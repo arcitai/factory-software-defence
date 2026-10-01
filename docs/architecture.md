@@ -9,7 +9,7 @@ The native harness remains the execution engine.
 | --- | --- |
 | Project | Approved vision, source, design/code standards, checks and delivery rules |
 | Foundation and ADLC | Deliberate adoption, setup guidance and reusable working instructions |
-| Dashboard and CLI | Select an issue, request a native action and display its actual result |
+| Dashboard and CLI | Select an issue, request a native action and display the same GitHub phase and separate native result |
 | Small bridge | Authenticate local requests, associate issues with native sessions, refuse ambiguous or duplicate operations |
 | Codex | Agent loop, context, tools, permissions, sessions and execution history |
 | GitHub | Repository issues, templates, PRs, checks and authorized publication |
@@ -60,9 +60,15 @@ Application deployment remains in the application's CI/CD.
 
 ![Work lifecycle](diagrams/lifecycle.svg)
 
-An issue enters the Inbox without starting an agent. Start is deliberate; Continue
-adds feedback to the same native history after a terminal turn. Refresh/reconnect
-never starts another turn. Unknown outcomes remain unresolved until reconciled.
+An issue enters the Inbox without starting an agent. The shared ADLC catalog maps
+actual GitHub labels, open/closed state and closure reason to a repository phase.
+Codex running/completed/failed/interrupted/unknown state remains a separate
+record. Phase labels are ordinary authorized repository edits; they are not
+execution triggers. A completed native turn still needs checks and independent
+review. A closed issue is Done only when GitHub supplies the completed reason;
+declined or reasonless closure stays Closed. Refresh/reconnect never starts
+another turn. Unknown or stale outcomes remain unresolved until fresh source
+data or native history resolves them.
 
 Check and independently review the exact candidate before an authorized PR or
 release. Self-improvement must fit the project's approved vision; it cannot

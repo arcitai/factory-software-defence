@@ -17,6 +17,12 @@ actual results, not a second prose-only lint pass.
 
 Confirm the delivered commit, exercise the acceptance criteria and relevant regression paths, and assess correctness, maintainability and user-visible behavior. Tie every check to that full commit SHA. Changed scope or new code requires refreshed evidence. Never carry a previous attempt's check onto a new attempt.
 
+For issue-facing changes, verify repository phase against fresh provider labels,
+open/closed state and closure reason, and inspect Codex state independently. A
+completed native turn is not GitHub review or acceptance; a closed issue without
+the completed reason is not Done. Missing, stale or conflicting source data must
+remain visibly unresolved.
+
 Check the vertical slices against their claimed behavior: does each path run through the necessary layers, with integration and relevant failure evidence? Is the earlier working behavior preserved? Separate bounded prerequisite work and labeled mocks from completed behavior. A small diff or isolated layer tests alone do not establish a working slice. A slice checkpoint cannot establish completion of a larger accepted scope, and it does not require a new human approval merely because it is a checkpoint.
 
 Compare before/after evidence where the claim needs it, using the same relevant workload and environment. Check that the required controls actually ran; an empty suite, placeholder command, or generic provider score cannot establish acceptance. Route specialist review by consequences such as authorization, data migration, dependencies or agent-policy changes, not merely diff size. Integration or rebase requires checking the resulting revision again. Keep review evidence private unless its destination is authorized.

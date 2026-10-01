@@ -19,6 +19,7 @@ test('native HTTP requires session for issue reads and writes and exposes no leg
   const root=`http://127.0.0.1:${server.address().port}`;
   const status=await fetch(`${root}/api/v1/status`);
   assert.equal(status.status,200);
+  assert.match(status.headers.get('content-security-policy'),/https:\/\/avatars\.githubusercontent\.com/);
   const data=await status.json();
   const bridge=await (await fetch(`${root}/api/v1/bridge/status`)).json();
   assert.deepEqual(Object.keys(bridge).sort(),['csrf_token','native','native_instance','repo','version']);
@@ -125,4 +126,54 @@ test('a restarted startup gate releases when its adoption receipt is archived',a
   assert.equal((await post()).status,409);rmSync(join(state,'service-adoption.json'));
   assert.equal((await (await fetch(root+'/api/v1/status')).json()).maintenance_prepared,false);
   assert.equal((await post()).status,201);assert.equal(starts,1);
+});
+
+test('issue API returns catalogued source phase separately from native state and keeps off-page history',async t=>{
+  const state=mkdtempSync(join(tmpdir(),'factory-native-lifecycle-http-'));
+  t.after(()=>rmSync(state,{recursive:true,force:true}));
+  mkdirSync(join(state,'receipts'));mkdirSync(join(state,'issue-submissions'));
+  let starts=0,continues=0;
+  const repository='https://github.com/example/project';
+  const jobs=[
+    {id:'job_abcdef',state:'needs_review',workflow:{name:'software'},task:{title:'Completed native turn',source_url:`${repository}/issues/1`},created_at:'2026-09-01T00:00:00Z'},
+    {id:'job_bcdef0',state:'running',workflow:{name:'software'},task:{title:'Closed issue still running',source_url:`${repository}/issues/4`},created_at:'2026-09-02T00:00:00Z'},
+  ];
+  let reopened=false;
+  const harness={name:'fixture',available:true,jobs:async()=>jobs,doctor:async()=>({ready:true,gaps:[]}),
+    start:async()=>{starts++;},continue:async()=>{continues++;}};
+  const provider={id:'github',label:'GitHub',repository,supported:true,capabilities:{issues:true,templates:false,create:false},
+    list:async(page,sourceState)=>({repository,next_page:sourceState==='open'&&page===1?2:null,issues:sourceState==='closed'
+      ?reopened?[]:[{number:2,title:'Completed closure',url:`${repository}/issues/2`,state:'closed',state_reason:'completed',labels:[{name:'factory:review'}]}]
+      :page===2?[{number:5,title:'Second provider page',url:`${repository}/issues/5`,state:'open',state_reason:null,labels:[{name:'factory:spec'}]}]
+      :[{number:1,title:'Ready for work',url:`${repository}/issues/1`,state:'open',state_reason:null,labels:[{name:'factory:ready'}]},
+        {number:3,title:'Conflicting labels',url:`${repository}/issues/3`,state:'open',state_reason:null,labels:[{name:'factory:ready'},{name:'factory:review'}]},
+        ...(reopened?[{number:2,title:'Reopened work',url:`${repository}/issues/2`,state:'open',state_reason:'reopened',labels:[{name:'factory:ready'}]}]:[])]})};
+  const {server}=createNativeServer(state,{repo:join(state,'repo')},{harness,provider,instance:'lifecycle-api'});
+  await new Promise((resolve,reject)=>server.once('error',reject).listen(0,'127.0.0.1',resolve));
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const root=`http://127.0.0.1:${server.address().port}`;
+  const status=await (await fetch(`${root}/api/v1/status`)).json();
+  const get=async query=>(await fetch(`${root}/api/v1/issues?${query}`,{headers:{'x-factory-session':status.csrf_token}})).json();
+  const open=await get('page=1&state=open');
+  assert.equal(open.next_page,2);
+  assert.equal(open.issues[0].phase.id,'ready_to_implement');
+  assert.equal(open.work_records.find(record=>record.identity?.number===1).phase.id,'ready_to_implement');
+  assert.equal(open.work_records.find(record=>record.identity?.number===1).state,'needs_review');
+  assert.equal(open.work_records.find(record=>record.identity?.number===1).native_state.label,'Native turn completed · needs review');
+  assert.equal(open.issues[1].phase.resolution,'conflicting');
+  assert.equal(open.work_records.find(record=>record.identity?.number===4).source_status,'not_loaded');
+  assert.equal(open.work_records.find(record=>record.identity?.number===4).state,'running');
+  const secondPage=await get('page=2&state=open');
+  assert.equal(secondPage.page,2);
+  assert.equal(secondPage.issues[0].identity.key,'github:https://github.com/example/project:5');
+  assert.equal(secondPage.issues[0].phase.id,'ready_to_spec');
+  assert.equal(secondPage.work_records.find(record=>record.identity?.number===4).state,'running','page changes preserve off-page native history');
+  const closed=await get('page=1&state=closed');
+  assert.equal(closed.issues[0].phase.id,'done');
+  assert.equal(closed.work_records.find(record=>record.identity?.number===2).phase.id,'done');
+  reopened=true;
+  const freshOpen=await get('page=1&state=open');
+  assert.equal(freshOpen.issues.find(issue=>issue.number===2).phase.id,'ready_to_implement','fresh provider data moves a reopened issue back to its open phase');
+  assert.equal((await get('page=1&state=closed')).issues.length,0,'a real reopen removes the issue from closed history');
+  assert.equal(starts,0);assert.equal(continues,0,'provider reads and phase projection do not write native work');
 });

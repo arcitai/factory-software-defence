@@ -24,6 +24,12 @@ A passing unrelated test is not evidence that the defect was fixed.
 
 For a behavioral fix, capture the reproducible before-state before changing it when practical, then compare the same action or workload after the change. Use runtime evidence appropriate to the claim: a UI interaction, a failing/passing test, or comparable measurements. Report a missing baseline honestly. Use the repository's existing architecture; do not introduce a new service layer merely to follow a generic pattern. Use the project's delivery or review template if available; evidence collection does not require an external upload.
 
+Keep repository phase and native execution separate. Read phase from the
+adopting project's current GitHub labels and issue state; do not create or edit
+labels unless the accepted task and selected operator authorize that action.
+A completed native turn is not acceptance, and reopening or stale provider data
+must be based on a fresh source read.
+
 Return the resulting commit or clearly identify uncommitted files, executed commands and exit results, artifact paths, unresolved issues and known consumption. Unknown costs are null. An agent statement is not independent proof. Do not alter acceptance criteria, independent verifier records or the evaluation oracle to make a result pass. Escalate a material scope or access change; continue authorized repairs within the accepted task.
 
 Publishing a branch or PR, merging, deploying and sending messages follow the project's separate authorities. This skill grants none of them. Use an existing explicit mandate or configured delivery policy without asking again; hand off actions outside the worker's authority. The initial native Factory profile does not grant external-write authority to the agent.

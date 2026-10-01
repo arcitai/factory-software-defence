@@ -10,6 +10,7 @@
 | Install, publish or update a package | [Packages and releases](npm.md) |
 | Develop Factory itself | [Contributing](../CONTRIBUTING.md) |
 | Adopt only the portable method | [ADLC](../adlc/README.md) |
+| Review default repository phases and labels | [Lifecycle catalog](../adlc/lifecycle.json) |
 
 The current executable integration is native Codex on Linux plus GitHub. Other
 harnesses are separate future integrations. Archived implementations are in Git

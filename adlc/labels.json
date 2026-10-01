@@ -1,28 +1,38 @@
 [
   {
     "name": "factory:triage",
-    "color": "D9E2D3",
+    "color": "D9DDE5",
     "description": "Needs bounded scope and capability routing"
   },
   {
     "name": "factory:spec",
-    "color": "E8D6AB",
-    "description": "Needs product/technical specification"
+    "color": "D9DDE5",
+    "description": "Ready for product or technical specification"
+  },
+  {
+    "name": "factory:creating-spec",
+    "color": "1D76DB",
+    "description": "An authorized workflow is preparing a specification"
   },
   {
     "name": "factory:ready",
-    "color": "436B48",
-    "description": "Maintainer requests work on the accepted scope"
+    "color": "D9DDE5",
+    "description": "Accepted scope ready for explicit implementation admission"
+  },
+  {
+    "name": "factory:implementing",
+    "color": "1D76DB",
+    "description": "An authorized workflow declares implementation in progress"
   },
   {
     "name": "factory:review",
-    "color": "B5CEE2",
-    "description": "Result and evidence await review"
+    "color": "8254A8",
+    "description": "Candidate and evidence await independent review"
   },
   {
     "name": "factory:blocked",
-    "color": "A65E47",
-    "description": "Needs a concrete decision or recovery"
+    "color": "D87624",
+    "description": "A concrete dependency needs an owner decision or recovery"
   },
   {
     "name": "track:software",

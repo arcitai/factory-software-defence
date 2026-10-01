@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "readiness": {
+    "triage": "triage",
+    "spec": "spec",
+    "ready": "ready",
+    "blocked": "blocked"
+  },
+  "closure_reasons": [
+    { "id": "completed", "label": "Completed", "stage_id": "done" },
+    { "id": "not_planned", "label": "Not planned", "stage_id": "closed" },
+    { "id": "reopened", "label": "Reopened", "stage_id": "closed" }
+  ],
+  "labels": [
+    {
+      "id": "triage",
+      "name": "factory:triage",
+      "color": "D9DDE5",
+      "description": "Needs bounded scope and capability routing"
+    },
+    {
+      "id": "spec",
+      "name": "factory:spec",
+      "color": "D9DDE5",
+      "description": "Ready for product or technical specification"
+    },
+    {
+      "id": "creating_spec",
+      "name": "factory:creating-spec",
+      "color": "1D76DB",
+      "description": "An authorized workflow is preparing a specification"
+    },
+    {
+      "id": "ready",
+      "name": "factory:ready",
+      "color": "D9DDE5",
+      "description": "Accepted scope ready for explicit implementation admission"
+    },
+    {
+      "id": "implementing",
+      "name": "factory:implementing",
+      "color": "1D76DB",
+      "description": "An authorized workflow declares implementation in progress"
+    },
+    {
+      "id": "review",
+      "name": "factory:review",
+      "color": "8254A8",
+      "description": "Candidate and evidence await independent review"
+    },
+    {
+      "id": "blocked",
+      "name": "factory:blocked",
+      "color": "D87624",
+      "description": "A concrete dependency needs an owner decision or recovery"
+    },
+    {
+      "id": "track_software",
+      "name": "track:software",
+      "color": "D5DFE8",
+      "description": "Software delivery track"
+    },
+    {
+      "id": "track_security",
+      "name": "track:security",
+      "color": "E0CACA",
+      "description": "Private or appropriately scoped security track"
+    }
+  ],
+  "stages": [
+    { "id": "triage", "label": "Triage", "description": "Scope, duplicates and capability routing", "tone": "neutral", "icon": "inbox", "label_id": "triage" },
+    { "id": "ready_to_spec", "label": "Ready to spec", "description": "Accepted outcome is ready for specification", "tone": "neutral", "icon": "file_text", "label_id": "spec" },
+    { "id": "creating_spec", "label": "Creating spec", "description": "An authorized workflow declares specification work", "tone": "blue", "icon": "file_pen", "label_id": "creating_spec" },
+    { "id": "ready_to_implement", "label": "Ready to implement", "description": "Accepted scope is ready; small work may skip specification", "tone": "neutral", "icon": "circle_check", "label_id": "ready" },
+    { "id": "implementing", "label": "Implementing", "description": "An authorized workflow declares implementation work", "tone": "blue", "icon": "code", "label_id": "implementing" },
+    { "id": "needs_review", "label": "Needs review", "description": "Candidate and evidence await independent review", "tone": "violet", "icon": "eye", "label_id": "review" },
+    { "id": "needs_attention", "label": "Needs attention", "description": "A repository label declares a concrete blocker", "tone": "orange", "icon": "triangle_alert", "label_id": "blocked" },
+    { "id": "done", "label": "Done", "description": "GitHub issue closed with the completed reason", "tone": "green", "icon": "circle_check", "closed_reason": "completed" },
+    { "id": "closed", "label": "Closed", "description": "GitHub issue closed without a completed reason", "tone": "closed", "icon": "circle_x", "closed_reason": "other" },
+    { "id": "unresolved", "label": "Unresolved", "description": "Source is missing, stale, unlabeled or conflicting", "tone": "orange", "icon": "circle_help" }
+  ],
+  "native_states": [
+    { "id": "not_started", "label": "Not started", "tone": "neutral", "icon": "circle", "action": "Open issue context to start work" },
+    { "id": "running", "label": "Running", "tone": "blue", "icon": "code", "action": "Codex work in progress" },
+    { "id": "needs_review", "label": "Native turn completed · needs review", "tone": "violet", "icon": "eye", "action": "Check changes and arrange independent review" },
+    { "id": "failed", "label": "Failed", "tone": "red", "icon": "triangle_alert", "action": "Inspect failure and continue explicitly" },
+    { "id": "interrupted", "label": "Interrupted", "tone": "orange", "icon": "pause", "action": "Inspect native history before continuing" },
+    { "id": "unknown", "label": "Unknown", "tone": "orange", "icon": "circle_help", "action": "Inspect native history; state is unresolved" }
+  ],
+  "native_groups": [
+    { "id": "not_started", "label": "Not started", "tone": "neutral", "icon": "circle", "states": ["not_started"] },
+    { "id": "in_progress", "label": "In progress", "tone": "blue", "icon": "code", "states": ["running"] },
+    { "id": "needs_attention", "label": "Needs attention", "tone": "orange", "icon": "triangle_alert", "states": ["failed", "interrupted", "unknown"] },
+    { "id": "needs_review", "label": "Needs review", "tone": "violet", "icon": "eye", "states": ["needs_review"] }
+  ]
+}
