@@ -4,8 +4,8 @@ The npm package is `factory-software-defence`. It provides `factory` and
 `factory-software-defence`; `software-defence-factory` remains an explicit
 executable alias for existing scripts. All three invoke the same bundled CLI.
 Use the explicit package/version when another tool owns `factory`.
-The canonical 0.18.4 package is a source candidate until reviewed publication;
-the former package's 0.18.4 candidate was never published.
+The canonical `factory-software-defence` 0.18.4 package was published; the former
+package's 0.18.4 candidate was never published.
 
 ```sh
 npm install --global factory-software-defence@next
