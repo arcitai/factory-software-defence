@@ -15,7 +15,7 @@ const sourceStateLabel = issue => !issue ? 'Not loaded' : issue.state === 'close
 export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarted, onNewIssue, statusError, refreshStatus, nativeReadiness, issueKey, active = true, identity, links, onNavigation, detailProps = {} }) {
   const [state,setState] = useState('open');
   const [snapshot,setSnapshot] = useState(null), [loading,setLoading] = useState(false), [error,setError] = useState('');
-  const [drafts,setDrafts] = useState({}), [previewBusy,setPreviewBusy] = useState(false), [previewError,setPreviewError] = useState(''), [starting,setStarting] = useState(false);
+  const [drafts,setDrafts] = useState({}), [previewBusy,setPreviewBusy] = useState(false), [previewError,setPreviewError] = useState(''), [starting,setStarting] = useState(false), [startError,setStartError] = useState(null);
   const [filter,setFilter] = useState([]), [phaseFilter,setPhaseFilter] = useState([]), [search,setSearch] = useState(''), [workflowFilter,setWorkflowFilter] = useState([]), [labelFilter,setLabelFilter] = useState([]);
   const [runsView,setRunsView] = useState(()=>window.localStorage.getItem('factory-runs-view') === 'board' ? 'board' : 'list');
   const pending=useRef(null), previewPending=useRef(null), alive=useRef(true);
@@ -48,12 +48,12 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
   }
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;pending.current?.abort();previewPending.current?.abort();};},[]);
   useEffect(()=>{if(token)load();},[token,state,refreshKey]);
-  async function open(issue,refresh=false) {
+  async function open(issue,refresh=false,reconcileStart=false) {
     previewPending.current?.abort();setPreviewError('');
     if(!refresh && draftsRef.current[issue.key]?.context){setPreviewBusy(false);return;}
     const controller=new AbortController();previewPending.current=controller;setPreviewBusy(true);
     try {const context=await api('/api/v1/issues/preview',{url:issue.url},controller.signal);
-      if(!controller.signal.aborted && alive.current)setDrafts(previous=>({...previous,[issue.key]:{brief:'',workType:context.recommendation.work_type||context.recommendation.workflow,...previous[issue.key],context}}));
+      if(!controller.signal.aborted && alive.current){setDrafts(previous=>({...previous,[issue.key]:{brief:'',workType:context.recommendation.work_type||context.recommendation.workflow,...previous[issue.key],context}}));if(reconcileStart)setStartError(previous=>previous?.key===issue.key?null:previous);}
     } catch(e) {if(!controller.signal.aborted && alive.current)setPreviewError(e.message);}
     finally {if(!controller.signal.aborted && alive.current)setPreviewBusy(false);}
   }
@@ -64,15 +64,16 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
   const draft=selected && drafts[issueKey], context=draft?.context;
   const detailIssue=selected && (previewBusy || previewError ? selected.issue || context : context || selected.issue);
   const detailMetadataPending=Boolean(previewError || previewBusy);
+  const startFailure=startError?.key===issueKey?startError.message:'';
   const detailPhase=selected && (detailMetadataPending
     ? projectIssuePhase(detailIssue, { sourceStatus: detailIssue ? 'stale' : 'not_loaded' })
     : context?.phase || selected.phase);
   const blocked=selected?.active_execution ? 'Native work is active or unresolved. Open its history to inspect it.' : context?.start_block_reason || (jobs.some(job=>['running','unknown'].includes(job.state)) ? 'The native workspace has active or unresolved work. Inspect Codex history first.' : null) || (!nativeReadiness?.ready ? `Native Codex unavailable: ${(nativeReadiness?.gaps || ['readiness unknown']).join('; ')}` : null);
   async function start(event) {
-    event.preventDefault();if(starting || !context || blocked || previewError || statusError)return;setStarting(true);setPreviewError('');
+    event.preventDefault();if(starting || !context || blocked || previewError || startFailure || statusError)return;setStarting(true);
     try {const created=await api('/api/v1/issues/start',{url:context.url,expected_spec:context.spec,brief:draft.brief,work_type:draft.workType});
       if(alive.current){await onStarted(created);load(snapshot?.page || 1);}
-    } catch(e) {if(alive.current)setPreviewError(e.message);}
+    } catch(e) {if(alive.current)setStartError({key:selected.key,message:e.message});}
     finally {if(alive.current)setStarting(false);}
   }
   const sourceControls=<RepositoryControls snapshot={snapshot} state={state} setState={setState} loading={loading} token={token} load={load} records={records} />;
@@ -84,9 +85,10 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
     {snapshot && !snapshot.issues?.length && !error && !loading && <p className="source-boundary">No issues on this page. Other pages or states may contain issues.</p>}
   </>;
   const panel=selected && <section className="issue-context" aria-label="Repository issue context">
-    <Button variant="outline" size="sm" disabled={starting || previewBusy} onClick={()=>open(selected,true)}>Refresh issue context</Button>
+    <Button variant="outline" size="sm" disabled={starting || previewBusy} onClick={()=>open(selected,true,true)}>Refresh issue context</Button>
     {previewBusy && <p role="status">Loading issue context…</p>}
     {previewError && <p role="alert" className="form-error">{context?'Provider preview unavailable. The last loaded issue body and metadata are shown as stale. ':detailIssue?'Provider preview unavailable. The last loaded issue metadata is shown as stale; no preview body was loaded. ':'Provider preview unavailable. No issue details were loaded. '}{previewError}</p>}
+    {startFailure && <p role="alert" className="form-error">Native Start error: {startFailure} The outcome may be unresolved; check native status and issue history before another Start request. No automatic retry was made.</p>}
     {statusError && <p role="alert" className="form-error">Native history status is stale: {statusError}</p>}
     {context && <>
       <details open={!selected.execution_id}><summary>Issue context{detailMetadataPending?' · last loaded':''}</summary><pre className="inbox-body">{context.body}</pre></details>
@@ -99,7 +101,7 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
             <label><span className="field-label">Operator brief · optional</span><textarea className="field-control" maxLength={16000} value={draft.brief} onChange={event=>edit({brief:event.target.value})} /></label>
           </details>
           {blocked && <p className="work-help">{blocked}</p>}
-          <Button disabled={starting || previewBusy || !loaded || Boolean(previewError) || Boolean(statusError) || Boolean(blocked)}>{starting?'Starting…':'Start work'}</Button>
+          <Button disabled={starting || previewBusy || !loaded || Boolean(previewError) || Boolean(startFailure) || Boolean(statusError) || Boolean(blocked)}>{starting?'Starting…':'Start work'}</Button>
         </form>
       </details>
     </>}

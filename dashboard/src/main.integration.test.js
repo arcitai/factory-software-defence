@@ -105,6 +105,8 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   let statusReads = 0;
   let failNextIssueListRead = false;
   let failNextIssuePreviewRead = false;
+  let failNextIssueStart = false;
+  let issueStartRequests = 0;
   const provider = { id: 'github', label: 'GitHub', repository, supported: true, capabilities: { issues: true, templates: true, create: true } };
   const status = {
     jobs, csrf_token: session, repo: '/workspace/software-and-defence-factory',
@@ -150,8 +152,16 @@ test('Inbox refreshes from created receipts without losing filters, board choice
       return jsonResponse({
         ...current, phase: projectIssuePhase(current), body: current.body || `Current body for ${issue.title}`, spec: issue.title,
         recommendation: { work_type: 'software', reason: 'Use the project software workflow.' },
-        start_block_reason: null,
+        start_block_reason: current.start_block_reason ?? null,
       });
+    }
+    if (url.pathname === '/api/v1/issues/start' && method === 'POST') {
+      issueStartRequests += 1;
+      if (failNextIssueStart) {
+        failNextIssueStart = false;
+        return jsonResponse({ error: 'Native readiness check failed.' }, 503);
+      }
+      return jsonResponse({ error: 'Unexpected duplicate native Start request.' }, 409);
     }
     if (url.pathname === '/api/v1/issue-templates') {
       return jsonResponse({ repository, templates: [template], contacts: [], warnings: [] });
@@ -398,6 +408,36 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   assert.equal(document.querySelector('.issue-context textarea[maxlength="16000"]')?.value, operatorBrief, 'successful preview recovery preserves the operator draft');
   assert.equal(buttonMatching(document, text => text === 'Start work')?.disabled, false, 'successful preview recovery restores start eligibility');
   assert.equal(document.querySelector('.detail-position')?.textContent, detailPosition, 'preview recovery preserves filtered detail navigation');
+
+  const startRequestsBeforeFailure = issueStartRequests;
+  failNextIssueStart = true;
+  await click(buttonMatching(document, text => text === 'Start work'));
+  await waitFor(() => document.querySelector('[aria-label="Repository issue context"] [role="alert"]')?.textContent.includes('Native readiness check failed.'), 'native Start failure should be reported in issue detail');
+  const nativeStartAlert = document.querySelector('[aria-label="Repository issue context"] [role="alert"]');
+  assert.match(nativeStartAlert?.textContent || '', /Native Start error/);
+  assert.doesNotMatch(nativeStartAlert?.textContent || '', /Provider preview unavailable/);
+  assert.equal(detailField('Source state'), 'Open', 'native Start failure does not mark provider source state stale');
+  assert.equal(detailField('Repository phase'), 'Needs review', 'native Start failure does not stale the successful provider phase');
+  assert.match(detailField('Contributors') || '', /Authormaintainer[\s\S]*Assigneereviewer/, 'contributors remain current after native Start failure');
+  assert.ok(document.querySelector('.task-metadata .issue-contributors [aria-label="Author: maintainer"]'));
+  assert.equal([...document.querySelectorAll('.task-metadata dt')].some(node => /last loaded/.test(node.textContent)), false, 'native Start failure does not mark issue metadata stale');
+  assert.equal(document.querySelector('.issue-context textarea[maxlength="16000"]')?.value, operatorBrief, 'native Start failure preserves the operator draft');
+  assert.equal(buttonMatching(document, text => text === 'Start work')?.disabled, true, 'native Start failure blocks another Start until reconciliation');
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  assert.equal(issueStartRequests, startRequestsBeforeFailure + 1, 'native Start failure is never retried automatically');
+
+  previewOverrides.set(targetIssue.url, { ...previewOverrides.get(targetIssue.url), start_block_reason: 'Native state remains unresolved. Inspect Codex history.' });
+  await click(buttonMatching(document, text => text === 'Refresh issue context'));
+  await waitFor(() => [...document.querySelectorAll('.inbox-start .work-help')].some(node => node.textContent.includes('Native state remains unresolved.')), 'successful context refresh must preserve real native blocking');
+  assert.equal(document.querySelector('[aria-label="Repository issue context"] [role="alert"]'), null, 'successful source refresh clears the reconciled native request error');
+  assert.equal(buttonMatching(document, text => text === 'Start work')?.disabled, true, 'fresh context cannot bypass native history blocking');
+  assert.equal(issueStartRequests, startRequestsBeforeFailure + 1, 'context reconciliation never replays native Start');
+  previewOverrides.set(targetIssue.url, { ...previewOverrides.get(targetIssue.url), start_block_reason: null });
+  await click(buttonMatching(document, text => text === 'Refresh issue context'));
+  await waitFor(() => buttonMatching(document, text => text === 'Start work')?.disabled === false, 'successful context refresh restores eligibility when readiness checks allow it');
+  assert.equal(issueStartRequests, startRequestsBeforeFailure + 1, 'eligibility refresh does not retry the prior native Start');
+  assert.equal(document.querySelector('.task-metadata .issue-contributors [aria-label="Author: maintainer"]') !== null, true, 'context refresh keeps current provider contributors');
+  assert.equal(document.querySelector('.issue-context textarea[maxlength="16000"]')?.value, operatorBrief, 'context reconciliation preserves the operator draft');
   const closeDetail = document.querySelector('a[aria-label="Close issue detail"]');
   await click(closeDetail);
   await waitFor(() => document.querySelector('.new-issue-action'), 'Inbox should return from issue detail');
@@ -544,6 +584,8 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   await waitFor(() => document.querySelector('.issue-context textarea[maxlength="16000"]')?.value === operatorBrief, 'existing issue detail draft should survive receipt refreshes');
   assert.deepEqual(jobs.map(job => job.state), ['needs_review', 'failed', 'interrupted']);
   assert.equal(statusReads >= 3, true, 'receipt callbacks refresh native status as before');
-  assert.deepEqual(requests.filter(request => request.pathname.endsWith('/start') || /\/api\/v1\/jobs\/[^/]+\/(?:continue|resume|interrupt)$/.test(request.pathname)), []);
+  const nativeActions = requests.filter(request => request.pathname.endsWith('/start') || /\/api\/v1\/jobs\/[^/]+\/(?:continue|resume|interrupt)$/.test(request.pathname));
+  assert.deepEqual(nativeActions.map(request => request.pathname), ['/api/v1/issues/start'], 'only the deliberately failed native Start was requested; no retry or other native action occurred');
+  assert.equal(nativeActions[0].method, 'POST');
   assert.equal(requests.filter(request => request.pathname === '/api/v1/issues' && request.method === 'POST').length, 4);
 });
