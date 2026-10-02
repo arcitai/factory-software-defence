@@ -5,34 +5,39 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const args = process.argv.slice(2);
-const usage = "Usage: node scripts/export-kit.mjs NEW_OUTPUT_DIRECTORY";
-if (args.length === 1 && args[0] === "--help") {
-  console.log(`${usage}\nExports a reviewable adoption kit. Never installs into an app or overwrites a directory.`);
-} else if (args.length !== 1 || args[0].startsWith("-")) {
-  console.error(usage);
-  process.exitCode = 1;
-} else {
+export async function exportKit({ output, definition }) {
   let created = false;
-  const destination = resolve(args[0]);
+  const destination = resolve(output);
   try {
-    const sources = new Map();
-    for (const name of ["README.md", "policy.md", "installation.md", "delivery.md", "repository.md", "examples/github-checks.yml.example"])
-      sources.set(`.factory-kit/${name}`, `adlc/${name}`);
-    for (const role of ["triage", "spec", "implement", "review", "security", "evaluate"]) {
-      const path = `.agents/skills/factory-${role}/SKILL.md`;
-      sources.set(path, `adlc/skills/factory-${role}/SKILL.md`);
+    let files;
+    if (definition) {
+      const { definitionFiles } = await import('../factory/definition.mjs');
+      files = definitionFiles(definition);
+      for (const [target, source] of [
+        ['.factory-kit/definition.md', 'docs/definition.md'],
+        ['.factory-kit/definition.schema.json', 'factory/definition.schema.json'],
+        ['.factory-kit/LICENSE', 'LICENSE'],
+      ]) files.set(target, readFileSync(join(root, source)));
+      files.set('START-HERE.md', Buffer.from('# Desired Factory kit\n\nReview [.factory-kit/definition.md](.factory-kit/definition.md) and [.factory-kit/manifest.json](.factory-kit/manifest.json). Revalidate with `factory definition validate --file project/factory.yaml --repo project`. Selected public inputs are staged under project/; no app or native profile has been configured. Deliberately adopt only the reviewed material.\n'));
+    } else {
+      const sources = new Map();
+      for (const name of ["README.md", "policy.md", "installation.md", "delivery.md", "repository.md", "examples/github-checks.yml.example"])
+        sources.set(`.factory-kit/${name}`, `adlc/${name}`);
+      for (const role of ["triage", "spec", "implement", "review", "security", "evaluate"]) {
+        const path = `.agents/skills/factory-${role}/SKILL.md`;
+        sources.set(path, `adlc/skills/factory-${role}/SKILL.md`);
+      }
+      sources.set(".factory-kit/LICENSE", "LICENSE");
+      sources.set(".factory-kit/VISION.template.md", "adlc/vision-template.md");
+      sources.set(".factory-kit/labels.json", "adlc/labels.json");
+      sources.set(".factory-kit/lifecycle.json", "adlc/lifecycle.json");
+      for (const name of ["factory-task.yml", "bug-report.yml", "feature-request.yml"])
+        sources.set(`.github/ISSUE_TEMPLATE/${name}`, `.github/ISSUE_TEMPLATE/${name}`);
+      // Repository-specific security contact links are deliberately not exported.
+      // Read only the public kit allowlist, before creating anything at destination.
+      files = new Map([...sources].map(([target, source]) => [target, readFileSync(join(root, source))]));
+      files.set("START-HERE.md", Buffer.from("# Factory kit\n\nRead [the adoption guide](.factory-kit/README.md). The kit folders start with a dot and may be hidden in your file browser. This is a staged package; no app, workflow or service has been configured.\n"));
     }
-    sources.set(".factory-kit/LICENSE", "LICENSE");
-    sources.set(".factory-kit/VISION.template.md", "adlc/vision-template.md");
-    sources.set(".factory-kit/labels.json", "adlc/labels.json");
-    sources.set(".factory-kit/lifecycle.json", "adlc/lifecycle.json");
-    for (const name of ["factory-task.yml", "bug-report.yml", "feature-request.yml"])
-      sources.set(`.github/ISSUE_TEMPLATE/${name}`, `.github/ISSUE_TEMPLATE/${name}`);
-    // Repository-specific security contact links are deliberately not exported.
-    // Read only the public kit allowlist, before creating anything at destination.
-    const files = new Map([...sources].map(([target, source]) => [target, readFileSync(join(root, source))]));
-    files.set("START-HERE.md", Buffer.from("# Factory kit\n\nRead [the adoption guide](.factory-kit/README.md). The kit folders start with a dot and may be hidden in your file browser. This is a staged package; no app, workflow or service has been configured.\n"));
     let sourceRevision = null, sourceDirty = null;
     try {
       const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -51,6 +56,7 @@ if (args.length === 1 && args[0] === "--help") {
       hashBase: "export root",
       files: [...files].map(([path, bytes]) => ({ path, sha256: createHash("sha256").update(bytes).digest("hex") })),
     };
+    if (definition) manifest.definition = definition;
     files.set(".factory-kit/manifest.json", Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`));
     // Non-recursive creation refuses any existing directory/file/symlink.
     mkdirSync(destination);
@@ -60,10 +66,25 @@ if (args.length === 1 && args[0] === "--help") {
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, bytes, { flag: "wx" });
     }
-    console.log(`Exported ${files.size} files to ${destination}. Review .factory-kit/README.md before adoption. No app or service was configured.`);
+    return { files: files.size, destination, definition: definition || null };
   } catch (error) {
     if (created) rmSync(destination, { recursive: true, force: true });
-    console.error(`Kit export failed: ${error.message}`);
-    process.exitCode = 1;
+    throw error;
+  }
+}
+
+// Keep the existing standalone/default exporter interface compatible.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const args = process.argv.slice(2);
+  const usage = 'Usage: node scripts/export-kit.mjs NEW_OUTPUT_DIRECTORY';
+  if (args.length === 1 && args[0] === '--help') {
+    console.log(`${usage}\nExports a reviewable adoption kit. Never installs into an app or overwrites a directory.`);
+  } else if (args.length !== 1 || args[0].startsWith('-')) {
+    console.error(usage); process.exitCode = 1;
+  } else {
+    try {
+      const result = await exportKit({ output: args[0] });
+      console.log(`Exported ${result.files} files to ${result.destination}. Review .factory-kit/README.md before adoption. No app or service was configured.`);
+    } catch (error) { console.error(`Kit export failed: ${error.message}`); process.exitCode = 1; }
   }
 }

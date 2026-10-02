@@ -19,11 +19,18 @@ There is no second CLI execution engine.
 | Interrupt the identified active turn | `factory interrupt ID --turn TURN_ID --state PATH` |
 | Reconnect without starting work | `factory reconnect ID --state PATH` |
 | Export the portable method | `factory kit --output NEW_DIRECTORY` |
+| Validate desired local instructions offline | `factory definition validate --file FILE --repo PATH` |
+| Stage only a desired definition and selected public references | `factory kit --definition FILE --repo PATH --output NEW_DIRECTORY` |
 | Adopt a reviewed installed patch into the owned user service | `factory service adopt --state PATH` |
 
 `factory help` owns exact supported options. Software and scoped defensive work
 share the same issue surface. Work type selects guidance, not another executor.
 Sensitive security findings belong in the project's private reporting channel.
+
+Definition validation/staging is offline and separate from the bridge. Its JSON
+projection describes desired syntax/references with digests and unqualified
+execution status. See [the definition contract](definition.md) for rooting,
+limits, located errors and staged layout. It never applies native configuration.
 
 New issue loads repository templates, then creates through the repository
 provider. Creation is separate from Start. Existing repository issues enter the

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcitai.com/factory/definition/v1alpha1",
+  "title": "Factory desired definition (offline; not native readiness)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "name", "project", "harness", "method"],
+  "properties": {
+    "schemaVersion": { "const": "factory/v1alpha1" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[a-z][a-z0-9-]*(?![\\s\\S])" },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vision", "instructions"],
+      "properties": {
+        "vision": { "$ref": "#/$defs/markdown" },
+        "instructions": { "$ref": "#/$defs/markdown" }
+      }
+    },
+    "harness": { "const": "codex" },
+    "method": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["skills"],
+      "properties": {
+        "skills": { "type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": { "$ref": "#/$defs/localPath" } }
+      }
+    }
+  },
+  "$defs": {
+    "localPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^(?!factory\\.yaml(?:/|$))(?!.*(?:^|/)(?:\\.|\\.\\.|\\.git|\\.codex|\\.factory|\\.factory-kit|native\\.json|auth\\.json)(?:/|$))[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*(?![\\s\\S])",
+      "$comment": "Relative to explicit --repo. Symlinks and overlapping skill directories are unsupported. factory.yaml is reserved in the staged project root. References must exist; JSON Schema alone cannot prove filesystem safety."
+    },
+    "markdown": {
+      "allOf": [{ "$ref": "#/$defs/localPath" }, { "pattern": "\\.[mM][dD]$" }],
+      "$comment": "Nonempty valid UTF-8 file. Skill directories require SKILL.md; all selected files are nonempty regular files."
+    }
+  },
+  "x-factory-limits": {
+    "definitionBytes": 65536,
+    "yamlDepth": 16,
+    "fileBytes": 1048576,
+    "selectedBytes": 8388608,
+    "selectedFiles": 256,
+    "selectedEntries": 512,
+    "directoryDepth": 16
+  },
+  "$comment": "Offline parser accepts one YAML 1.2 core document; refuses parser errors/warnings, duplicate keys, explicit tags, anchors/aliases and directives. No interpolation/evaluation/includes. Limits include raw definition bytes. Valid desired selection does not qualify native execution."
+}

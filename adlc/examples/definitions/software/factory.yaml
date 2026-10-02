@@ -1,0 +1,11 @@
+schemaVersion: factory/v1alpha1
+name: software-example
+project:
+  vision: adlc/examples/definitions/software/BRIEF.md
+  instructions: adlc/examples/definitions/software/INSTRUCTIONS.md
+harness: codex
+method:
+  skills:
+    - adlc/skills/factory-spec
+    - adlc/skills/factory-implement
+    - adlc/skills/factory-review

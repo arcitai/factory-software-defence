@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -14,6 +14,8 @@ import { acquireProcessLock } from '../factory/native/process-lock.mjs';
 import { manageNativeService, pendingServiceAdoptionToken } from '../factory/native/service.mjs';
 import { issueProvider } from '../factory/issue-provider.mjs';
 import { checkRelease } from '../factory/release-check.mjs';
+import { validateDefinition, DefinitionError } from '../factory/definition.mjs';
+import { exportKit } from '../scripts/export-kit.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const packageIdentity=JSON.parse(readFileSync(join(root,'package.json'),'utf8'));
@@ -41,6 +43,8 @@ Usage:
   factory service adopt --state PATH
   factory updates check --channel latest|next
   factory kit --output NEW_DIRECTORY
+  factory definition validate --file FILE --repo PATH
+  factory kit --definition FILE --repo PATH --output NEW_DIRECTORY
   factory foundation
   factory probe codex
   factory runtime [--state PATH]
@@ -213,11 +217,21 @@ async function command(args) {
     const path=join(root,'.agents','skills','factory-foundation','SKILL.md');
     process.stdout.write(readFileSync(path,'utf8'));return;
   }
+  if(name==='definition') {
+    if(rest[0]!=='validate')throw new Error('Use definition validate --file FILE --repo PATH.');
+    const {flags}=parse(rest.slice(1),{allowed:['--file','--repo']});
+    if(!flags['--file']||!flags['--repo'])throw new Error('Definition validation requires explicit --file and --repo.');
+    print(validateDefinition({file:flags['--file'],repo:flags['--repo']}));return;
+  }
   if(name==='kit') {
-    const {flags}=parse(rest,{allowed:['--output']});
+    const {flags}=parse(rest,{allowed:['--output','--definition','--repo']});
     if(!flags['--output'])throw new Error('Use kit --output NEW_DIRECTORY.');
-    const result=spawnSync(process.execPath,[join(root,'scripts/export-kit.mjs'),flags['--output']],{stdio:'inherit'});
-    if(result.error)throw result.error;if(result.status!==0)process.exitCode=result.status || 1;return;
+    if(Boolean(flags['--definition'])!==Boolean(flags['--repo']))throw new Error('Definition kit requires both --definition FILE and --repo PATH.');
+    const definition=flags['--definition']?validateDefinition({file:flags['--definition'],repo:flags['--repo']}):undefined;
+    const result=await exportKit({output:flags['--output'],definition});
+    if(definition)print(result);
+    else console.log(`Exported ${result.files} files to ${result.destination}. Review .factory-kit/README.md before adoption. No app or service was configured.`);
+    return;
   }
   throw new Error(name==='claude'||name==='pi'||name==='cursor'||name==='grok'
     ? `Harness '${name}' is not available in this release; Codex is the selected native integration.`
@@ -225,4 +239,12 @@ async function command(args) {
 }
 
 try {await command(process.argv.slice(2));}
-catch(error) {console.error(`Factory: ${error.message}`);process.exitCode=1;}
+catch(error) {
+  if(error instanceof DefinitionError)print(error.result);
+  else if(process.argv[2]==='definition'||(process.argv[2]==='kit'&&process.argv.includes('--definition'))) {
+    const option=process.argv[2]==='definition'?'--file':'--definition';
+    const index=process.argv.indexOf(option);
+    print(new DefinitionError(error.code==='EEXIST'?'DESTINATION_EXISTS':'DEFINITION_COMMAND',error.message,index>=0?(process.argv[index+1] || '<command>'):'<command>').result);
+  }
+  console.error(`Factory: ${error.message}`);process.exitCode=1;
+}
