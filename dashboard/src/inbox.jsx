@@ -121,7 +121,7 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
   </dl>;
   return <>
     <section className="inbox-page" aria-label="Project Inbox" hidden={Boolean(issueKey)}>
-      <RunsOverview visibleJobs={visibleJobs} jobs={overviewJobs} workflows={['software','defensive']} counts={jobCounts(facetJobs)} phaseCounts={phaseCounts(facetJobs)} loaded={loaded} statusError={statusError}
+      <RunsOverview visibleJobs={visibleJobs} jobs={overviewJobs} workflows={['software','defensive']} counts={jobCounts(overviewJobs)} phaseCounts={phaseCounts(overviewJobs)} loaded={loaded} statusError={statusError}
         filter={filter} setFilter={setFilter} phaseFilter={phaseFilter} setPhaseFilter={setPhaseFilter} search={search} setSearch={setSearch} workflowFilter={workflowFilter} setWorkflowFilter={setWorkflowFilter}
         labelFilter={labelFilter} setLabelFilter={setLabelFilter} clearFilters={clearFilters} runsView={runsView} setRunsView={value=>{setRunsView(value);window.localStorage.setItem('factory-runs-view',value);}}
         refresh={refreshStatus} openComposer={onNewIssue} sourceControls={sourceControls} sourceNotice={sourceNotice} sourceLoading={loading && !snapshot} sourceUnavailable={Boolean(error) && !snapshot} />

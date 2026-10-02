@@ -11,6 +11,16 @@ work and the next useful action. The owner-selected reference is
 checkbox filters, horizontal Kanban and progressive detail composition.
 Use Factory's own wordmark and assets, not Warp logos or source.
 
+The specific composition reference for [#140](https://github.com/arcitai/factory-software-defence/issues/140)
+is the first desktop list image from #90, `8b2dcd0a227f/list-1440-light.png`.
+That historical Git object is absent. The owner approved the concrete reconstructed
+`localhost:7344` preview using released v0.12.0 presentation components and richer
+rows. Its five presentation files and reference record remain private composition
+aids, separate from the current source and installed runtime. Fixture counts,
+metrics, models, retired pages and queue/controller/action semantics are not
+product requirements. The reference approves composition; the current catalog
+and provider/native evidence own meaning.
+
 ## Composition
 
 - Keep `factory.` with the smaller SOFTWARE & DEFENCE descriptor. Inbox is the
@@ -21,6 +31,15 @@ Use Factory's own wordmark and assets, not Warp logos or source.
 - Default to the compact searchable list with a left status rail on wide screens.
   Board uses readable non-wrapping columns in a horizontally scrollable region,
   with visible scrollbar and keyboard access. It must not stack columns.
+- The left rail uses the catalog's **native** category cards with expanded
+  substate rows and visible category/substate counts. The category **name**
+  toggles its filter; only the independent top-right **count** folds details.
+  Show the count normally and a directional chevron on count hover or keyboard
+  focus; touch shows both with a usable disclosure target. The count has
+  `aria-expanded`/`aria-controls`; the name has `aria-pressed`. No nested buttons
+  or separate Status details row. Folding retains selection. Repository phases
+  remain separately accessible through the Phase facet, row/card badges and
+  phase Kanban; native category selection never sets a repository phase.
 - Keep a stable count line, repository disclosure and compact toolbar. Opening
   filters or loading results must not push the list down. Do not add a misleading
   repository-total badge to the Inbox nav.
@@ -42,6 +61,12 @@ label facets. Values within one facet use OR; facets combine by intersection.
 Whole rows toggle checkboxes. Select all, Reset, individual deselection and
 clearing the selected phase or state work without shifting content or
 unexpectedly closing the filter.
+Category filters select their actual catalog substates, so individual deselection
+after a category or Select all remains effective. Counts describe the loaded work
+scope and retained associations independently of search/facet selections; the
+result line reports the matching subset. Applied filter chips can clear one
+selection without clearing the other facets. No Models facet is shown while the
+normalized native records supply no actual model evidence.
 
 An anchored Repository disclosure offers open/closed/all, refresh and paging.
 Show loaded scope; do not invent a remote total. Search covers loaded issues and
@@ -101,3 +126,43 @@ and long identities without page overflow. Keep the board's own horizontal scrol
 Use semantic controls, visible focus, associated errors and reduced-motion support.
 Inspect both themes, desktop/narrow views, filters, detail, long text and failure
 states. Match the accepted composition without copying a reference's clipping.
+
+## Observable composition qualification
+
+- At 1440px, compare the candidate to the approved reference: roughly203px
+  navigation,56px main margins,212px status rail and48px gap leave a wide issue
+  list. Retain the36px/40px project heading, compact facets to the left of view
+  controls/search, one stable results/source line and fine row dividers. Source
+  identity/closure/freshness, real activity/work type and author/assignee/label
+  metadata have readable rows beneath14px/20px titles, rather than a compressed
+  single metadata line. An unstarted issue has no invented work type or attempt.
+- At320px and390px, navigation and Native status discovery stay labelled, facets
+  stay visible, and long project/issue titles, identities and metadata wrap with
+  no page overflow. The collapsed status control reveals the same cards and
+  count/name interactions. Board overflow belongs to its focusable region;
+  columns remain horizontal, with a visible scrollbar and keyboard scrolling.
+- In light and dark themes, inspect category/name/count focus, expanded and folded
+  selection, provider label colors/count/tooltips, actual avatars and author vs
+  assignee disclosure. Running/implementation is blue, review violet, attention
+  orange, failed red and true completed source closure green. A running native
+  turn on a completed GitHub issue must still show both states.
+- Exercise whole checkbox rows, Select all, individual deselection, Reset and
+  facet intersection. Counts/notices and list position stay stable when menus
+  open. Change list/board with active filters, open detail, use filtered previous/
+  next, and return through close/Escape with filters, focus, vertical position
+  and board horizontal position retained, including the initial no-hash route.
+- Inspect loading, initial status/provider error, empty provider page, no match,
+  stale source/native status and recovery separately, plus New issue templates,
+  create receipts and native detail actions. The existing Node/React/jsdom
+  regressions cover interaction/data separation; they do not measure visual
+  geometry or prove provider/native functionality. Build, full checks, actual
+  desktop/narrow browser and installed CLI/API proof, independent review and
+  authorized protected delivery apply to the same final candidate.
+
+The shared owner remains `adlc/lifecycle.json` → `factory/issue-lifecycle.mjs`,
+with GitHub metadata from the provider and normalized Codex states from the native
+engine. Inbox cards/facets/rows/board derive from these definitions. This
+presentation restoration changes no catalog schema, readiness mapping, provider
+or native protocol, CLI/API, method/kit/Foundation, ingress/setup, architecture
+diagram or installation policy. Those projections and ownership boundaries remain
+compatible; the repository-only contributor review rule is not exported.

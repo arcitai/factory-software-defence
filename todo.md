@@ -15,12 +15,36 @@ retired implementation evidence remain in Git and private installation records.
   closed through merged [PR #133](https://github.com/arcitai/factory-software-defence/pull/133)
   at `mainc2e6ba87`. npm `0.18.5` has installed qualification and an adopted
   runtime; the linked issue owns the delivery record.
-- [ ] [#128](https://github.com/arcitai/factory-software-defence/issues/128):
-  conditional architecture sketch guidance is a source candidate, pending
-  independent review and delivery.
+- [x] [#128](https://github.com/arcitai/factory-software-defence/issues/128):
+  conditional architecture sketch guidance delivered by merged
+  [PR #136](https://github.com/arcitai/factory-software-defence/pull/136) at
+  `main87971b1`.
 - [ ] [#134](https://github.com/arcitai/factory-software-defence/issues/134):
-  definition-validator/staged-kit first slice remains provisional and pending
-  delivery; no validator implementation is claimed.
+  desired-YAML first slice parked at candidate `125d5f3c` /
+  [draft #139](https://github.com/arcitai/factory-software-defence/pull/139).
+  Broader definition-validator/staged-kit work remains deferred; no delivery or
+  validator implementation is claimed. Preserve this slice separately.
+- [ ] [#138](https://github.com/arcitai/factory-software-defence/issues/138):
+  private ingress/Foundation candidate `9eaf7a63` /
+  [draft #141](https://github.com/arcitai/factory-software-defence/pull/141) has
+  source, installed and independent review acceptance. Actual native TLS/proxy/
+  policy/device/browser qualification remains pending. Its unpublished `0.18.6`
+  candidate is separate; production remains installed `0.18.5` and SSH works.
+- [ ] [#140](https://github.com/arcitai/factory-software-defence/issues/140):
+  owner approved the reconstructed historical Inbox composition. Scoped source
+  restoration candidate prepared on a dedicated checkout from `main87971b1`;
+  browser/installed qualification, independent review and delivery remain pending.
+  Preserve the minimal native/GitHub product, current semantics and count-only
+  disclosure. Reconcile #138 deliberately before any version/release/adoption.
+- [ ] [#115](https://github.com/arcitai/factory-software-defence/issues/115):
+  Claude Code is the next concrete native harness integration. Existing `2.1.285`
+  discovery is recorded; the native login choice is pending. Auth, inference and integration
+  are unqualified. Do not import personal configuration.
+- [ ] [#137](https://github.com/arcitai/factory-software-defence/issues/137):
+  host guidance only; no migration is authorized or delivered.
+- [ ] [#135](https://github.com/arcitai/factory-software-defence/issues/135):
+  the current native shell egress choice is qualified separately; it
+  grants no blanket rights.
 
 ## Native product
 
@@ -52,8 +76,7 @@ Preserve existing history; never replay obsolete work automatically.
 
 ## Later, only for a proven gap
 
-- Native harness integrations: [Claude Code #115](https://github.com/arcitai/factory-software-defence/issues/115),
-  [Cursor #116](https://github.com/arcitai/factory-software-defence/issues/116),
+- Later native harness integrations: [Cursor #116](https://github.com/arcitai/factory-software-defence/issues/116),
   [Grok #117](https://github.com/arcitai/factory-software-defence/issues/117),
   deferred pending a proven need and separate qualification.
 - [#69 Local Build · Cloud Review](https://github.com/arcitai/factory-software-defence/issues/69):

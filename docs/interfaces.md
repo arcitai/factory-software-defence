@@ -72,6 +72,15 @@ alongside the native execution state and loaded-page scope. List, Kanban, phase
 filters and native-state filters use the same projection. Changing views,
 filters, page or source state does not start or replay native work.
 
+The list's native category cards derive groups/substates from that catalog. A
+category name toggles its actual substates; its separate count only folds detail
+rows. Native-state checkboxes select substates, avoiding overlapping group values
+that could defeat individual deselection. Repository phase remains a separate
+facet and board grouping. Counts describe the loaded scope and retained native
+associations; result counts reflect the selected filters. Models require actual
+normalized native evidence and are currently absent. See the approved composition
+and browser qualification checks in [DESIGN.md](../DESIGN.md).
+
 List and Kanban show the same records and filters. A closed GitHub issue is a
 repository decision, not proof of successful execution. Results show native
 thread/turn identities and bounded final text; Codex retains full history.

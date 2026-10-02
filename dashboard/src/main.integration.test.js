@@ -64,7 +64,9 @@ test('Inbox refreshes from created receipts without losing filters, board choice
     url: 'http://127.0.0.1:7332/', pretendToBeVisual: true,
   });
   const { window } = dom;
-  window.scrollTo = () => {};
+  let scrollY = 0;
+  Object.defineProperty(window, 'scrollY', { get: () => scrollY });
+  window.scrollTo = options => { scrollY = options.top; };
   window.HTMLDialogElement.prototype.showModal = function showModal() { this.setAttribute('open', ''); };
 
   const issues = [
@@ -246,13 +248,8 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   assert.equal(document.querySelector('button[aria-label="Board"]')?.getAttribute('aria-pressed'), 'true');
   assert.ok(document.querySelector('.run-column-heading [data-lucide="inbox"]') || document.querySelector('#board-triage'), 'phase catalog drives board columns');
   assert.ok(document.querySelector('.run-card .phase-filter-badge[aria-label="Filter by repository phase: Needs review"]'));
-  const reviewPhaseCard = document.querySelector('.phase-filter-option[aria-label="Filter by repository phase: Needs review"]');
-  assert.ok(reviewPhaseCard?.classList.contains('phase-filter-card') && reviewPhaseCard.classList.contains('tone-violet') && reviewPhaseCard.querySelector('svg'), 'the rail restores an individual catalog-colored phase card and category glyph');
-  await act(async () => { reviewPhaseCard.focus(); });
-  const railTooltip = reviewPhaseCard.closest('.phase-rail-control').querySelector('[role="tooltip"]');
-  assert.equal(railTooltip.hidden, false, 'keyboard focus opens the filter card description');
-  assert.match(railTooltip.textContent, /independent review/);
-  await act(async () => { reviewPhaseCard.blur(); });
+  const reviewCategory = document.querySelector('.filter-card-main[aria-label="Filter by native category: Needs review"]');
+  assert.ok(reviewCategory?.closest('.filter-card.tone-violet') && reviewCategory.querySelector('svg'), 'the category card uses the native catalog, independently of the phase board');
   assert.ok(document.querySelector('.run-card .native-filter-badge[aria-label="Filter by native state: Native turn completed · needs review"]'));
   assert.ok(document.querySelector('.run-card .native-filter-badge svg'), 'native outcome badges reuse their catalogued category glyph');
   const unstartedCard = [...document.querySelectorAll('.run-card')].find(card => card.querySelector('.run-card-title')?.textContent.includes('Draft target issue'));
@@ -361,12 +358,14 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   async function toggleNativeReviewFilter() {
     const trigger = document.querySelector('button[aria-label="Filter by native state"]');
     if (trigger.getAttribute('aria-expanded') !== 'true') await click(trigger);
-    const option = [...trigger.closest('.facet-container').querySelectorAll('.facet-option[role="checkbox"]')].find(button => button.textContent.includes('Needs review'));
+    const option = [...trigger.closest('.facet-container').querySelectorAll('.facet-option[role="checkbox"]')].find(button => button.textContent.toLowerCase().includes('needs review'));
     await click(option);
   }
   const nativeReviewSelected = () => document.querySelector('button[aria-label="Filter by native state"]')?.classList.contains('is-selected');
 
   const targetLink = [...document.querySelectorAll('.run-card-link')].find(link => link.textContent.includes('Draft target issue'));
+  scrollY = 640;
+  document.querySelector('.kanban-scroll').scrollLeft = 360;
   await click(targetLink);
   await waitFor(() => document.querySelector('.issue-context textarea[maxlength="16000"]'), 'issue detail should load its start draft');
   const contributorDetail = document.querySelector('.task-metadata .issue-contributors:not(.is-compact)');
@@ -441,6 +440,9 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   const closeDetail = document.querySelector('a[aria-label="Close issue detail"]');
   await click(closeDetail);
   await waitFor(() => document.querySelector('.new-issue-action'), 'Inbox should return from issue detail');
+  assert.equal(scrollY, 640, 'detail return restores the Inbox position even when the initial route had no hash');
+  assert.equal(document.querySelector('.kanban-scroll').scrollLeft, 360, 'detail return retains horizontal board position');
+  assert.equal(document.activeElement?.getAttribute('href'), targetLink.getAttribute('href'), 'detail return restores focus to the issue');
 
   const search = document.querySelector('input[aria-label="Search loaded work"]');
   await act(async () => { setValue(search, 'preserved search phrase', window); });
