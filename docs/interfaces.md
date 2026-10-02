@@ -80,6 +80,8 @@ facet and board grouping. Counts describe the loaded scope and retained native
 associations; result counts reflect the selected filters. Models require actual
 normalized native evidence and are currently absent. See the approved composition
 and browser qualification checks in [DESIGN.md](../DESIGN.md).
+Retained source data stays stale during a retry after a failed provider read;
+only a successful response clears that failure.
 
 List and Kanban show the same records and filters. A closed GitHub issue is a
 repository decision, not proof of successful execution. Results show native

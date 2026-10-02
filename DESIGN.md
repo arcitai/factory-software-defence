@@ -152,7 +152,8 @@ states. Match the accepted composition without copying a reference's clipping.
   next, and return through close/Escape with filters, focus, vertical position
   and board horizontal position retained, including the initial no-hash route.
 - Inspect loading, initial status/provider error, empty provider page, no match,
-  stale source/native status and recovery separately, plus New issue templates,
+  stale source/native status and recovery separately; a failed source snapshot
+  stays stale while a retry is pending, until a successful read. Inspect New issue templates,
   create receipts and native detail actions. The existing Node/React/jsdom
   regressions cover interaction/data separation; they do not measure visual
   geometry or prove provider/native functionality. Build, full checks, actual

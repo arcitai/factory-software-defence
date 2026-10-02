@@ -242,7 +242,7 @@ body { font-size: 14px; }
 .tasks-tools { gap: 12px; }
 .view-toggle { border: 0; padding: 0; gap: 0; }
 .view-toggle button { padding: 0 5px; width: 28px; }
-.active-filters { position: relative; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; min-height: 44px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--divider); color: var(--muted-foreground); font-size: 12px; }
+.active-filters { position: relative; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; min-width: 0; min-height: 44px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--divider); color: var(--muted-foreground); font-size: 12px; }
 .active-filters span { min-width: 0; overflow-wrap: anywhere; }
 .active-filters button { display: flex; align-items: center; gap: 4px; flex: none; color: var(--foreground); }
 .results-summary { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }

@@ -32,8 +32,9 @@ retired implementation evidence remain in Git and private installation records.
   candidate is separate; production remains installed `0.18.5` and SSH works.
 - [ ] [#140](https://github.com/arcitai/factory-software-defence/issues/140):
   owner approved the reconstructed historical Inbox composition. Scoped source
-  restoration candidate prepared on a dedicated checkout from `main87971b1`;
-  browser/installed qualification, independent review and delivery remain pending.
+  restoration candidate prepared on a dedicated branch from `main87971b1`.
+  Use its PR for bound browser/installed qualification and independent review
+  evidence; delivery remains pending.
   Preserve the minimal native/GitHub product, current semantics and count-only
   disclosure. Reconcile #138 deliberately before any version/release/adoption.
 - [ ] [#115](https://github.com/arcitai/factory-software-defence/issues/115):

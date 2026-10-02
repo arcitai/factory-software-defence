@@ -106,6 +106,8 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   let issueListReads = 0;
   let statusReads = 0;
   let failNextIssueListRead = false;
+  let holdNextIssueListRead = false;
+  let releaseIssueListRead;
   let failNextIssuePreviewRead = false;
   let failNextIssueStart = false;
   let issueStartRequests = 0;
@@ -141,7 +143,12 @@ test('Inbox refreshes from created receipts without losing filters, board choice
       const page = Number(url.searchParams.get('page') || 1);
       const selected = issues.filter(issue => stateFilter === 'all' || issue.state === stateFilter).sort((a, b) => b.number - a.number);
       const pageIssues = selected.slice((page - 1) * 6, page * 6);
-      return jsonResponse({ issues: pageIssues, page, state: stateFilter, loaded_count: pageIssues.length, total: null, next_page: selected.length > page * 6 ? page + 1 : null });
+      const response = jsonResponse({ issues: pageIssues, page, state: stateFilter, loaded_count: pageIssues.length, total: null, next_page: selected.length > page * 6 ? page + 1 : null });
+      if (holdNextIssueListRead) {
+        holdNextIssueListRead = false;
+        return new Promise(resolve => { releaseIssueListRead = () => resolve(response); });
+      }
+      return response;
     }
     if (url.pathname === '/api/v1/issues/preview') {
       const input = JSON.parse(options.body);
@@ -527,7 +534,11 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   assert.match(document.querySelector('[role="alert"]')?.textContent || '', /Repository data stale\. Provider read timed out\./, 'a failed post-receipt issue read keeps the previous snapshot marked stale');
   assert.equal(document.body.textContent.includes('No issues on this page.'), false, 'a failed read is not presented as an empty closed page');
   await click(document.querySelector('button[aria-label^="Repository scope:"]'));
+  holdNextIssueListRead = true;
   await click(buttonMatching(document, text => text === 'Refresh issues'));
+  await waitFor(() => releaseIssueListRead && document.querySelector('.repository-loading'), 'retry should remain visibly pending');
+  assert.match(document.querySelector('[role="alert"]')?.textContent || '', /Repository data stale\. Provider read timed out\./, 'retry keeps the failed snapshot stale until a successful response');
+  await act(async () => { releaseIssueListRead(); });
   await waitFor(() => ![...document.querySelectorAll('[role="alert"]')].some(node => node.textContent.includes('Repository data stale.')), 'manual issue refresh should clear the stale notice after a successful read');
   const priorOpenReads = requests.filter(request => request.pathname === '/api/v1/issues' && request.method === 'GET' && request.search.includes('state=open')).length;
   await act(async () => { setValue(document.querySelector('select[aria-label="Repository issue scope"]'), 'open', window); });

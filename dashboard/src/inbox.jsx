@@ -40,9 +40,9 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
     const result=await response.json();if(!response.ok)throw Error(result.error || 'Repository request failed.');return result;
   }
   async function load(page=1) {
-    pending.current?.abort();const controller=new AbortController();pending.current=controller;setLoading(true);setError('');
+    pending.current?.abort();const controller=new AbortController();pending.current=controller;setLoading(true);
     try {const result=await api(`/api/v1/issues?page=${page}&state=${state}`,undefined,controller.signal);
-      if(!controller.signal.aborted && alive.current)setSnapshot({...result,fetched_at:new Date().toLocaleTimeString()});
+      if(!controller.signal.aborted && alive.current){setSnapshot({...result,fetched_at:new Date().toLocaleTimeString()});setError('');}
     } catch(e) {if(!controller.signal.aborted && alive.current)setError(e.message);}
     finally {if(!controller.signal.aborted && alive.current)setLoading(false);}
   }
