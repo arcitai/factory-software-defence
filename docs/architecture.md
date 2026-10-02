@@ -10,7 +10,7 @@ The native harness remains the execution engine.
 | Project | Approved vision, source, design/code standards, checks and delivery rules |
 | Foundation and ADLC | Deliberate adoption, setup guidance and reusable working instructions |
 | Dashboard and CLI | Select an issue, request a native action and display the same GitHub phase and separate native result |
-| Small bridge | Authenticate local requests, associate issues with native sessions, refuse ambiguous or duplicate operations |
+| Small bridge | Enforce each private HTTP route/session boundary, associate issues with native sessions, refuse ambiguous or duplicate operations |
 | Codex | Agent loop, context, tools, permissions, sessions and execution history |
 | GitHub | Repository issues, templates, PRs, checks and authorized publication |
 | OS service manager | Start the pinned bridge after login/boot, supervise its process and optionally schedule metadata-only release checks |
@@ -52,9 +52,29 @@ full host isolation. Verify effective native permissions and available tools.
 The first Codex profile excludes personal apps/MCP/plugins and uses a restricted
 workspace sandbox. Browser or other capabilities require explicit qualification.
 
-The bridge binds to loopback; remote access uses an authenticated SSH tunnel.
+The bridge binds TCP to loopback; authenticated SSH is the default remote route.
+An explicit private installation sidecar can add a mode-0600 Unix socket served
+by the same handler/engine/session. Only that listener accepts the exact configured
+HTTPS Host/Origin and allowlisted proxy-authenticated identity. The OS/native
+proxy owns TLS and approved identity/device scope; Factory never trusts forwarded
+Host/Origin or implements a proxy/login system. State remains private, config
+changes require stopped/reconciled ownership, and service adoption retains the
+selected config without claiming transport qualification. See
+[private operator access](private-ingress.md).
 It is a private single-operator surface, not a hosted multi-tenant platform.
 Application deployment remains in the application's CI/CD.
+
+```mermaid
+flowchart LR
+    Operator[Approved operator device] --> SSH[Authenticated SSH default]
+    SSH --> TCP[127.0.0.1 HTTP listener]
+    Operator --> Proxy[Optional native authenticated HTTPS proxy]
+    Policy[Approved origin and identity/device policy] --> Proxy
+    Proxy --> Unix[Private state-local Unix listener]
+    TCP --> Handler[One HTTP handler and Factory session]
+    Unix --> Handler
+    Handler --> Engine[One native owner and retained history]
+```
 
 ## Work lifecycle
 

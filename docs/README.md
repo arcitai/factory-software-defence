@@ -3,6 +3,7 @@
 | Need | Read |
 | --- | --- |
 | Prepare a project and start its Inbox | [Setup](setup.md) |
+| Choose and qualify optional private HTTPS operator access | [Private ingress](private-ingress.md) |
 | Understand ownership, deployment and work flow | [Architecture](architecture.md) |
 | Use CLI/API and understand state | [Interfaces](interfaces.md) |
 | Move from the removed runtime | [Migration](migration.md) |

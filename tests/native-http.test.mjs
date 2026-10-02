@@ -22,7 +22,10 @@ test('native HTTP requires session for issue reads and writes and exposes no leg
   assert.match(status.headers.get('content-security-policy'),/https:\/\/avatars\.githubusercontent\.com/);
   const data=await status.json();
   const bridge=await (await fetch(`${root}/api/v1/bridge/status`)).json();
-  assert.deepEqual(Object.keys(bridge).sort(),['csrf_token','native','native_instance','repo','version']);
+  assert.deepEqual(Object.keys(bridge).sort(),['csrf_token','native','native_instance','operator_ingress','repo','version']);
+  assert.equal(bridge.operator_ingress.configured,false);
+  assert.equal(bridge.operator_ingress.listening,false);
+  assert.match(bridge.operator_ingress.transport_qualification,/not established/);
   assert.equal(data.native_instance,'fixture-instance');
   assert.equal(data.harness,'fixture');
   assert.equal(data.native_capabilities.local_request,false);

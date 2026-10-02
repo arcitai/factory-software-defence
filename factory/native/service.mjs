@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { readNative } from './setup.mjs';
 import { connectBridge } from './bridge-client.mjs';
 import { acquireProcessLock, activeProcessLock, inspectProcessLock } from './process-lock.mjs';
+import { assertLiveIngress, assertPrivateIngressState, ingressDigest, ingressFile, ingressProjection, readIngress, readIngressInput } from './ingress.mjs';
 
 const packageRoot=fileURLToPath(new URL('../../',import.meta.url));
 const canonicalPackage='factory-software-defence';
@@ -18,6 +19,7 @@ const serviceHash=value=>createHash('sha256').update(value).digest('hex').slice(
 const serviceID=(state,repo)=>`factory-native-${serviceHash(`${state}\n${repo}`)}`;
 const quote=value=>`"${String(value).replaceAll('\\','\\\\').replaceAll('"','\\"').replaceAll('$',()=> '$$').replaceAll('%','%%').replaceAll('\n','\\n')}"`;
 const validPort=port=>Number.isSafeInteger(port)&&port>=1024&&port<=65535;
+const supportsPrivateIngress=runtime=>JSON.parse(readFileSync(join(runtime,'package.json'),'utf8')).factoryService?.privateIngress===1;
 const unitText=({state,repo,node,runtime,port,verification})=>`[Unit]\nDescription=Factory native Codex Inbox\nStartLimitIntervalSec=0\n\n[Service]\nType=exec\nExecStartPre=${verification.map(quote).join(' ')}\nExecStart=${[node,join(runtime,'bin/software-defence-factory.mjs'),'serve','--state',state,'--port',String(port)].map(quote).join(' ')}\nRestart=on-failure\nRestartSec=10\nTimeoutStopSec=45\nKillMode=control-group\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`;
 function callSystemctl(args) {
   return execFileSync('systemctl',['--user',...args],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000}).trim();
@@ -146,6 +148,9 @@ async function prepareIdle(state,repo,{connect=connectBridge,maintenanceToken}={
 export function assertStoppedReconciled(state) {
   if(existsSync(join(state,'serve.lock.reconcile')))
     throw new Error('Stopped service has unresolved process-lock reconciliation; preserve it before changing service state.');
+  assertStoppedLock(state);
+}
+function assertStoppedLock(state) {
   const lock=inspectProcessLock(join(state,'serve.lock'));
   if(lock==='active'||lock==='unknown'||(lock==='absent'&&existsSync(join(state,'bridge.json'))))
     throw new Error('Stopped service still has an active or unknown process/bridge identity; reconcile it before changing service state.');
@@ -164,17 +169,21 @@ async function snapshot(state,record,{systemctl=callSystemctl,connect=connectBri
   try {controlGroup=systemctl(['show',record.unit,'--property=ControlGroup','--value']);}catch {}
   try {reloadNeeded=systemctl(['show',record.unit,'--property=NeedDaemonReload','--value']);}catch {}
   try {dropIns=systemctl(['show',record.unit,'--property=DropInPaths','--value']);}catch {}
-  let healthy=false,native_instance=null;
+  let healthy=false,native_instance=null,liveIngress=null;
   try {
     const bridge=await connect(state,record.repo),owner=processOwner(join(state,'serve.lock'));
     const expected=[record.node,join(record.runtime,'bin/software-defence-factory.mjs'),'serve','--state',state,'--port',String(record.port)];
     const executing=pid>0?processCommand(pid):[];
     native_instance=bridge.instance;healthy=active==='active'&&pid>0&&owner?.pid===pid&&fragment===unitFile&&reloadNeeded==='no'&&dropIns===''
       &&JSON.stringify(executing)===JSON.stringify(expected);
+    liveIngress=bridge.status?.operator_ingress??null;
   }catch {}
+  let operator_ingress;
+  try {operator_ingress=ingressProjection(readIngress(state),liveIngress);}
+  catch {operator_ingress={configured:null,valid:false,listening:liveIngress?.listening??null,matches_live:false};}
   return {installed:true,id:record.id,unit:record.unit,state,runtime:record.runtime,version:record.release_version,
     port:record.port,loopback:`http://127.0.0.1:${record.port}`,active:active==='active',active_state:active,pid,
-    fragment,tasks,control_group:controlGroup,reload_needed:reloadNeeded,drop_ins:dropIns,enabled:enabled==='enabled',healthy,native_instance};
+    fragment,tasks,control_group:controlGroup,reload_needed:reloadNeeded,drop_ins:dropIns,enabled:enabled==='enabled',healthy,native_instance,operator_ingress};
 }
 function receiptDigest(state) {
   const digest=createHash('sha256');
@@ -215,6 +224,9 @@ function assertOwnedAdoption(state,config,record) {
     throw new Error('Owned unit or prior pinned release identity changed; adoption refused.');
 }
 function assertServiceRecord(state,config,prior) {
+  // Every boundary in adoption and rollback retains the selected private config.
+  if(Object.hasOwn(prior,'ingress_sha256')&&ingressDigest(readIngress(state))!==prior.ingress_sha256)
+    throw new Error('Private ingress configuration changed during adoption; preserve and reconcile it.');
   const current=ownedRecord(state);
   if(!current)throw new Error('Prior owned unit disappeared during adoption.');
   assertOwnedAdoption(state,config,current);
@@ -262,6 +274,7 @@ async function waitForOwner(state,record,operation,ops,previousInstance) {
         if(prepared.instance!==bridge.instance||prepared.token!==operation.token||prepared.prepared!==true)
           return {ready:false,unsafe:true,reason:'New owner did not confirm maintenance ownership.'};
         const status=await bridge.request('/api/v1/status');
+        assertLiveIngress(readIngress(state),status.operator_ingress);
         if(status.native_instance!==bridge.instance||status.repo!==record.repo||status.native!==true)
           return {ready:false,unsafe:true,reason:'Native status does not belong to the selected service.'};
         if(!Array.isArray(status.jobs)||status.jobs.some(job=>job.state==='running'||job.state==='unknown'))
@@ -311,6 +324,7 @@ async function finishAdoption(state,config,record,operation,owner,phase,extra,op
     if(!current.healthy||!current.enabled||current.pid!==owner.current.pid||current.native_instance!==owner.bridge.instance)
       throw new Error('Service owner changed during admission reopening.');
     const bridge=await ops.connect(state,config.repo),status=await bridge.request('/api/v1/status');
+    assertLiveIngress(readIngress(state),status.operator_ingress);
     if(bridge.instance!==owner.bridge.instance||status.native_instance!==bridge.instance||status.repo!==config.repo
       ||status.native_readiness?.ready!==true||status.infrastructure?.native?.connected!==true||status.maintenance_prepared!==false)
       throw new Error('Current bridge admission or readiness is unconfirmed.');
@@ -408,26 +422,34 @@ export async function adoptInstalledService(statePath,{read=readNative,sourceRoo
     const oldRecord=ownedRecord(state);
     if(!oldRecord)throw new Error('No owned Factory user service is installed.');
     assertOwnedAdoption(state,config,oldRecord);
+    const ingress=readIngress(state);
+    oldRecord.ingress_sha256=ingressDigest(ingress);
     const source=verifyPackageRoot(sourceRoot),decision=versionDecision(oldRecord.release_version,source.version);
     const runtime=pinInstalledRuntime(state,source);
     const manifest=serviceManifest({state,config,root:runtime,port:oldRecord.port,runtime,folder:dirname(oldRecord.file)});
+    if(ingress&&(!supportsPrivateIngress(oldRecord.runtime)||!supportsPrivateIngress(runtime)))
+      throw new Error('Selected private ingress requires compatible prior and target releases; qualify it at a stopped installation first.');
     const before=await snapshot(state,oldRecord,ops);
     if(!before.active||!before.healthy||!before.enabled||before.pid<=0||!before.native_instance)
       throw new Error('Prior service is not an active, enabled, verified owning bridge; adoption refused.');
-    if(decision==='same')return {status:'no_op',old_version:oldRecord.release_version,new_version:source.version,
-      health:'bridge_connected',rollback:'not_needed',native_instance:before.native_instance};
+    if(decision==='same') {
+      if(ingress)assertLiveIngress(ingress,(await (await connect(state,config.repo)).request('/api/v1/status')).operator_ingress);
+      return {status:'no_op',old_version:oldRecord.release_version,new_version:source.version,
+        health:'bridge_connected',rollback:'not_needed',native_instance:before.native_instance};
+    }
     if(JSON.parse(readFileSync(join(oldRecord.runtime,'package.json'),'utf8')).factoryService?.adoptionGate!==1)
       throw new Error('Prior runtime has no startup admission gate; an explicit migration is required before adoption.');
     const bridge=await connect(state,config.repo);
     if(bridge.instance!==before.native_instance)throw new Error('Prior service bridge instance changed before maintenance.');
     assertSettledIssueReceipts(state);
     const oldStatus=await bridge.request('/api/v1/status');
+    assertLiveIngress(ingress,oldStatus.operator_ingress);
     if(oldStatus.native_instance!==bridge.instance||oldStatus.native_readiness?.ready!==true)
       throw new Error('Prior native readiness is not confirmed; adoption refused.');
     const token=randomUUID();
     const newRecord={version:1,id:oldRecord.id,unit:oldRecord.unit,port:oldRecord.port,state,repo:config.repo,node:config.node,
       runtime,runtime_sha256:manifest.runtime_sha256,release_version:source.version,
-      unit_file:oldRecord.file,definition_sha256:manifest.definition_sha256};
+      unit_file:oldRecord.file,definition_sha256:manifest.definition_sha256,ingress_sha256:oldRecord.ingress_sha256};
     let operation={version:1,token,state,phase:'preparing',old_version:oldRecord.release_version,new_version:source.version,
       old_instance:before.native_instance,old_pid:before.pid,old_record:recordData(oldRecord),old_definition:readFileSync(oldRecord.file,'utf8'),
       new_record:newRecord,new_definition:manifest.definition,receipts_sha256:null,created_at:new Date().toISOString()};
@@ -506,6 +528,41 @@ export async function manageNativeService(action,statePath,port=7332) {
   const release=acquireProcessLock(join(state,'service-operation.lock'),'Factory service operation');
   try {return await serviceAction(action,statePath,port);}finally {release();}
 }
+export async function manageNativeIngress(action,statePath,{file,read=readNative,systemctl=callSystemctl,connect=connectBridge}={}) {
+  if(!['setup','status','remove'].includes(action))throw new Error('Use ingress setup|status|remove.');
+  const {state,config}=read(statePath);
+  if(action==='status') {
+    let selected;
+    try {selected=readIngress(state);}catch {return {configured:null,valid:false,listening:null,matches_live:false};}
+    const bridge=await connect(state,config.repo).catch(()=>null);
+    return ingressProjection(selected,bridge?.status?.operator_ingress??null);
+  }
+  const selected=action==='setup'?(file?readIngressInput(file):null):null;
+  if(action==='setup'&&!selected)throw new Error('Ingress setup needs --file PRIVATE_JSON_FILE.');
+  assertPrivateIngressState(state);
+  const release=acquireProcessLock(join(state,'service-operation.lock'),'Factory ingress operation');
+  const gate=join(state,'serve.lock.reconcile');
+  let gated=false;
+  try {
+    if(readAdoption(state)||existsSync(join(state,'maintenance.json')))
+      throw new Error('Pending service maintenance/adoption needs reconciliation before an ingress change.');
+    const prior=readIngress(state),record=ownedRecord(state);
+    assertStoppedReconciled(state);
+    if(record) {
+      assertOwnedAdoption(state,config,record);
+      await stoppedOwner(state,record,{systemctl,connect});
+      if(selected&&!supportsPrivateIngress(record.runtime))
+        throw new Error('Pinned service does not support private ingress; adopt a qualified release before opting in.');
+    }
+    // Reuse the startup reconciliation gate to prevent a manual/OS start racing
+    // a stopped config edit. Never replace an existing unresolved gate.
+    mkdirSync(gate,{mode:0o700});gated=true;assertStoppedLock(state);
+    if(prior)atomicJSON(join(state,`ingress.previous-${randomUUID()}.json`),prior);
+    if(selected)atomicJSON(ingressFile(state),selected);
+    else if(prior)rmSync(ingressFile(state));
+    return {...ingressProjection(selected),restart_required:true,previous_config_preserved:Boolean(prior)};
+  } finally {if(gated)rmSync(gate,{recursive:true});release();}
+}
 async function serviceAction(action,statePath,port) {
   if(process.platform!=='linux')throw new Error('Native services currently support Linux user systemd only.');
   if(!['install','status','start','stop','restart','remove','cancel-maintenance'].includes(action))throw new Error('Use service install|status|start|stop|restart|remove|cancel-maintenance.');
@@ -522,9 +579,12 @@ async function serviceAction(action,statePath,port) {
       return {installed:null,state,healthy:false,ownership:'unresolved',adoption_pending,recovery};
     }
     return existing ? {...await snapshot(state,existing),adoption_pending}
-      : {installed:false,state,repository:config.repo,adoption_pending};
+      : {installed:false,state,repository:config.repo,adoption_pending,operator_ingress:await manageNativeIngress('status',statePath)};
   }
   if(readAdoption(state))throw new Error(`Service adoption is unresolved. ${recovery}`);
+  // Removal/stop can still reconcile an owner after a malformed sidecar. Starts,
+  // install and restart must refuse it before any systemd mutation.
+  const selectedIngress=['install','start','restart'].includes(action)?readIngress(state):null;
   if(action==='install') {
     if(existsSync(recordPath))throw new Error('Native service is already installed; use service status first.');
     assertStoppedReconciled(state);
@@ -551,6 +611,8 @@ async function serviceAction(action,statePath,port) {
     if(action==='remove')return {installed:false,state,preserved:true};
     throw new Error('Native service is not installed.');
   }
+  if(selectedIngress&&!supportsPrivateIngress(record.runtime))
+    throw new Error('Pinned service does not support private ingress; preserve the config and qualify a compatible release before startup.');
   if(action==='cancel-maintenance') {
     const path=join(state,'maintenance.json');
     if(!existsSync(path))throw new Error('No recorded service maintenance to reconcile.');

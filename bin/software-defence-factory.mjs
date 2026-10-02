@@ -11,7 +11,9 @@ import { AppServer, nativeReadiness } from '../factory/native/app-server.mjs';
 import { NativeEngine } from '../factory/native/engine.mjs';
 import { connectBridge, registerBridge } from '../factory/native/bridge-client.mjs';
 import { acquireProcessLock } from '../factory/native/process-lock.mjs';
-import { manageNativeService, pendingServiceAdoptionToken } from '../factory/native/service.mjs';
+import { manageNativeIngress, manageNativeService, pendingServiceAdoptionToken } from '../factory/native/service.mjs';
+import { readIngress } from '../factory/native/ingress.mjs';
+import { startNativeListeners } from '../factory/native/listeners.mjs';
 import { issueProvider } from '../factory/issue-provider.mjs';
 import { checkRelease } from '../factory/release-check.mjs';
 
@@ -39,6 +41,8 @@ Usage:
   factory interrupt ID --turn TURN_ID [--state PATH]
   factory service install|status|start|stop|restart|remove|cancel-maintenance [--state PATH] [--port PORT]
   factory service adopt --state PATH
+  factory ingress setup --file PRIVATE_JSON_FILE --state PATH
+  factory ingress status|remove --state PATH
   factory updates check --channel latest|next
   factory kit --output NEW_DIRECTORY
   factory foundation
@@ -72,28 +76,29 @@ async function serve(state,port) {
   if(!Number.isSafeInteger(port)||port<1024||port>65535)throw new Error('Choose a loopback port from 1024 to 65535.');
   const {state:realState,config,env}=readNative(state),release=acquireProcessLock(join(realState,'serve.lock'),'Factory dashboard');
   const client=new AppServer({config,env});
-  let unregister=()=>{},server;
+  let unregister=()=>{},shutdown=async()=>{};
   try {
+    const ingress=readIngress(realState);
     await client.connect();
     const {createNativeServer}=await import('../factory/native/server.mjs');
     const provider=issueProvider(config.repo),engine=new NativeEngine(realState,config,client,provider);
     Object.defineProperties(engine,{name:{value:'codex'},available:{get:()=>client.available}});
     const instance=randomUUID();
-    ({server}=createNativeServer(realState,config,{harness:engine,provider,instance,maintenanceToken:pendingServiceAdoptionToken(realState)}));
-    await new Promise((done,reject)=>server.once('error',reject).listen(port,'127.0.0.1',done));
+    const listeners=createNativeServer(realState,config,{harness:engine,provider,instance,ingress,maintenanceToken:pendingServiceAdoptionToken(realState)});
+    const {server}=listeners;
+    shutdown=await startNativeListeners(listeners,realState,port);
     unregister=registerBridge(realState,config.repo,server.address().port,instance);
     console.log(`Factory Inbox: http://127.0.0.1:${port}`);
-    await new Promise(resolveClose=>{
+    await new Promise((resolveClose,rejectClose)=>{
       let closing=false;
       const close=()=>{
         if(closing)return;closing=true;
-        server.close(()=>resolveClose());server.closeIdleConnections?.();
+        shutdown().then(resolveClose,rejectClose);
       };
       process.once('SIGINT',close);process.once('SIGTERM',close);
     });
   } finally {
-    if(server?.listening)await new Promise(resolve=>server.close(resolve));
-    unregister();client.close();release();
+    try {await shutdown();}finally {unregister();client.close();release();}
   }
 }
 async function command(args) {
@@ -133,6 +138,12 @@ async function command(args) {
     const result=await manageNativeService(action,stateFrom(flags),Number(flags['--port'] || 7332));print(result);
     if(action==='adopt'&&!['adopted','no_op'].includes(result.status))process.exitCode=1;
     return;
+  }
+  if(name==='ingress') {
+    const [action,...options]=rest;
+    const {flags}=parse(options,{allowed:action==='setup'?['--state','--file']:['--state']});
+    if(!flags['--state'])throw new Error('Private ingress requires an explicit --state PATH.');
+    print(await manageNativeIngress(action,stateFrom(flags),{file:flags['--file']}));return;
   }
   if(name==='issues') {
     const [action,...options]=rest;

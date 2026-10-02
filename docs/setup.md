@@ -11,8 +11,12 @@ Codex and the GitHub CLI authenticated for the selected repository. A stable
 external Codex installation is required. `factory probe codex` discovers the
 binary/version; it does not prove login, isolation or tool readiness.
 
-Prefer a dedicated OS user on the execution host. Under an existing user, record
-that shared OS access remains a limitation. Keep application services separate.
+Discover the host/workload boundary and intended operator route before setup.
+On a shared personal host, prefer a supported VM with its own guest identity and
+native sandbox. A suitable dedicated VPS can use an unprivileged OS user plus
+sandbox; its shared kernel remains a risk. Separate configuration under a
+personal user is not OS isolation. Keep application services separate. No host
+migration or worker permission change follows from choosing operator ingress.
 
 ## Configure Codex deliberately
 
@@ -83,6 +87,11 @@ ssh -N -T -L 127.0.0.1:7332:127.0.0.1:7332 HOST_ALIAS
 
 Use the same local and remote port. Keep the HTTP listener private. Closing the
 browser or SSH tunnel does not stop native work; stopping the owning bridge may.
+Loopback/SSH remains the default. For an explicitly chosen private HTTPS route,
+stage exact origin, authenticated proxy identity and approved operator/device
+scope together using [private operator access](private-ingress.md). Its optional
+Unix listener shares this bridge; no setup step enables a public endpoint. Retain
+SSH until real-route checks qualify the replacement.
 
 For automatic startup, stop an idle manually served bridge and install a pinned
 Linux user service from the installed npm package:
@@ -102,6 +111,10 @@ runtime bytes block startup. This detects drift, not a hostile shared OS user.
 Login normally starts a user service; boot without login needs the host's user
 lingering policy. Record disk-unlock and network prerequisites. Do not claim a
 reboot was tested merely because a service is enabled.
+The optional `ingress.json` is private installation state read at startup; service
+argv and native permission/skill hashes stay the same. Adoption retains it and
+requires compatible live ingress, while TLS and native access-policy qualification
+remain separate. Unknown/weakened ingress is a readiness gap, not automatic setup.
 
 ## Create and deliver an issue
 
