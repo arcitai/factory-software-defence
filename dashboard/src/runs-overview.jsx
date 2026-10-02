@@ -6,8 +6,8 @@ import { Badge } from './components/ui/badge';
 import { cn } from './lib/utils';
 import { TaskFilters } from './task-filters.jsx';
 import { State, LifecycleGlyph, friendlyName, relativeTime, stateLabel } from './task-display.jsx';
-import { statusGroups, boardColumns, groupJobsByBoardColumn, jobDisplayTitle, nextOperatorAction, taskPhase } from './runs-board.js';
-import { NATIVE_STATES, closureReasonLabel } from '../../factory/issue-lifecycle.mjs';
+import { statusGroups, boardColumns, groupJobsByBoardColumn, jobDisplayTitle, nextOperatorAction, taskPhase, toggleNativeFilter } from './runs-board.js';
+import { NATIVE_STATES, closureReasonLabel, nativeState } from '../../factory/issue-lifecycle.mjs';
 import { Labels } from './issue-labels.jsx';
 import { Contributors } from './contributors.jsx';
 
@@ -16,9 +16,14 @@ export function RunsOverview({ visibleJobs, jobs, workflows, counts, phaseCounts
   setLabelFilter, sourceControls, sourceNotice, sourceLoading, sourceUnavailable }) {
   const filtering = phaseFilter.length > 0 || labelFilter.length > 0 || filter.length > 0 || Boolean(search.trim()) || workflowFilter.length > 0;
   const selectPhase = value => setPhaseFilter(previous => value === 'all' ? [] : previous.includes(value) ? previous.filter(item => item !== value) : [...previous, value]);
-  const nativeFilterOptions = [
-    ...statusGroups.map(group => ({ ...group, count: counts[group.id] || 0 })),
-    ...NATIVE_STATES.filter(state => !statusGroups.some(group => group.id === state.id)).map(state => ({ ...state, count: counts[state.id] || 0 })),
+  const selectStatus = value => setFilter(previous => toggleNativeFilter(previous, value));
+  const nativeFilterOptions = NATIVE_STATES.map(state => ({ ...state, count: counts[state.id] || 0 }));
+  const activeFilters = [
+    ...filter.map(value => ({ key: `native:${value}`, label: `Native: ${nativeFilterOptions.find(option => option.id === value)?.label || value}`, remove: () => selectStatus(value) })),
+    ...phaseFilter.map(value => ({ key: `phase:${value}`, label: `Phase: ${boardColumns.find(stage => stage.id === value)?.label || value}`, remove: () => selectPhase(value) })),
+    ...workflowFilter.map(value => ({ key: `work:${value}`, label: friendlyName(value), remove: () => setWorkflowFilter(workflowFilter.filter(item => item !== value)) })),
+    ...labelFilter.map(value => ({ key: `label:${value}`, label: value, remove: () => setLabelFilter(labelFilter.filter(item => item !== value)) })),
+    ...(search.trim() ? [{ key: 'search', label: `Search: ${search.trim()}`, remove: () => setSearch('') }] : []),
   ];
   return <div className="runs-page">
     <div className="tasks-toolbar">
@@ -37,7 +42,14 @@ export function RunsOverview({ visibleJobs, jobs, workflows, counts, phaseCounts
         </div>
       </div>
     </div>
-    <div className="active-filters"><span role="status">{loaded ? `${visibleJobs.length === jobs.length ? jobs.length : `${visibleJobs.length} of ${jobs.length}`} items` : "Loading work…"}</span>{sourceControls}<div className="task-list-actions"><button onClick={clearFilters} disabled={!filtering}>Clear filters<X size={12} /></button></div></div>
+    <div className="active-filters">
+      <div className="results-summary">
+        <span className="results-count" role="status">{loaded ? `${visibleJobs.length === jobs.length ? jobs.length : `${visibleJobs.length} of ${jobs.length}`} items` : "Loading work…"}</span>
+        <div className="active-filter-chips" aria-label="Applied filters">{activeFilters.map(item => <button className="active-filter-chip" type="button" key={item.key} onClick={item.remove} aria-label={`Remove ${item.label} filter`} title={`Remove ${item.label} filter`}><span>{item.label}</span><X size={12} aria-hidden="true" /></button>)}</div>
+        <button className="clear-all-filters" type="button" onClick={clearFilters} disabled={!filtering}>Clear filters</button>
+      </div>
+      {sourceControls}
+    </div>
     {sourceNotice}
 
     {composer}
@@ -45,7 +57,7 @@ export function RunsOverview({ visibleJobs, jobs, workflows, counts, phaseCounts
     {statusError && loaded && <div className="stale-banner" role="status"><span><strong>Status stale.</strong> Showing the last available task data. {statusError}</span><Button variant="outline" size="sm" onClick={refresh}>Refresh</Button></div>}
 
     <div className={cn("run-workspace", runsView === "board" && "is-board")}>
-      <TaskFilterRail counts={phaseCounts} loaded={loaded} filter={phaseFilter} setFilter={selectPhase} />
+      <TaskFilterRail counts={counts} loaded={loaded} filter={filter} setFilter={selectStatus} />
       <section className="task-results" aria-label="Work results">
         {!loaded && !statusError ? <TaskMessage kind="loading" title="Loading project work" description="Checking GitHub issues and native Codex history." />
           : !loaded && statusError ? <TaskMessage kind="error" title="Project status unavailable" description={statusError} action="Retry status" onAction={refresh} />
@@ -60,27 +72,31 @@ export function RunsOverview({ visibleJobs, jobs, workflows, counts, phaseCounts
 }
 
 function TaskFilterRail({ counts, loaded, filter, setFilter }) {
-  const [expanded, setExpanded] = useState(true);
-  return <aside className="task-filter-rail" aria-label="Filter work by repository phase">
-    <button className="all-tasks-filter" type="button" aria-pressed={filter.length === 0} onClick={() => setFilter('all')} disabled={!loaded}><span>All phases</span></button>
-    <section className="phase-filter-section" aria-label="Repository phase groups">
-      <button className="filter-disclosure" aria-expanded={expanded} aria-controls="phase-filter-groups" onClick={() => setExpanded(value => !value)}>Repository phase groups<ChevronDown size={12} /></button>
-      <div className="phase-filter-groups" id="phase-filter-groups" hidden={!expanded}>
-        {boardColumns.map(stage => <PhaseRailButton key={stage.id} stage={stage} count={loaded ? counts[stage.id] : '—'} pressed={filter.includes(stage.id)} onClick={() => setFilter(stage.id)} disabled={!loaded} />)}
-      </div>
-    </section>
+  const [open, setOpen] = useState(false), id = useId();
+  return <aside className="task-filter-rail" aria-label="Filter work by native status" data-expanded={open}>
+    <button type="button" className="status-rail-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}>Native status{filter.length > 0 && <span className="facet-count">{filter.length} selected</span>}<ChevronDown size={14} aria-hidden="true" /></button>
+    <div className="native-filter-cards" id={id}>
+      <button className="all-tasks-filter" type="button" aria-pressed={filter.length === 0} onClick={() => setFilter('all')} disabled={!loaded}><span>All native states</span><span>{loaded ? counts.all : '—'}</span></button>
+      {statusGroups.map(group => <NativeStatusCard key={group.id} group={group} counts={counts} loaded={loaded} filter={filter} setFilter={setFilter} />)}
+    </div>
   </aside>;
 }
 
-function PhaseRailButton({ stage, count, pressed, onClick, disabled }) {
-  const tooltip = usePhaseTooltip(stage.description);
-  return <span className="phase-filter-control phase-rail-control" ref={tooltip.ref} onMouseEnter={tooltip.show} onMouseLeave={tooltip.closeIfInactive} onKeyDown={tooltip.onKeyDown}>
-    <button type="button" className={`phase-filter-option phase-filter-card tone-${stage.tone}`} aria-pressed={pressed}
-      aria-label={`Filter by repository phase: ${stage.label}`} aria-describedby={tooltip.id} title={stage.description} onFocus={tooltip.show} onBlur={tooltip.closeIfInactive} onClick={onClick} disabled={disabled}>
-      <span className="phase-filter-heading"><LifecycleGlyph definition={stage} size={14} /><span>{stage.label}</span><span className="filter-card-count">{count}</span></span>
-    </button>
-    <span id={tooltip.id} role="tooltip" className="phase-tooltip" style={tooltip.position || undefined} hidden={!tooltip.open}>{stage.description}</span>
-  </span>;
+function NativeStatusCard({ group, counts, loaded, filter, setFilter }) {
+  const [expanded, setExpanded] = useState(true), id = useId();
+  const count = loaded ? counts[group.id] ?? 0 : '—';
+  return <section className={`filter-card tone-${group.tone}`} aria-label={`${group.label} native status`}>
+    <div className="filter-card-heading">
+      <button className="filter-card-main" type="button" aria-label={`Filter by native category: ${group.label}`} aria-pressed={group.states.every(state => filter.includes(state))} disabled={!loaded} onClick={() => setFilter(group.id)}><LifecycleGlyph definition={group} size={14} /><span>{group.label}</span></button>
+      <button className="filter-card-disclosure" type="button" aria-label={`${expanded ? 'Hide' : 'Show'} ${group.label.toLowerCase()} native states (${count})`} aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(value => !value)}>
+        <span className="filter-card-count">{count}</span><ChevronDown className="filter-card-chevron" size={14} aria-hidden="true" />
+      </button>
+    </div>
+    <div className="filter-card-children" id={id} hidden={!expanded}>{group.states.map(value => {
+      const state = nativeState(value);
+      return <button type="button" key={state.id} className={`filter-substate tone-${state.tone}`} aria-label={`Filter by native state: ${state.label}`} title={state.action} aria-pressed={filter.includes(state.id)} disabled={!loaded} onClick={() => setFilter(state.id)}><span><LifecycleGlyph definition={state} size={12} />{state.label}</span><span>{loaded ? counts[state.id] ?? 0 : '—'}</span></button>;
+    })}</div>
+  </section>;
 }
 
 function TaskMessage({ kind, title, description, action, onAction }) {
@@ -198,15 +214,19 @@ function WorkMetadata({ job }) {
   const source = record?.issue;
   const sourceState = source?.state === 'closed' ? `Closed · ${closureReasonLabel(source.state_reason ?? source.stateReason)}`
     : source?.state === 'open' ? 'Open' : source ? `Source state unknown${source.state ? ` · ${source.state}` : ''}` : null;
-  const parts = [
-    record?.identity ? `#${record.identity.number}` : record ? 'Local request' : null,
-    job.updated_at ? <time dateTime={job.updated_at} title={`Last activity ${job.updated_at}`}>{relativeTime(job.updated_at)}</time> : null,
+  const activity = [
+    job.updated_at ? <time dateTime={job.updated_at} title={`Last activity ${job.updated_at}`}>Last activity {relativeTime(job.updated_at)}</time> : null,
     [workflow, phase].filter(Boolean).map(friendlyName).join(' · '),
-    source && record?.source_status === 'loaded' ? sourceState : null,
-    record?.executions?.length > 1 ? `${record.executions.length} attempts` : null,
   ].filter(Boolean);
-  return <div className="task-row-meta">{parts.map((part, index) => <span className="work-meta-part" key={index}>{part}</span>)}
-    {source && <Contributors {...source} compact />}
-    {source && Array.isArray(source.labels) && <Labels labels={source.labels} />}
+  const parts = [
+    record?.identity ? <span title={record.identity.repository}>#{record.identity.number}</span> : record ? 'Local request' : null,
+    sourceState,
+    record?.source_status === 'stale' ? 'Source stale · last loaded metadata' : record?.source_status === 'not_loaded' ? 'Source not loaded' : null,
+    record?.executions?.length ? `${record.executions.length} execution ${record.executions.length === 1 ? 'attempt' : 'attempts'}` : null,
+  ].filter(Boolean);
+  return <div className="work-metadata">
+    {parts.length > 0 && <div className="task-row-meta">{parts.map((part, index) => <span className="work-meta-part" key={index}>{part}</span>)}</div>}
+    {activity.length > 0 && <div className="task-row-meta">{activity.map((part, index) => <span className="work-meta-part" key={index}>{part}</span>)}</div>}
+    {source && <div className="task-row-meta task-row-people">{source.author && <span>Opened by {source.author}</span>}<Contributors {...source} compact />{Array.isArray(source.labels) && <Labels labels={source.labels} />}</div>}
   </div>;
 }

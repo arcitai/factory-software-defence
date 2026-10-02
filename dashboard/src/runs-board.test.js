@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { boardColumns, filterJobs, filterPhases, groupJobsByBoardColumn, jobCounts, phaseCounts, searchJobs, statusGroups } from './runs-board.js';
+import { boardColumns, filterJobs, filterPhases, groupJobsByBoardColumn, jobCounts, phaseCounts, searchJobs, statusGroups, toggleNativeFilter } from './runs-board.js';
 
 const jobs = [
   ['not_started', 'unresolved'], ['running', 'implementing'], ['needs_review', 'needs_review'],
@@ -33,4 +33,14 @@ test('native outcome counts derive from the catalog and search includes source p
   });
   assert.deepEqual(searchJobs(jobs, 'implementing').map(job => job.state), ['running']);
   assert.deepEqual(searchJobs(jobs, 'not_loaded').map(job => job.state), ['not_started']);
+});
+
+test('category selection expands catalog substates so individual deselection remains effective', () => {
+  const selected = toggleNativeFilter(['running'], 'needs_attention');
+  assert.deepEqual(selected, ['running', ...statusGroups.find(group => group.id === 'needs_attention').states]);
+  const withoutFailure = toggleNativeFilter(selected, 'failed');
+  assert.deepEqual(filterJobs(jobs, withoutFailure).map(job => job.state), ['running', 'interrupted', 'unknown']);
+  assert.deepEqual(toggleNativeFilter(selected, 'needs_attention'), ['running']);
+  assert.deepEqual(toggleNativeFilter(['needs_attention'], 'failed'), ['interrupted', 'unknown'], 'legacy group IDs normalize before toggling');
+  assert.deepEqual(toggleNativeFilter(selected, 'all'), []);
 });

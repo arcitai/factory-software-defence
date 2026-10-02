@@ -3,11 +3,21 @@ import { ISSUE_STAGES, NATIVE_GROUPS, NATIVE_STATES, nativeState } from '../../f
 export const statusGroups = NATIVE_GROUPS;
 export const boardColumns = ISSUE_STAGES;
 const knownStates = new Set(NATIVE_STATES.map(state => state.id));
+const nativeFilterStates = selected => [...new Set(selected.flatMap(id => statusGroups.find(group => group.id === id)?.states || [id]))];
+
+// Store the actual substates so deselecting one after Select all (or a category)
+// cannot leave it selected implicitly through an overlapping group ID.
+export function toggleNativeFilter(selected, value) {
+  if (value === 'all') return [];
+  const previous = nativeFilterStates(selected), states = nativeFilterStates([value]);
+  return states.every(state => previous.includes(state))
+    ? previous.filter(state => !states.includes(state)) : [...new Set([...previous, ...states])];
+}
 
 export function filterJobs(jobs, filter) {
   const selected = Array.isArray(filter) ? filter : [filter];
   if (!selected.length || selected.includes('all')) return jobs;
-  const states = new Set(selected.flatMap(id => statusGroups.find(group => group.id === id)?.states || [id]));
+  const states = new Set(nativeFilterStates(selected));
   return jobs.filter(job => states.has(job.state));
 }
 
