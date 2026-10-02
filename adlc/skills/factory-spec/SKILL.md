@@ -12,6 +12,22 @@ Use the supplied business outcome and repository facts to write a short task: pr
 
 A new feature may need both product behavior and technical approach; do not force two long documents for a simple repair. Reference the relevant code and existing test commands. Unknown facts stay unknown. Specify which evidence would settle them.
 
+Add a compact architecture sketch only for unresolved choices that materially
+affect interfaces, ownership or data shape, or an explicit architecture request.
+Ground it in the affected code and the project's language and architecture
+records: show caller usage, relevant types/data shape, ownership/interfaces and
+significant failure behavior. File count, newness and size alone do not trigger
+it; routine repairs and already-accepted architecture need no new ceremony.
+Carry accepted decisions and current project standards forward.
+
+For empirical uncertainty, use a small local trial with a concrete stop condition
+and evidence that selects the shape. Mark the sketch provisional, distinct from
+runnable production. Pass the selected shape into the first runnable vertical
+slice and its verification. Revise the sketch when observed implementation
+evidence contradicts it or repeated friction exposes a mismatch; do not
+automatically discard code after one unusual case. Bind checks and independent
+review to the actual candidate. The sketch adds no approval gate.
+
 Plan substantial implementation as vertical slices: each delivers one observable behavior through the necessary layers, with an executable check and relevant failure case. Identify the first runnable slice and a short extension order. Do not make database, backend and frontend separate delivery phases. Tie prerequisite work to its consuming slice; small fixes may be one slice. Slice boundaries organize work within the accepted scope and do not create additional approval gates.
 
 When splitting a roadmap into issues, record blockers by real identifiers and

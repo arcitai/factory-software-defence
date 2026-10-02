@@ -10,10 +10,17 @@ retired implementation evidence remain in Git and private installation records.
   repository-only cross-layer contributor rule delivered by merged
   [PR #132](https://github.com/arcitai/factory-software-defence/pull/132) at
   `main630ca7a`.
-- [ ] [#130](https://github.com/arcitai/factory-software-defence/issues/130):
-  shared lifecycle/catalog, Foundation and preserved Inbox changes are the
-  0.18.5 candidate. The linked issue records exact-candidate review, installed
-  qualification and protected release/adoption; source alone is not delivery.
+- [x] [#130](https://github.com/arcitai/factory-software-defence/issues/130):
+  shared lifecycle/catalog, Foundation and preserved Inbox changes delivered and
+  closed through merged [PR #133](https://github.com/arcitai/factory-software-defence/pull/133)
+  at `mainc2e6ba87`. npm `0.18.5` has installed qualification and an adopted
+  runtime; the linked issue owns the delivery record.
+- [ ] [#128](https://github.com/arcitai/factory-software-defence/issues/128):
+  conditional architecture sketch guidance is a source candidate, pending
+  independent review and delivery.
+- [ ] [#134](https://github.com/arcitai/factory-software-defence/issues/134):
+  definition-validator/staged-kit first slice remains provisional and pending
+  delivery; no validator implementation is claimed.
 
 ## Native product
 
