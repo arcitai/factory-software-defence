@@ -1,0 +1,11 @@
+schemaVersion: factory/v1alpha1
+name: content-example
+project:
+  vision: adlc/examples/definitions/content/BRIEF.md
+  instructions: adlc/examples/definitions/content/INSTRUCTIONS.md
+harness: codex
+method:
+  skills:
+    - adlc/skills/factory-spec
+    - adlc/skills/factory-implement
+    - adlc/skills/factory-review

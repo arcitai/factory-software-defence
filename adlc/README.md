@@ -15,6 +15,13 @@ optional issue forms/labels and an inactive CI example. It does not overwrite an
 application, install global skills, grant access or start work. Foundation is a
 separate setup skill and is not part of the execution catalog.
 
+To stage only a reviewed desired selection, use
+`factory kit --definition FILE --repo PATH --output NEW_DIRECTORY` after offline
+`factory definition validate --file FILE --repo PATH`. See the packaged
+`docs/definition.md` for the separate `project/` snapshot layout and limits,
+and `adlc/examples/definitions/README.md` for small examples. This never changes a native
+profile; valid desired inputs are not discovery, readiness or output acceptance.
+
 The default repository-stage and label catalog is [lifecycle.json](lifecycle.json).
 The exported `labels.json` is its flat label projection. Existing
 `factory:triage`, `factory:spec`, `factory:ready` and `factory:blocked` readiness

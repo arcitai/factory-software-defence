@@ -29,6 +29,12 @@ and history reconnection. Declare unsupported operations. Do not create a provid
 registry, universal agent engine or speculative compatibility layer. Codex is the
 only implemented harness today.
 
+The [offline desired definition](definition.md) selects local project Markdown
+and portable skills for reviewable staging. One plain module owns its parsing,
+reference checks and digest projection. It is separate from private `native.json`
+installation state and native readiness/history; reading a changed definition
+does not apply it or change the Inbox, provider phases or running worker.
+
 The CLI and Inbox use the **same running bridge and native process**. A second
 app-server may read persisted history without seeing another process's live turn,
 so it cannot authorize stopping that process or starting a competing writer.

@@ -15,12 +15,16 @@ retired implementation evidence remain in Git and private installation records.
   closed through merged [PR #133](https://github.com/arcitai/factory-software-defence/pull/133)
   at `mainc2e6ba87`. npm `0.18.5` has installed qualification and an adopted
   runtime; the linked issue owns the delivery record.
-- [ ] [#128](https://github.com/arcitai/factory-software-defence/issues/128):
-  conditional architecture sketch guidance is a source candidate, pending
-  independent review and delivery.
+- [x] [#128](https://github.com/arcitai/factory-software-defence/issues/128):
+  conditional architecture sketch guidance delivered through protected
+  [PR #136](https://github.com/arcitai/factory-software-defence/pull/136) at
+  `main87971b1e354e302b9bdc2ceb8af826a2359e447d`, matching independently
+  accepted source `1d662783c5f1d6c28326eb6ace41fb03179a568c`.
 - [ ] [#134](https://github.com/arcitai/factory-software-defence/issues/134):
-  definition-validator/staged-kit first slice remains provisional and pending
-  delivery; no validator implementation is claimed.
+  slice 1 offline desired-definition validation and staged kit is a parked
+  source candidate. Checks, installed qualification, independent review and
+  delivery remain pending; owner priority is #138, then #115. Whole-issue completion remains open: native setup mapping and real
+  content/design qualification are deferred.
 
 ## Native product
 

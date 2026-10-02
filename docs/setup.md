@@ -6,6 +6,11 @@ Read `factory foundation`. Keep the project's own instructions, approved vision,
 code/design standards, real checks and delivery rules. Use [repository readiness](../adlc/repository.md)
 to adapt issue templates, labels and CI. Factory does not modify these automatically.
 
+For portable desired setup, [validate and stage a local definition](definition.md)
+before deliberate adoption. This works offline without a model account; valid
+references do not prove native readiness. Native setup below remains a separate
+operation with its qualified six-skill catalog.
+
 The executable integration currently requires Linux, Node 22.13+, Git, native
 Codex and the GitHub CLI authenticated for the selected repository. A stable
 external Codex installation is required. `factory probe codex` discovers the
