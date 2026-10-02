@@ -80,7 +80,6 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
   const sourceNotice=<>
     {!provider?.supported && provider && <p className="source-boundary">GitHub issues are unavailable for this project identity. Select a supported GitHub repository to use the Inbox.</p>}
     {error && <p role="alert" className="form-error">{snapshot?'Repository data stale. ':'Repository issues unavailable. '}{error}</p>}
-    {loading && <p role="status" className="source-boundary">Loading repository issues…</p>}
     {!nativeReadiness?.ready && <p role="alert" className="source-boundary">Native Codex unavailable: {(nativeReadiness?.gaps || ['readiness unknown']).join('; ')}</p>}
     {snapshot && !snapshot.issues?.length && !error && !loading && <p className="source-boundary">No issues on this page. Other pages or states may contain issues.</p>}
   </>;
@@ -145,7 +144,7 @@ function RepositoryControls({ snapshot, state, setState, loading, token, load, r
   const scopeLabel={open:'Open issues',closed:'History',all:'All issues'}[state]||'Open issues';
   return <div className="repository-control" ref={root}>
     <button type="button" className="repository-trigger" ref={trigger} aria-label={`Repository scope: ${scopeLabel}`} aria-describedby={`${id}-scope`} aria-expanded={open} aria-controls={id} onClick={()=>setOpen(value=>!value)}>
-      <span>Repository · {scopeLabel} <ChevronDown size={12} aria-hidden="true" /></span>
+      <span>Repository · {scopeLabel} <ChevronDown size={12} aria-hidden="true" />{loading && <span className="repository-loading" role="status" aria-label="Loading repository issues">Refreshing…</span>}</span>
       <span className="repository-scope" id={`${id}-scope`}>{snapshot?`${snapshot.loaded_count} loaded · Page ${snapshot.page}`:'Page not loaded'}</span>
     </button>
     {open && <div id={id} className="repository-popover" role="group" aria-label="Repository tools">
