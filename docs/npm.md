@@ -164,6 +164,14 @@ or unknown native work,
 and uncertain service ownership are refused. A different minor line needs an
 explicit migration policy, not this command. The existing Node, port, unit,
 repository, Codex setup, credentials, receipts and native history remain selected.
+Optional private `ingress.json` remains selected too: compatible prior/target
+packages and the matching live Unix listener are required when it is enabled.
+The service argv stays unchanged. Malformed or changed config and unknown ingress
+readiness refuse adoption/reopening; proxy TLS and owner/device scope still need
+[actual-route proof](private-ingress.md#qualify-the-actual-route). Adopt a supporting
+package at an idle loopback installation before opting in; never auto-create
+ingress during a package update. Keep the approved native proxy/access policy and
+SSH rollback route through release maintenance.
 
 Adoption holds admissions, replaces the owned unit, reconnects to its new bridge
 and requires native readiness. A failed target may restore the previous verified

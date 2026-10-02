@@ -11,6 +11,7 @@ Reconnection, continuation and a fresh start are different operations.
 | Unknown outcome after a disconnected write | Inspect the native thread and private receipt before retrying. |
 | Configuration or skill hashes changed | Preserve the changed files and reconcile the intended installation; do not bypass the check. |
 | Service startup failed | Inspect the user-service journal and selected executable/package/state paths. |
+| HTTPS unavailable or ingress config/listener differs | Keep SSH; inspect ingress status, native proxy/TLS/access policy and the private sidecar before any change. |
 | Host restarted during a turn | Reconcile native history and receipts. Startup never replays the turn. |
 
 Use `factory status`, `factory result` and `factory reconnect` against the owning
@@ -64,6 +65,30 @@ Factory does not promise seamless execution through power loss.
 Service removal preserves the native state and pinned package for recovery.
 Do not delete a writer/admission receipt simply to clear an error. If ownership
 cannot be established, keep the files and obtain explicit operator reconciliation.
+
+## Private operator ingress
+
+`factory ingress status --state PATH` reports selected configuration versus the
+owning listener without certifying TLS or access policy. Restore the existing SSH
+route when HTTPS is unavailable. Proxy reconnection does not authorize native
+replay, and ingress repair does not change worker permissions or egress.
+
+An invalid/private-path sidecar or unsafe socket fails startup and closes both
+listeners before releasing the process owner. Preserve `ingress.json`, prior
+`ingress.previous-UUID.json` files and socket/lock evidence. Factory will remove
+only a same-user private stale socket after acquiring startup ownership and
+confirming connection refusal. A symlink, unowned/non-socket path, responding
+socket or ambiguous owner is refused. Crash leftovers never authorize replacing
+unknown native outcomes. Reconcile service/process ownership before deliberately
+moving unsafe artifacts aside; do not delete an unknown writer receipt.
+
+At an idle stopped installation, use `ingress setup --file PRIVATE_JSON_FILE` to
+restore a retained valid configuration or `ingress remove` to return to loopback.
+Startup reads the sidecar once. Disable/remove only the selected OS/native proxy
+endpoint and requalify its TLS, approved/denied identity/device and HTTP boundaries
+when restoring it. Preserve unrelated proxy services. Follow the precise
+[transport rollback recipe](private-ingress.md#reconnect-retain-or-remove-deliberately);
+never relax checks, enable Funnel or interrupt active/unknown work to restore access.
 
 ## Issue creation uncertainty
 

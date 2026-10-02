@@ -9,16 +9,25 @@ import { readProjectLinks } from '../project-links.mjs';
 import { recommendWork } from '../intake.mjs';
 import { FactoryError } from '../error.mjs';
 import { NativeIssueSubmissions } from './issue-submissions.mjs';
+import { ingressProjection, validateIngress } from './ingress.mjs';
 
 const ui=join(fileURLToPath(new URL('../../',import.meta.url)),'factory','ui');
 const equal=(a,b)=>typeof a==='string' && Buffer.byteLength(a)===Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a),Buffer.from(b));
+function singleHeader(request,name) {
+  const values=[];
+  for(let index=0;index<request.rawHeaders.length;index+=2)
+    if(request.rawHeaders[index].toLowerCase()===name)values.push(request.rawHeaders[index+1]);
+  if(values.length>1)throw new FactoryError('Duplicate security header is not allowed',403);
+  return values[0];
+}
 async function body(request) {
   let data='';for await(const chunk of request){data+=chunk;if(Buffer.byteLength(data)>256000)throw new FactoryError('Request too large',413);}
   try { const parsed=JSON.parse(data);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error();return parsed; }
   catch { throw new FactoryError('Expected a JSON object',400); }
 }
-export function createNativeServer(state,config,{harness,provider,instance=randomBytes(16).toString('hex'),maintenanceToken=null}={}) {
+export function createNativeServer(state,config,{harness,provider,instance=randomBytes(16).toString('hex'),maintenanceToken=null,ingress=null}={}) {
   if(!harness||!provider||typeof harness.jobs!=='function'||typeof harness.doctor!=='function')throw new Error('Native server needs an owning harness and issue provider.');
+  if(ingress)ingress=validateIngress(ingress);
   const engine=harness,submissions=new NativeIssueSubmissions(state,provider),csrf=randomBytes(32).toString('hex');
   const invoke=(name,...args)=>{if(typeof engine[name]!=='function')throw new FactoryError('This harness capability is unavailable.',404);return engine[name](...args);};
   if(maintenanceToken!==null && (typeof maintenanceToken!=='string'||!/^[a-zA-Z0-9-]{16,100}$/.test(maintenanceToken)))
@@ -34,22 +43,34 @@ export function createNativeServer(state,config,{harness,provider,instance=rando
     if(jobs.some(job=>job.state==='running'||job.state==='unknown'))throw new FactoryError('Native work is active or unresolved.',409);
     await engine.assertWorkspaceIdle();
   };
-  const server=http.createServer(async(request,response)=>{
+  const operatorIngress=()=>ingressProjection(ingress,{
+    configured:Boolean(ingress),config_sha256:ingressProjection(ingress).config_sha256,listening:Boolean(unixServer?.listening)});
+  const handler=privateIngress=>async(request,response)=>{
     const send=(status,value,type='application/json; charset=utf-8')=>{response.writeHead(status,{'Content-Type':type});response.end(type.startsWith('application/json')?JSON.stringify(value):value);};
     response.setHeader('Cache-Control','no-store');response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Referrer-Policy','no-referrer');
     response.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: https://avatars.githubusercontent.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     try {
-      const hosts=[`localhost:${server.address().port}`,`127.0.0.1:${server.address().port}`];
-      if(!hosts.includes(request.headers.host))throw new FactoryError('Host is not allowed',403);
-      if(request.headers.origin && !hosts.map(host=>`http://${host}`).includes(request.headers.origin))throw new FactoryError('Origin is not allowed',403);
-      if(request.headers['sec-fetch-site']==='cross-site')throw new FactoryError('Cross-site access is not allowed',403);
+      if(ingress&&(!server.listening||!unixServer.listening))throw new FactoryError('Inbox listeners are not ready',503);
+      const hosts=privateIngress?[new URL(ingress.origin).host]:[`localhost:${server.address().port}`,`127.0.0.1:${server.address().port}`];
+      const origins=privateIngress?[ingress.origin]:hosts.map(host=>`http://${host}`);
+      const host=singleHeader(request,'host'),origin=singleHeader(request,'origin'),site=singleHeader(request,'sec-fetch-site');
+      if(!hosts.includes(host))throw new FactoryError('Host is not allowed',403);
+      if(origin!==undefined&&!origins.includes(origin))throw new FactoryError('Origin is not allowed',403);
+      if(site!==undefined&&!['none','same-origin','same-site'].includes(site))throw new FactoryError('Cross-site access is not allowed',403);
+      if(privateIngress) {
+        const identity=singleHeader(request,ingress.identity_header);
+        if(typeof identity!=='string'||!ingress.identities.includes(identity))throw new FactoryError('Proxy identity is not allowed',403);
+      }
+      // Forwarded headers never select a listener, authority, origin or identity.
+      // Browsers may omit Origin on navigation/GET; bootstrap keeps that behavior.
+      if(!request.url.startsWith('/')||request.url.startsWith('//'))throw new FactoryError('Request target is not allowed',403);
       // A restart-only gate follows the durable receipt; explicit maintenance
       // remains held until its owner cancels it.
       if(maintenance?.phase==='startup'&&!existsSync(join(state,'service-adoption.json')))maintenance=null;
-      const url=new URL(request.url,`http://${request.headers.host}`);
-      const authenticated=equal(request.headers['x-factory-session'],csrf);
+      const url=new URL(request.url,origins[0]);
+      const authenticated=equal(singleHeader(request,'x-factory-session'),csrf);
       if(request.method==='GET'&&url.pathname==='/api/v1/bridge/status')
-        return send(200,{version:1,native:true,native_instance:instance,repo:config.repo,csrf_token:csrf});
+        return send(200,{version:1,native:true,native_instance:instance,repo:config.repo,csrf_token:csrf,operator_ingress:operatorIngress()});
       if(request.method==='GET'&&url.pathname==='/api/v1/status') {
         const jobs=await engine.jobs(),ready=await engine.doctor().catch(()=>({ready:false,gaps:['Native state unavailable']}));
         return send(200,{version:1,native:true,native_instance:instance,maintenance_prepared:Boolean(maintenance),native_capabilities:{issue_start:Boolean(provider.supported)&&typeof engine.start==='function',interrupt:typeof engine.interrupt==='function',
@@ -57,7 +78,7 @@ export function createNativeServer(state,config,{harness,provider,instance=rando
           native_readiness:ready,csrf_token:csrf,repo:config.repo,project_links:readProjectLinks(config.repo) || null,harness:engine.name || 'native',agent:engine.name || 'native',
           jobs,issue_history:backlogHistory(jobs,[]),work_records:workRecords(jobs,[]),issue_provider:providerInfo(provider),
           work_types:['software','defensive'],workflows:['software','defensive'],
-          infrastructure:{native:{connected:engine.available}}});
+          infrastructure:{native:{connected:engine.available}},operator_ingress:operatorIngress()});
       }
       const nativeResult=url.pathname.match(/^\/api\/v1\/jobs\/(job_[a-f0-9]+)\/result$/);
       if(request.method==='GET'&&nativeResult) {
@@ -130,7 +151,11 @@ export function createNativeServer(state,config,{harness,provider,instance=rando
       }
       throw new FactoryError('Native capability unavailable',404);
     } catch(error) {send(error.status||503,{error:error.status?error.message:'Native state unavailable; inspect private server logs.'});}
-  });
-  server.requestTimeout=45000;server.headersTimeout=15000;
-  return {server,engine};
+  };
+  const server=http.createServer(handler(false));
+  const unixServer=ingress?http.createServer(handler(true)):null;
+  for(const listener of [server,unixServer].filter(Boolean)) {
+    listener.requestTimeout=45000;listener.headersTimeout=15000;
+  }
+  return {server,unixServer,engine};
 }

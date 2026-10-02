@@ -5,9 +5,13 @@ and OS are trusted. Prefer a dedicated unprivileged OS user. A separate native
 configuration under an existing user does not remove that user's host authority.
 
 The Inbox binds to loopback and validates Host, Origin and cross-site requests.
-Protected reads and writes require a local session nonce. This is not multi-user
-authentication; remote access uses an authenticated SSH tunnel. Do not expose the
-HTTP port publicly.
+Protected reads and writes require a local session nonce. Remote access defaults
+to an authenticated SSH tunnel. Optional private HTTPS uses the existing native
+proxy and [private-ingress contract](docs/private-ingress.md): the proxy strips
+client-supplied identity headers and sets one authenticated, allowlisted identity
+at the private Unix socket. The same OS user and root are trusted to access that
+socket; TLS and approved-device access remain native prerequisites. The session
+nonce is not multi-user authentication. Do not expose the HTTP port publicly.
 
 Native Codex enforces the selected workspace permissions. The initial profile
 allows unattended work while denying private filesystem paths, shell network

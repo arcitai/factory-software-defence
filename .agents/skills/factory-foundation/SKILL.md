@@ -22,8 +22,12 @@ check. Scope or access expansion needs the owner's decision.
 Inspect the actual host, repository remote and native harness. Codex and GitHub
 are the current supported integration; record unsupported capabilities rather
 than inventing an adapter or treating binary discovery as readiness. Application
-hosting is separate from Factory's execution host. Keep missing obligations in
-the existing issue/task record, not a second project registry.
+hosting is separate from Factory's execution host. Discover the intended operator
+route and host/workload isolation before setup. On a shared personal host, prefer
+a supported VM with its own guest identity and sandbox. A suitable dedicated VPS
+can use an unprivileged OS user plus sandbox, with shared-kernel risks recorded.
+This is guidance, not authority to migrate hosts or change worker permissions.
+Keep missing obligations in the existing issue/task record, not a second project registry.
 
 ## Prepare and qualify
 
@@ -45,12 +49,32 @@ the existing issue/task record, not a second project registry.
   component needing them, outside the agent environment unless explicitly needed.
 - **Operation:** install a pinned package, stable Node and Codex binaries, a
   private state directory and a loopback listener. Use the supported OS service
-  manager and authenticated SSH forwarding for remote access. Record boot/login
-  prerequisites and test restart recovery without starting another native turn.
+  manager; loopback plus authenticated SSH forwarding is the default remote route.
+  Remote HTTPS is an explicit private installation choice. Stage an existing native
+  authenticated proxy/tunnel, exact trusted HTTPS origin and approved identities/
+  devices together, using [private operator access](../../../docs/private-ingress.md).
+  Keep transport configuration and evidence in private installation state, outside
+  source, method YAML and the portable kit. No setup step automatically publishes
+  the Inbox. Tailscale Serve is an optional recipe, not a runtime dependency;
+  same-tailnet membership alone is insufficient authorization. Keep Funnel/public
+  exposure disabled. Preserve SSH until the replacement is qualified. Record
+  boot/login/TLS/network prerequisites and test restart/reconnection without
+  starting another native turn. Operator ingress is separate from worker egress.
   Updating or stopping an active or unknown writer must not silently interrupt
   it. Native history and local references remain outside the package. Offer the
   [optional OS release check](../../../docs/npm.md#optional-linux-release-check-timer)
   only when selected; a metadata lookup does not install or activate a release.
+- **Private access proof:** when remote HTTPS is selected, qualify the actual
+  approved-device route, assets, same-origin authenticated API reads and a harmless
+  draft/preview. Prove session, exact Host/Origin, cross-site and header-spoofing
+  refusals; inspect actual native identity/device policy and node sharing. Record
+  off-tailnet inaccessibility separately from denied same-tailnet identities/
+  devices and HTTP protection. A listener, certificate discovery or one-owner
+  status is not proof of TLS or authorization. Missing denied-device proof or
+  unknown/weakened boundaries remain concrete readiness gaps. Preserve the
+  accepted Inbox at desktop/narrow widths; do not create issues or admit work
+  merely to test transport. Record deliberate native startup, removal/rollback
+  and retention of the approved origin/access policy through release maintenance.
 - **Proof:** start one bounded issue through the installed Inbox or CLI; inspect
   its native result, explicitly continue it, then run the project's checks and
   independent review against the exact candidate. Qualify only the authorized

@@ -20,6 +20,9 @@ There is no second CLI execution engine.
 | Reconnect without starting work | `factory reconnect ID --state PATH` |
 | Export the portable method | `factory kit --output NEW_DIRECTORY` |
 | Adopt a reviewed installed patch into the owned user service | `factory service adopt --state PATH` |
+| Select optional private HTTPS ingress while stopped | `factory ingress setup --file PRIVATE_JSON_FILE --state PATH` |
+| Compare selected config with owning listener | `factory ingress status --state PATH` |
+| Remove ingress config while stopped, preserving prior config | `factory ingress remove --state PATH` |
 
 `factory help` owns exact supported options. Software and scoped defensive work
 share the same issue surface. Work type selects guidance, not another executor.
@@ -76,12 +79,27 @@ List and Kanban show the same records and filters. A closed GitHub issue is a
 repository decision, not proof of successful execution. Results show native
 thread/turn identities and bounded final text; Codex retains full history.
 
-## Local HTTP boundary
+## HTTP and private ingress boundary
 
 The public surface is `/api/v1/` on the loopback listener. Status supplies a local
 session nonce. Protected reads and mutations require `x-factory-session`, with
-Host/Origin/cross-site checks. It is not remote account authentication; use SSH.
+Host/Origin/cross-site checks. SSH is the default remote route. Optional private
+HTTPS uses an existing authenticated proxy over a private Unix socket, with one
+exact configured origin/Host and an explicitly allowlisted authenticated identity
+header. No forwarded header can broaden the TCP boundary. Duplicate security
+headers, malformed/unapproved identity, malicious authority/origin, cross-site and
+missing/invalid sessions are refused. Navigation/status bootstrap still works
+without a Factory nonce after the applicable route checks.
 CLI discovery verifies the bridge's repository and immutable process instance.
+
+Bootstrap and status expose only `operator_ingress` configuration/listener flags,
+configuration digest and an explicit unqualified-transport statement. Origin and
+allowed identities stay in the private `ingress.json` version-1 sidecar. CLI/service
+status compare that selected configuration with the owning bridge's startup
+projection; unavailable live state stays unknown. The socket path is fixed at
+`STATE/inbox.sock`, private and Linux-only. Neither configured nor listening means
+TLS, owner/device policy or remote UI is qualified. See the complete
+[setup and verification contract](private-ingress.md).
 
 Issue preview/start, native status/result/continue/interrupt/reconnect and issue
 creation all share these handlers. Writes are explicit and size-bounded. Stale

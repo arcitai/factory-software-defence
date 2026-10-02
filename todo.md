@@ -15,12 +15,37 @@ retired implementation evidence remain in Git and private installation records.
   closed through merged [PR #133](https://github.com/arcitai/factory-software-defence/pull/133)
   at `mainc2e6ba87`. npm `0.18.5` has installed qualification and an adopted
   runtime; the linked issue owns the delivery record.
-- [ ] [#128](https://github.com/arcitai/factory-software-defence/issues/128):
-  conditional architecture sketch guidance is a source candidate, pending
-  independent review and delivery.
+- [x] [#128](https://github.com/arcitai/factory-software-defence/issues/128):
+  conditional architecture guidance delivered through protected
+  [PR #136](https://github.com/arcitai/factory-software-defence/pull/136) at
+  `main87971b1e354e302b9bdc2ceb8af826a2359e447d`, matching independently
+  accepted source `1d662783c5f1d6c28326eb6ace41fb03179a568c`.
+- [ ] [#138](https://github.com/arcitai/factory-software-defence/issues/138):
+  optional private Inbox ingress and repeatable Foundation/installation guidance
+  are a source candidate, pending checks, independent review, installed proof and
+  actual approved/denied route qualification. Production retains its private SSH route.
+- [ ] [#140](https://github.com/arcitai/factory-software-defence/issues/140):
+  restore the owner-approved wide Inbox list, left status cards with subfilters,
+  rich rows and horizontal Kanban. The category count becomes its fold control;
+  category-name filtering stays. Preserve current real source/native semantics,
+  labels/avatar data and minimal architecture. Preview approval is recorded;
+  source implementation and installed delivery remain pending, after the active #138 slice.
+- [ ] [#115](https://github.com/arcitai/factory-software-defence/issues/115):
+  Claude Code is the next native software harness to assess. Supported native
+  authentication, configuration/tool isolation and actual lifecycle proof must
+  precede a small concrete integration; binary discovery is not readiness.
 - [ ] [#134](https://github.com/arcitai/factory-software-defence/issues/134):
-  definition-validator/staged-kit first slice remains provisional and pending
-  delivery; no validator implementation is claimed.
+  the first offline definition/staged-kit candidate is parked in
+  [draft PR #139](https://github.com/arcitai/factory-software-defence/pull/139) at
+  `125d5f3c2d7542a8e5fb6b9b5c894befbd51895a`. Source checks and Node22/24 CI pass;
+  independent review, installed qualification and delivery remain pending.
+  Broader native mapping and content/design qualification remain later work.
+- [ ] [#137](https://github.com/arcitai/factory-software-defence/issues/137):
+  Foundation host/workload guidance distinguishes a shared personal host from a
+  dedicated VPS. No VM/user migration or host-isolation delivery is claimed.
+- [ ] [#135](https://github.com/arcitai/factory-software-defence/issues/135):
+  qualify workload-selected native network/tool boundaries and updates separately
+  from operator ingress; today's restricted profile remains unchanged.
 
 ## Native product
 
@@ -52,8 +77,7 @@ Preserve existing history; never replay obsolete work automatically.
 
 ## Later, only for a proven gap
 
-- Native harness integrations: [Claude Code #115](https://github.com/arcitai/factory-software-defence/issues/115),
-  [Cursor #116](https://github.com/arcitai/factory-software-defence/issues/116),
+- Other native harness integrations: [Cursor #116](https://github.com/arcitai/factory-software-defence/issues/116),
   [Grok #117](https://github.com/arcitai/factory-software-defence/issues/117),
   deferred pending a proven need and separate qualification.
 - [#69 Local Build · Cloud Review](https://github.com/arcitai/factory-software-defence/issues/69):

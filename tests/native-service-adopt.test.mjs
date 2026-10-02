@@ -6,20 +6,25 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { setupNative } from '../factory/native/setup.mjs';
 import { adoptInstalledService, pinInstalledRuntime, serviceManifest, manageNativeService } from '../factory/native/service.mjs';
+import { ingressDigest } from '../factory/native/ingress.mjs';
 
 function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPrepare=false,
   startUncertain=false,newBridgeUnknown=false,newBridgeDisappears=false,newPrepareBusy=false,
   changeReceipts=false,wrongFragment=false,lingeringTasks=false,reloadNeeded=false,
-  tasksUnset=false,groupRetained=false,groupUnknown=false,rollbackGate=true,oldName='factory-software-defence',afterPrepare=()=>{},afterStop=()=>{},afterNewPrepare=()=>{},afterOldStatus=()=>{},inspectBeforePrepare=()=>{},restartAfterCancel=false,oldRuntimeOnTargetStart=false,dropIns='',dropInsUnknown=false}={}) {
+  tasksUnset=false,groupRetained=false,groupUnknown=false,rollbackGate=true,oldName='factory-software-defence',afterPrepare=()=>{},afterStop=()=>{},afterNewPrepare=()=>{},afterOldStatus=()=>{},inspectBeforePrepare=()=>{},restartAfterCancel=false,oldRuntimeOnTargetStart=false,dropIns='',dropInsUnknown=false,
+  ingress=false,oldIngressCapability=true,targetIngressCapability=true,targetIngressListening=true}={}) {
   const root=mkdtempSync(join(tmpdir(),'factory-adopt-'));
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const state=join(root,'state'),repo=join(root,'repo'),unitFolder=join(root,'systemd','user');
   for(const folder of [state,repo,unitFolder,join(state,'receipts'),join(state,'issue-submissions')])mkdirSync(folder,{recursive:true,mode:0o700});
   const config={repo,node:process.execPath};
+  const ingressConfig={version:1,origin:'https://inbox.example.test',identity_header:'x-operator-identity',identities:['owner@example.test']};
+  if(ingress)writeFileSync(join(state,'ingress.json'),JSON.stringify(ingressConfig),{mode:0o600});
   const makePackage=(directory,version,content,packageName='factory-software-defence')=>{
     const path=join(root,directory);mkdirSync(join(path,'node_modules','yaml'),{recursive:true});mkdirSync(join(path,'bin'));
     writeFileSync(join(path,'package.json'),JSON.stringify({name:packageName,version,
-      dependencies:{yaml:'2.9.1'},bundleDependencies:['yaml'],...(rollbackGate?{factoryService:{adoptionGate:1}}:{})}));
+      dependencies:{yaml:'2.9.1'},bundleDependencies:['yaml'],...(rollbackGate?{factoryService:{adoptionGate:1,
+        ...(ingress&&(directory==='old-package'?oldIngressCapability:targetIngressCapability)?{privateIngress:1}:{})}}:{})}));
     writeFileSync(join(path,'node_modules','yaml','package.json'),JSON.stringify({name:'yaml',version:'2.9.1'}));
     writeFileSync(join(path,'bin','software-defence-factory.mjs'),content);
     return path;
@@ -77,6 +82,7 @@ function fixture(t,{targetVersion='0.18.4',targetReady=true,busy=false,unknownPr
       if(path==='/api/v1/maintenance/cancel') {if(restartAfterCancel&&owner==='target-instance'){pid=999;instance='new-after-cancel';}return {instance:owner,prepared:false};}
       if(path==='/api/v1/status') {if(owner==='old-instance')afterOldStatus();return {native:true,native_instance:owner,repo,
         native_readiness:{ready:owner==='target-instance'?targetReady:true},
+        ...(ingress?{operator_ingress:{configured:true,config_sha256:ingressDigest(ingressConfig),listening:owner==='target-instance'?targetIngressListening:true}}:{}),
         infrastructure:{native:{connected:true}},maintenance_prepared:false,jobs:[]};}
       throw new Error(`Unexpected bridge request ${path}`);
     }};
@@ -131,6 +137,31 @@ test('same-version identical package is a no-op with no maintenance or systemd m
     {status:'no_op',old:'0.18.3',next:'0.18.3'});
   assert.equal(h.calls.some(call=>call.startsWith('bridge')||call.startsWith('stop')),false);
   assert.equal(existsSync(join(h.state,'service-adoption.json')),false);
+});
+
+test('adoption retains private ingress, refuses unsupported releases and never claims transport qualification',async t=>{
+  const h=fixture(t,{ingress:true}),before=readFileSync(join(h.state,'ingress.json'),'utf8');
+  const result=await h.run();assert.equal(result.status,'adopted',JSON.stringify(result));
+  assert.equal(readFileSync(join(h.state,'ingress.json'),'utf8'),before);
+  assert.equal(result.tls_qualified,undefined);assert.equal(result.access_policy_qualified,undefined);
+  for(const options of [{oldIngressCapability:false},{targetIngressCapability:false}]) {
+    const unsupported=fixture(t,{ingress:true,...options});
+    await assert.rejects(unsupported.run(),/compatible prior and target/);
+    assert.equal(unsupported.calls.some(call=>call.startsWith('stop ')),false);
+  }
+  const malformed=fixture(t,{ingress:true});writeFileSync(join(malformed.state,'ingress.json'),'{}',{mode:0o600});
+  await assert.rejects(malformed.run(),/configuration is invalid/);
+  assert.equal(malformed.calls.some(call=>call.startsWith('stop ')),false);
+});
+
+test('missing live ingress remains unresolved and a changed selected config cannot pass adoption',async t=>{
+  const missing=fixture(t,{ingress:true,targetIngressListening:false});
+  assert.equal((await missing.run()).status,'unresolved');
+  assert.equal(existsSync(join(missing.state,'service-adoption.json')),true);
+  const changed=fixture(t,{ingress:true,afterPrepare:()=>writeFileSync(join(changed.state,'ingress.json'),JSON.stringify({
+    version:1,origin:'https://other.example.test',identity_header:'x-operator-identity',identities:['owner@example.test']}),{mode:0o600})});
+  await assert.rejects(changed.run(),/ingress configuration changed/);
+  assert.equal(changed.calls.some(call=>call.startsWith('stop ')),false);
 });
 
 test('busy and unknown old ownership refuse adoption before service stop',async t=>{

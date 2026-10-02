@@ -1,6 +1,6 @@
 {
   "name": "factory-software-defence",
-  "version": "0.18.5",
+  "version": "0.18.6",
   "description": "Factory: native Codex project Inbox, Foundation and portable ADLC method",
   "type": "module",
   "license": "MIT",
@@ -56,6 +56,7 @@
     "yaml": "2.9.1"
   },
   "factoryService": {
-    "adoptionGate": 1
+    "adoptionGate": 1,
+    "privateIngress": 1
   }
 }
