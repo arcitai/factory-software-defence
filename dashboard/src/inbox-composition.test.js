@@ -14,6 +14,7 @@ test('approved composition keeps native disclosure, source phases and checkbox f
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://127.0.0.1/' });
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage, IS_REACT_ACT_ENVIRONMENT: true });
   const calls = [];
+  let navigation=[];
   const repository = 'https://github.com/example/project';
   const issues = NATIVE_STATES.map((state, index) => ({
     number: index + 1, url: `${repository}/issues/${index + 1}`, title: `Issue ${state.id} ${'long-title-'.repeat(8)}`,
@@ -60,7 +61,7 @@ test('approved composition keeps native disclosure, source phases and checkbox f
   for (const theme of ['light', 'dark']) {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     await act(async () => root.render(React.createElement(Inbox, { key: theme, token: 'synthetic', issueKey: '', jobs, loaded: true,
-      provider: { supported: true }, nativeReadiness: { ready: true }, statusError: '', refreshStatus: () => {} })));
+      onNavigation:value=>{navigation=value;}, provider: { supported: true }, nativeReadiness: { ready: true }, statusError: '', refreshStatus: () => {} })));
     const phaseCard=document.querySelector('[aria-label="Implementing repository phase"]');
     await click(phaseCard.querySelector('[aria-label="Expand Implementing"]'));
     await click(phaseCard.querySelector('.phase-subheading button'));
@@ -72,12 +73,28 @@ test('approved composition keeps native disclosure, source phases and checkbox f
     await clear();
     const groupSelect=document.querySelector('[aria-label="Group work"]');
     await act(async()=>{groupSelect.value='phase';groupSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
+    assert.deepEqual(navigation.map(item=>item.title),[...document.querySelectorAll('.task-row-title')].map(node=>node.textContent),'detail navigation follows grouped display order');
     const groupHeading=document.querySelector('.work-group-heading');
     assert.ok(groupHeading);
     await click(groupHeading);
     assert.equal(document.getElementById(groupHeading.getAttribute('aria-controls')).hidden,true);
     await click(groupHeading);
     assert.equal(document.getElementById(groupHeading.getAttribute('aria-controls')).hidden,false);
+    await click(facet('native state'));
+    await click(option('native state','Running'));
+    await click(option('native state','Unknown'));
+    await click(facet('phase'));
+    await click(option('phase','Done'));
+    await click(option('phase','Implementing'));
+    const phaseName=phaseCard.querySelector('.filter-card-main');
+    await click(phaseName);
+    assert.deepEqual(titles(),['running'],'phase name preserves Done and native Running selection');
+    await click(phaseName);
+    assert.deepEqual(titles().sort(),['running','unknown']);
+    await click([...phaseCard.querySelectorAll('[role="checkbox"]')].find(button=>button.textContent.includes('Unknown')));
+    assert.deepEqual(titles(),['running'],'child deselection preserves other phases and native constraints');
+    assert.equal(document.querySelector('[aria-label="Filter by phase: Done"]').getAttribute('aria-pressed'),'true');
+    await clear();
     const railSelect=document.querySelector('[aria-label="Filter rail"]');
     await act(async()=>{railSelect.value='native';railSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
     assert.equal(document.querySelectorAll('.task-row').length, issues.length);

@@ -6,7 +6,7 @@ import { stateLabel, friendlyName, formatTimestamp } from './task-display.jsx';
 import { TaskDetail } from './task-detail.jsx';
 import { RunsOverview } from './runs-overview.jsx';
 import { workRecords, canonicalIssue, closureReasonLabel, projectIssuePhase } from '../../factory/issue-lifecycle.mjs';
-import { filterJobs, filterPhases, searchJobs, orderJobs, jobCounts, phaseCounts } from './runs-board.js';
+import { filterJobs, filterPhases, searchJobs, orderJobs, groupListJobs, jobCounts, phaseCounts } from './runs-board.js';
 import { filterTaskFacets } from './task-filters.jsx';
 import { Contributors } from './contributors.jsx';
 
@@ -30,7 +30,8 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
       href:record.identity ? issueHref(record.key) : `#/runs/${record.execution_id}`};
   }),[records,jobs]);
   const facetJobs=useMemo(()=>filterTaskFacets(searchJobs(overviewJobs,search),workflowFilter).filter(job=>!labelFilter.length || job.work.issue?.labels.some(label=>labelFilter.includes(label.name))),[overviewJobs,search,workflowFilter,labelFilter]);
-  const visibleJobs=useMemo(()=>orderJobs(filterPhases(filterJobs(facetJobs,filter),phaseFilter).filter(job=>!assignees.length || (Array.isArray(job.work.issue?.assignees) && (job.work.issue.assignees.length ? job.work.issue.assignees.some(person=>assignees.includes(person.login)) : assignees.includes('__unassigned')))),ordering),[facetJobs,filter,phaseFilter,ordering,assignees]);
+  const orderedJobs=useMemo(()=>orderJobs(filterPhases(filterJobs(facetJobs,filter),phaseFilter).filter(job=>!assignees.length || (Array.isArray(job.work.issue?.assignees) && (job.work.issue.assignees.length ? job.work.issue.assignees.some(person=>assignees.includes(person.login)) : assignees.includes('__unassigned')))),ordering),[facetJobs,filter,phaseFilter,ordering,assignees]);
+  const visibleJobs=useMemo(()=>groupListJobs(orderedJobs,grouping).flatMap(group=>group.jobs),[orderedJobs,grouping]);
   const navigation=useMemo(()=>visibleJobs.map(job=>({id:job.id,executionID:job.work.execution_id,title:job.task.title,href:job.href})),[visibleJobs]);
   useEffect(()=>{onNavigation?.(navigation);},[navigation,onNavigation]);
   const clearFilters=()=>{setAssignees([]);setFilter([]);setPhaseFilter([]);setSearch('');setWorkflowFilter([]);setLabelFilter([]);};

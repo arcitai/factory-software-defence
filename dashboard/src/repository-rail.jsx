@@ -21,16 +21,23 @@ function PhaseCard({ stage, jobs, loaded, phaseFilter, setPhaseFilter, filter, s
   const states=NATIVE_STATES.filter(state=>jobs.some(job=>job.state===state.id));
   const selectedStates=selected ? (filter.length?filter:states.map(state=>state.id)) : [];
   const all=selected && (!filter.length || states.every(state=>filter.includes(state.id)));
-  const chooseAll=()=>{setPhaseFilter(all?[]:[stage.id]);setFilter([]);};
+  const togglePhase=()=>setPhaseFilter(previous=>previous.includes(stage.id)?previous.filter(id=>id!==stage.id):[...previous,stage.id]);
+  const chooseAll=()=>{
+    if(all){setPhaseFilter(previous=>previous.filter(id=>id!==stage.id));return;}
+    setPhaseFilter(previous=>previous.includes(stage.id)?previous:[...previous,stage.id]);
+    // Native activity is a global facet. Expand it without discarding states
+    // chosen for other phases; an empty facet already means every native state.
+    if(filter.length)setFilter(previous=>[...new Set([...previous,...states.map(state=>state.id)])]);
+  };
   function toggleState(state) {
-    const values=selectedStates.includes(state)?selectedStates.filter(value=>value!==state):[...selectedStates,state];
-    // An empty native facet means no constraint. Keep that distinction explicit:
-    // deselecting the last child clears this phase selection as well.
-    setPhaseFilter(values.length?[stage.id]:[]);setFilter(values);
+    const current=selected ? (filter.length?filter:NATIVE_STATES.map(item=>item.id)) : filter;
+    const values=selected && current.includes(state)?current.filter(value=>value!==state):[...new Set([...current,state])];
+    setPhaseFilter(previous=>values.length?(previous.includes(stage.id)?previous:[...previous,stage.id]):previous.filter(id=>id!==stage.id));
+    setFilter(values);
   }
   return <section className={`filter-card tone-${stage.tone}`} aria-label={`${stage.label} repository phase`}>
     <div className="filter-card-heading">
-      <button type="button" className="filter-card-main" aria-label={`Filter by phase: ${stage.label}`} aria-pressed={selected} disabled={!loaded} onClick={chooseAll} title={stage.description}><LifecycleGlyph definition={stage} size={14}/><span>{stage.label}</span></button>
+      <button type="button" className="filter-card-main" aria-label={`Filter by phase: ${stage.label}`} aria-pressed={selected} disabled={!loaded} onClick={togglePhase} title={stage.description}><LifecycleGlyph definition={stage} size={14}/><span>{stage.label}</span></button>
       <button className="filter-card-disclosure" type="button" aria-label={`${expanded?'Collapse':'Expand'} ${stage.label}`} aria-expanded={expanded} aria-controls={id} onClick={()=>setExpanded(!expanded)}><span className="filter-card-count">{loaded?jobs.length:'—'}</span><ChevronDown className="filter-card-chevron" size={13}/></button>
     </div>
     <div className="phase-disclosure" data-expanded={expanded} inert={!expanded} id={id}><div className="phase-disclosure-inner">
