@@ -23,6 +23,10 @@ small accepted task to skip specification. Review the catalog against the
 adopting repository's existing labels before adopting it. Unmatched, conflicting
 or stale source labels stay unresolved in the Inbox. A stage label is a
 repository declaration, never evidence that a native turn is running.
+`factory:not-planned` retains open work before Triaging. It is distinct from
+GitHub closure with reason `not_planned`; unlabeled work remains unresolved.
+The catalog supplies defaults; preserve repository edits when adopting or
+re-running Foundation. Adding a stage never starts or accepts native work.
 
 Ask the application's agent to read its existing instructions and adopt only the
 relevant material on a branch. Merge conflicts deliberately and preserve the

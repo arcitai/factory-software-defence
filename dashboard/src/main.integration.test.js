@@ -64,7 +64,9 @@ test('Inbox refreshes from created receipts without losing filters, board choice
     url: 'http://127.0.0.1:7332/', pretendToBeVisual: true,
   });
   const { window } = dom;
-  window.scrollTo = () => {};
+  let scrollY = 0;
+  Object.defineProperty(window, 'scrollY', { get: () => scrollY });
+  window.scrollTo = options => { scrollY = options.top; };
   window.HTMLDialogElement.prototype.showModal = function showModal() { this.setAttribute('open', ''); };
 
   const issues = [
@@ -104,6 +106,8 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   let issueListReads = 0;
   let statusReads = 0;
   let failNextIssueListRead = false;
+  let holdNextIssueListRead = false;
+  let releaseIssueListRead;
   let failNextIssuePreviewRead = false;
   let failNextIssueStart = false;
   let issueStartRequests = 0;
@@ -139,7 +143,12 @@ test('Inbox refreshes from created receipts without losing filters, board choice
       const page = Number(url.searchParams.get('page') || 1);
       const selected = issues.filter(issue => stateFilter === 'all' || issue.state === stateFilter).sort((a, b) => b.number - a.number);
       const pageIssues = selected.slice((page - 1) * 6, page * 6);
-      return jsonResponse({ issues: pageIssues, page, state: stateFilter, loaded_count: pageIssues.length, total: null, next_page: selected.length > page * 6 ? page + 1 : null });
+      const response = jsonResponse({ issues: pageIssues, page, state: stateFilter, loaded_count: pageIssues.length, total: null, next_page: selected.length > page * 6 ? page + 1 : null });
+      if (holdNextIssueListRead) {
+        holdNextIssueListRead = false;
+        return new Promise(resolve => { releaseIssueListRead = () => resolve(response); });
+      }
+      return response;
     }
     if (url.pathname === '/api/v1/issues/preview') {
       const input = JSON.parse(options.body);
@@ -245,14 +254,10 @@ test('Inbox refreshes from created receipts without losing filters, board choice
 
   assert.equal(document.querySelector('button[aria-label="Board"]')?.getAttribute('aria-pressed'), 'true');
   assert.ok(document.querySelector('.run-column-heading [data-lucide="inbox"]') || document.querySelector('#board-triage'), 'phase catalog drives board columns');
-  assert.ok(document.querySelector('.run-card .phase-filter-badge[aria-label="Filter by repository phase: Needs review"]'));
-  const reviewPhaseCard = document.querySelector('.phase-filter-option[aria-label="Filter by repository phase: Needs review"]');
-  assert.ok(reviewPhaseCard?.classList.contains('phase-filter-card') && reviewPhaseCard.classList.contains('tone-violet') && reviewPhaseCard.querySelector('svg'), 'the rail restores an individual catalog-colored phase card and category glyph');
-  await act(async () => { reviewPhaseCard.focus(); });
-  const railTooltip = reviewPhaseCard.closest('.phase-rail-control').querySelector('[role="tooltip"]');
-  assert.equal(railTooltip.hidden, false, 'keyboard focus opens the filter card description');
-  assert.match(railTooltip.textContent, /independent review/);
-  await act(async () => { reviewPhaseCard.blur(); });
+  assert.ok(document.querySelector('.run-card .phase-filter-badge[aria-label="Filter by repository phase: Reviewing"]'));
+  await act(async()=>{const select=document.querySelector('[aria-label="Filter rail"]');select.value='native';select.dispatchEvent(new window.Event('change',{bubbles:true}));});
+  const reviewCategory = document.querySelector('.filter-card-main[aria-label="Filter by native category: Needs review"]');
+  assert.ok(reviewCategory?.closest('.filter-card.tone-violet') && reviewCategory.querySelector('svg'), 'the category card uses the native catalog, independently of the phase board');
   assert.ok(document.querySelector('.run-card .native-filter-badge[aria-label="Filter by native state: Native turn completed · needs review"]'));
   assert.ok(document.querySelector('.run-card .native-filter-badge svg'), 'native outcome badges reuse their catalogued category glyph');
   const unstartedCard = [...document.querySelectorAll('.run-card')].find(card => card.querySelector('.run-card-title')?.textContent.includes('Draft target issue'));
@@ -290,8 +295,8 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   await click(document.querySelector('button[aria-label="List"]'));
   const reviewRow = [...document.querySelectorAll('.task-row')].find(row => row.textContent.includes('Prior needs review'));
   assert.ok(reviewRow, 'list view preserves the accepted row layout');
-  assert.ok(reviewRow.querySelector('.phase-row-icon.tone-violet'), 'the left category glyph uses the shared review tone');
-  assert.ok(reviewRow.querySelector('.task-row-actions .phase-filter-badge[aria-label="Filter by repository phase: Needs review"]'), 'the source phase is compact and on the right');
+  assert.ok(reviewRow.querySelector('.phase-row-icon.tone-pink'), 'the left category glyph uses the shared review tone');
+  assert.ok(reviewRow.querySelector('.task-row-actions .phase-filter-badge[aria-label="Filter by repository phase: Reviewing"]'), 'the source phase is compact and on the right');
   assert.ok(reviewRow.querySelector('.task-row-actions .native-filter-badge[aria-label="Filter by native state: Native turn completed · needs review"]'), 'native history stays separate from repository phase');
   assert.equal(reviewRow.querySelectorAll('a a').length, 0);
   assert.equal(reviewRow.querySelector('.contributor-role'), null, 'list rows keep contributor roles out of repeated visible metadata');
@@ -322,7 +327,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   await click(document.querySelector('button[aria-label="Board"]'));
   assert.equal(document.querySelectorAll('a a').length, 0, 'board issue and contributor links also remain valid siblings');
 
-  const reviewPhaseBadge = document.querySelector('.run-card .phase-filter-badge[aria-label="Filter by repository phase: Needs review"]');
+  const reviewPhaseBadge = document.querySelector('.run-card .phase-filter-badge[aria-label="Filter by repository phase: Reviewing"]');
   await click(reviewPhaseBadge);
   assert.equal(reviewPhaseBadge.getAttribute('aria-pressed'), 'true');
   assert.deepEqual([...document.querySelectorAll('.run-card-title')].map(node => node.textContent), ['Prior needs review'], 'phase badge filters its actual GitHub phase');
@@ -331,7 +336,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
 
   const phaseFacet = document.querySelector('button[aria-label="Filter by phase"]');
   await click(phaseFacet);
-  const phaseOption = [...phaseFacet.closest('.facet-container').querySelectorAll('.facet-option[role="checkbox"]')].find(button => button.textContent.includes('Needs review'));
+  const phaseOption = [...phaseFacet.closest('.facet-container').querySelectorAll('.facet-option[role="checkbox"]')].find(button => button.textContent.includes('Reviewing'));
   await click(phaseOption);
   assert.deepEqual([...document.querySelectorAll('.run-card-title')].map(node => node.textContent), ['Prior needs review'], 'phase facet uses the same repository projection as row badges');
   await click(buttonMatching(phaseFacet.closest('.facet-container'), text => text === 'Reset'));
@@ -361,12 +366,14 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   async function toggleNativeReviewFilter() {
     const trigger = document.querySelector('button[aria-label="Filter by native state"]');
     if (trigger.getAttribute('aria-expanded') !== 'true') await click(trigger);
-    const option = [...trigger.closest('.facet-container').querySelectorAll('.facet-option[role="checkbox"]')].find(button => button.textContent.includes('Needs review'));
+    const option = [...trigger.closest('.facet-container').querySelectorAll('.facet-option[role="checkbox"]')].find(button => button.textContent.toLowerCase().includes('needs review'));
     await click(option);
   }
   const nativeReviewSelected = () => document.querySelector('button[aria-label="Filter by native state"]')?.classList.contains('is-selected');
 
   const targetLink = [...document.querySelectorAll('.run-card-link')].find(link => link.textContent.includes('Draft target issue'));
+  scrollY = 640;
+  document.querySelector('.kanban-scroll').scrollLeft = 360;
   await click(targetLink);
   await waitFor(() => document.querySelector('.issue-context textarea[maxlength="16000"]'), 'issue detail should load its start draft');
   const contributorDetail = document.querySelector('.task-metadata .issue-contributors:not(.is-compact)');
@@ -397,7 +404,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
     assignees: [{ login: 'reviewer', profile_url: 'https://github.com/reviewer', avatar_url: 'https://avatars.githubusercontent.com/u/78?v=4' }],
   });
   await click(buttonMatching(document, text => text === 'Refresh issue context'));
-  await waitFor(() => detailField('Repository phase') === 'Needs review' && document.querySelector('.inbox-body')?.textContent === 'Refreshed issue body after provider recovery.', 'successful preview recovery restores current phase and body');
+  await waitFor(() => detailField('Repository phase') === 'Reviewing' && document.querySelector('.inbox-body')?.textContent === 'Refreshed issue body after provider recovery.', 'successful preview recovery restores current phase and body');
   assert.equal(detailField('Readiness'), 'Readiness unknown');
   assert.match(detailField('Labels') || '', /factory:review/);
   const recoveredContributors = document.querySelector('.task-metadata .issue-contributors:not(.is-compact)');
@@ -417,7 +424,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   assert.match(nativeStartAlert?.textContent || '', /Native Start error/);
   assert.doesNotMatch(nativeStartAlert?.textContent || '', /Provider preview unavailable/);
   assert.equal(detailField('Source state'), 'Open', 'native Start failure does not mark provider source state stale');
-  assert.equal(detailField('Repository phase'), 'Needs review', 'native Start failure does not stale the successful provider phase');
+  assert.equal(detailField('Repository phase'), 'Reviewing', 'native Start failure does not stale the successful provider phase');
   assert.match(detailField('Contributors') || '', /Authormaintainer[\s\S]*Assigneereviewer/, 'contributors remain current after native Start failure');
   assert.ok(document.querySelector('.task-metadata .issue-contributors [aria-label="Author: maintainer"]'));
   assert.equal([...document.querySelectorAll('.task-metadata dt')].some(node => /last loaded/.test(node.textContent)), false, 'native Start failure does not mark issue metadata stale');
@@ -441,6 +448,9 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   const closeDetail = document.querySelector('a[aria-label="Close issue detail"]');
   await click(closeDetail);
   await waitFor(() => document.querySelector('.new-issue-action'), 'Inbox should return from issue detail');
+  assert.equal(scrollY, 640, 'detail return restores the Inbox position even when the initial route had no hash');
+  assert.equal(document.querySelector('.kanban-scroll').scrollLeft, 360, 'detail return retains horizontal board position');
+  assert.equal(document.activeElement?.getAttribute('href'), targetLink.getAttribute('href'), 'detail return restores focus to the issue');
 
   const search = document.querySelector('input[aria-label="Search loaded work"]');
   await act(async () => { setValue(search, 'preserved search phrase', window); });
@@ -525,7 +535,11 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   assert.match(document.querySelector('[role="alert"]')?.textContent || '', /Repository data stale\. Provider read timed out\./, 'a failed post-receipt issue read keeps the previous snapshot marked stale');
   assert.equal(document.body.textContent.includes('No issues on this page.'), false, 'a failed read is not presented as an empty closed page');
   await click(document.querySelector('button[aria-label^="Repository scope:"]'));
+  holdNextIssueListRead = true;
   await click(buttonMatching(document, text => text === 'Refresh issues'));
+  await waitFor(() => releaseIssueListRead && document.querySelector('.repository-loading'), 'retry should remain visibly pending');
+  assert.match(document.querySelector('[role="alert"]')?.textContent || '', /Repository data stale\. Provider read timed out\./, 'retry keeps the failed snapshot stale until a successful response');
+  await act(async () => { releaseIssueListRead(); });
   await waitFor(() => ![...document.querySelectorAll('[role="alert"]')].some(node => node.textContent.includes('Repository data stale.')), 'manual issue refresh should clear the stale notice after a successful read');
   const priorOpenReads = requests.filter(request => request.pathname === '/api/v1/issues' && request.method === 'GET' && request.search.includes('state=open')).length;
   await act(async () => { setValue(document.querySelector('select[aria-label="Repository issue scope"]'), 'open', window); });

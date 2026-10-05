@@ -1,5 +1,10 @@
 [
   {
+    "name": "factory:not-planned",
+    "color": "8B8994",
+    "description": "Open work retained before triage; no implementation commitment"
+  },
+  {
     "name": "factory:triage",
     "color": "D9DDE5",
     "description": "Needs bounded scope and capability routing"

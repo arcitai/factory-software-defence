@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { boardColumns, filterJobs, filterPhases, groupJobsByBoardColumn, jobCounts, phaseCounts, searchJobs, statusGroups } from './runs-board.js';
+import { boardColumns, filterJobs, filterPhases, groupJobsByBoardColumn, jobCounts, phaseCounts, searchJobs, statusGroups, toggleNativeFilter } from './runs-board.js';
 
 const jobs = [
   ['not_started', 'unresolved'], ['running', 'implementing'], ['needs_review', 'needs_review'],
@@ -15,7 +15,7 @@ test('the phase board partitions loaded and unresolved source records', () => {
   const columns = groupJobsByBoardColumn(jobs);
   assert.deepEqual(Object.keys(columns), boardColumns.map(stage => stage.id));
   assert.equal(Object.values(columns).flat().length, jobs.length);
-  assert.deepEqual(phaseCounts(jobs), { triage: 0, ready_to_spec: 0, creating_spec: 0, ready_to_implement: 0, implementing: 1, needs_review: 1, needs_attention: 1, done: 1, closed: 1, unresolved: 1 });
+  assert.deepEqual(phaseCounts(jobs), { not_planned: 0, triage: 0, ready_to_spec: 0, creating_spec: 0, ready_to_implement: 0, implementing: 1, needs_review: 1, needs_attention: 1, done: 1, closed: 1, unresolved: 1 });
 });
 
 test('repository phase and native outcome filters remain separate and intersect', () => {
@@ -33,4 +33,27 @@ test('native outcome counts derive from the catalog and search includes source p
   });
   assert.deepEqual(searchJobs(jobs, 'implementing').map(job => job.state), ['running']);
   assert.deepEqual(searchJobs(jobs, 'not_loaded').map(job => job.state), ['not_started']);
+});
+
+test('category selection expands catalog substates so individual deselection remains effective', () => {
+  const selected = toggleNativeFilter(['running'], 'needs_attention');
+  assert.deepEqual(selected, ['running', ...statusGroups.find(group => group.id === 'needs_attention').states]);
+  const withoutFailure = toggleNativeFilter(selected, 'failed');
+  assert.deepEqual(filterJobs(jobs, withoutFailure).map(job => job.state), ['running', 'interrupted', 'unknown']);
+  assert.deepEqual(toggleNativeFilter(selected, 'needs_attention'), ['running']);
+  assert.deepEqual(toggleNativeFilter(['needs_attention'], 'failed'), ['interrupted', 'unknown'], 'legacy group IDs normalize before toggling');
+  assert.deepEqual(toggleNativeFilter(selected, 'all'), []);
+});
+
+test('grouping and ordering preserve source/native separation and every visible issue', async () => {
+  const {groupListJobs,orderJobs}=await import('./runs-board.js');
+  for(const mode of ['none','phase','native']) {
+    const grouped=groupListJobs(jobs,mode);
+    assert.deepEqual(grouped.flatMap(group=>group.jobs.map(job=>job.id)).sort(),jobs.map(job=>job.id).sort());
+  }
+  const original=[{id:'a',task:{title:'Zebra'},updated_at:'2026-01-01'}, {id:'b',task:{title:'Alpha'},updated_at:'2026-01-02'}];
+  assert.deepEqual(orderJobs(original,'title').map(job=>job.id),['b','a']);
+  assert.deepEqual(orderJobs(original,'oldest').map(job=>job.id),['a','b']);
+  assert.deepEqual(orderJobs(original).map(job=>job.id),['b','a']);
+  assert.equal(original[0].id,'a','sorting must not mutate the source snapshot');
 });

@@ -3,11 +3,21 @@ import { ISSUE_STAGES, NATIVE_GROUPS, NATIVE_STATES, nativeState } from '../../f
 export const statusGroups = NATIVE_GROUPS;
 export const boardColumns = ISSUE_STAGES;
 const knownStates = new Set(NATIVE_STATES.map(state => state.id));
+const nativeFilterStates = selected => [...new Set(selected.flatMap(id => statusGroups.find(group => group.id === id)?.states || [id]))];
+
+// Store the actual substates so deselecting one after Select all (or a category)
+// cannot leave it selected implicitly through an overlapping group ID.
+export function toggleNativeFilter(selected, value) {
+  if (value === 'all') return [];
+  const previous = nativeFilterStates(selected), states = nativeFilterStates([value]);
+  return states.every(state => previous.includes(state))
+    ? previous.filter(state => !states.includes(state)) : [...new Set([...previous, ...states])];
+}
 
 export function filterJobs(jobs, filter) {
   const selected = Array.isArray(filter) ? filter : [filter];
   if (!selected.length || selected.includes('all')) return jobs;
-  const states = new Set(selected.flatMap(id => statusGroups.find(group => group.id === id)?.states || [id]));
+  const states = new Set(nativeFilterStates(selected));
   return jobs.filter(job => states.has(job.state));
 }
 
@@ -68,3 +78,26 @@ export function jobsByRecentActivity(jobs) {
 }
 export function jobDisplayTitle(job) { return job.task?.title || job.github_issue_title || job.task?.source_url || job.id; }
 export function githubIssueReference(job) { const match = job.task?.source_url?.match(/\/issues\/(\d+)\/?$/); return match ? `#${match[1]}` : ''; }
+
+export function orderJobs(jobs, ordering = 'recent') {
+  if (ordering === 'title') return [...jobs].sort((a,b)=>jobDisplayTitle(a).localeCompare(jobDisplayTitle(b)) || a.id.localeCompare(b.id));
+  const sorted=jobsByRecentActivity(jobs);
+  return ordering==='oldest' ? sorted.reverse() : sorted;
+}
+
+export function groupListJobs(jobs, grouping) {
+  if (grouping === 'none') return [{id:'all',label:'All work',jobs}];
+  const definitions=grouping==='phase'?ISSUE_STAGES:NATIVE_STATES;
+  const groups=definitions.map(definition=>({...definition,jobs:[]}));
+  for (const job of jobs) {
+    const key=grouping==='phase'?job.work?.phase?.id:job.state;
+    const group=groups.find(item=>item.id===key);
+    if(group)group.jobs.push(job);
+    else {
+      let other=groups.find(item=>item.id==='unrecognized');
+      if(!other){other={id:'unrecognized',label:'Unrecognized state',tone:'orange',jobs:[]};groups.push(other);}
+      other.jobs.push(job);
+    }
+  }
+  return groups.filter(group=>group.jobs.length);
+}
