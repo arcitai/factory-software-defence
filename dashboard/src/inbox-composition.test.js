@@ -94,6 +94,13 @@ test('approved composition keeps native disclosure, source phases and checkbox f
     await click([...phaseCard.querySelectorAll('[role="checkbox"]')].find(button=>button.textContent.includes('Unknown')));
     assert.deepEqual(titles(),['running'],'child deselection preserves other phases and native constraints');
     assert.equal(document.querySelector('[aria-label="Filter by phase: Done"]').getAttribute('aria-pressed'),'true');
+    await click(facet('native state'));
+    await click(option('native state','Unknown'));
+    await click(option('native state','Running'));
+    assert.deepEqual(titles(),['unknown']);
+    await click([...phaseCard.querySelectorAll('[role="checkbox"]')].find(button=>button.textContent.includes('Unknown')));
+    assert.deepEqual(titles(),[],'last-child deselection keeps Done constrained to Unknown, never revealing Done/Running');
+    assert.equal(document.querySelector('[aria-label="Filter by phase: Done"]').getAttribute('aria-pressed'),'true');
     await clear();
     const railSelect=document.querySelector('[aria-label="Filter rail"]');
     await act(async()=>{railSelect.value='native';railSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
@@ -179,6 +186,7 @@ test('approved composition keeps native disclosure, source phases and checkbox f
     assert.ok(row.querySelector('.label-summary[aria-label^="2 labels:"]'));
     assert.doesNotMatch(document.body.textContent, /\b(?:tokens|cost|awaiting acceptance|succeeded)\b/i);
     await click(document.querySelector('[aria-label="Board"]'));
+    assert.deepEqual(navigation.map(item=>item.title),[...document.querySelectorAll('.run-card-title')].map(node=>node.textContent),'detail navigation follows board column order');
     const board = document.querySelector('.kanban-scroll');
     assert.equal(board.tabIndex, 0);
     assert.match(board.getAttribute('aria-label'), /scroll horizontally/);

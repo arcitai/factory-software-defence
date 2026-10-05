@@ -32,7 +32,15 @@ function PhaseCard({ stage, jobs, loaded, phaseFilter, setPhaseFilter, filter, s
   function toggleState(state) {
     const current=selected ? (filter.length?filter:NATIVE_STATES.map(item=>item.id)) : filter;
     const values=selected && current.includes(state)?current.filter(value=>value!==state):[...new Set([...current,state])];
-    setPhaseFilter(previous=>values.length?(previous.includes(stage.id)?previous:[...previous,stage.id]):previous.filter(id=>id!==stage.id));
+    if(!values.length){
+      const remaining=phaseFilter.filter(id=>id!==stage.id);
+      setPhaseFilter(remaining);
+      // Deselecting this phase must not clear other phases' native constraint.
+      // Only the final phase/child selection resets both facets to All work.
+      if(!remaining.length)setFilter([]);
+      return;
+    }
+    setPhaseFilter(previous=>previous.includes(stage.id)?previous:[...previous,stage.id]);
     setFilter(values);
   }
   return <section className={`filter-card tone-${stage.tone}`} aria-label={`${stage.label} repository phase`}>
