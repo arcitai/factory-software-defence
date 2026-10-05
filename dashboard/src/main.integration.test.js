@@ -254,7 +254,8 @@ test('Inbox refreshes from created receipts without losing filters, board choice
 
   assert.equal(document.querySelector('button[aria-label="Board"]')?.getAttribute('aria-pressed'), 'true');
   assert.ok(document.querySelector('.run-column-heading [data-lucide="inbox"]') || document.querySelector('#board-triage'), 'phase catalog drives board columns');
-  assert.ok(document.querySelector('.run-card .phase-filter-badge[aria-label="Filter by repository phase: Needs review"]'));
+  assert.ok(document.querySelector('.run-card .phase-filter-badge[aria-label="Filter by repository phase: Reviewing"]'));
+  await act(async()=>{const select=document.querySelector('[aria-label="Filter rail"]');select.value='native';select.dispatchEvent(new window.Event('change',{bubbles:true}));});
   const reviewCategory = document.querySelector('.filter-card-main[aria-label="Filter by native category: Needs review"]');
   assert.ok(reviewCategory?.closest('.filter-card.tone-violet') && reviewCategory.querySelector('svg'), 'the category card uses the native catalog, independently of the phase board');
   assert.ok(document.querySelector('.run-card .native-filter-badge[aria-label="Filter by native state: Native turn completed · needs review"]'));
@@ -294,8 +295,8 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   await click(document.querySelector('button[aria-label="List"]'));
   const reviewRow = [...document.querySelectorAll('.task-row')].find(row => row.textContent.includes('Prior needs review'));
   assert.ok(reviewRow, 'list view preserves the accepted row layout');
-  assert.ok(reviewRow.querySelector('.phase-row-icon.tone-violet'), 'the left category glyph uses the shared review tone');
-  assert.ok(reviewRow.querySelector('.task-row-actions .phase-filter-badge[aria-label="Filter by repository phase: Needs review"]'), 'the source phase is compact and on the right');
+  assert.ok(reviewRow.querySelector('.phase-row-icon.tone-pink'), 'the left category glyph uses the shared review tone');
+  assert.ok(reviewRow.querySelector('.task-row-actions .phase-filter-badge[aria-label="Filter by repository phase: Reviewing"]'), 'the source phase is compact and on the right');
   assert.ok(reviewRow.querySelector('.task-row-actions .native-filter-badge[aria-label="Filter by native state: Native turn completed · needs review"]'), 'native history stays separate from repository phase');
   assert.equal(reviewRow.querySelectorAll('a a').length, 0);
   assert.equal(reviewRow.querySelector('.contributor-role'), null, 'list rows keep contributor roles out of repeated visible metadata');
@@ -326,7 +327,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   await click(document.querySelector('button[aria-label="Board"]'));
   assert.equal(document.querySelectorAll('a a').length, 0, 'board issue and contributor links also remain valid siblings');
 
-  const reviewPhaseBadge = document.querySelector('.run-card .phase-filter-badge[aria-label="Filter by repository phase: Needs review"]');
+  const reviewPhaseBadge = document.querySelector('.run-card .phase-filter-badge[aria-label="Filter by repository phase: Reviewing"]');
   await click(reviewPhaseBadge);
   assert.equal(reviewPhaseBadge.getAttribute('aria-pressed'), 'true');
   assert.deepEqual([...document.querySelectorAll('.run-card-title')].map(node => node.textContent), ['Prior needs review'], 'phase badge filters its actual GitHub phase');
@@ -335,7 +336,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
 
   const phaseFacet = document.querySelector('button[aria-label="Filter by phase"]');
   await click(phaseFacet);
-  const phaseOption = [...phaseFacet.closest('.facet-container').querySelectorAll('.facet-option[role="checkbox"]')].find(button => button.textContent.includes('Needs review'));
+  const phaseOption = [...phaseFacet.closest('.facet-container').querySelectorAll('.facet-option[role="checkbox"]')].find(button => button.textContent.includes('Reviewing'));
   await click(phaseOption);
   assert.deepEqual([...document.querySelectorAll('.run-card-title')].map(node => node.textContent), ['Prior needs review'], 'phase facet uses the same repository projection as row badges');
   await click(buttonMatching(phaseFacet.closest('.facet-container'), text => text === 'Reset'));
@@ -403,7 +404,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
     assignees: [{ login: 'reviewer', profile_url: 'https://github.com/reviewer', avatar_url: 'https://avatars.githubusercontent.com/u/78?v=4' }],
   });
   await click(buttonMatching(document, text => text === 'Refresh issue context'));
-  await waitFor(() => detailField('Repository phase') === 'Needs review' && document.querySelector('.inbox-body')?.textContent === 'Refreshed issue body after provider recovery.', 'successful preview recovery restores current phase and body');
+  await waitFor(() => detailField('Repository phase') === 'Reviewing' && document.querySelector('.inbox-body')?.textContent === 'Refreshed issue body after provider recovery.', 'successful preview recovery restores current phase and body');
   assert.equal(detailField('Readiness'), 'Readiness unknown');
   assert.match(detailField('Labels') || '', /factory:review/);
   const recoveredContributors = document.querySelector('.task-metadata .issue-contributors:not(.is-compact)');
@@ -423,7 +424,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   assert.match(nativeStartAlert?.textContent || '', /Native Start error/);
   assert.doesNotMatch(nativeStartAlert?.textContent || '', /Provider preview unavailable/);
   assert.equal(detailField('Source state'), 'Open', 'native Start failure does not mark provider source state stale');
-  assert.equal(detailField('Repository phase'), 'Needs review', 'native Start failure does not stale the successful provider phase');
+  assert.equal(detailField('Repository phase'), 'Reviewing', 'native Start failure does not stale the successful provider phase');
   assert.match(detailField('Contributors') || '', /Authormaintainer[\s\S]*Assigneereviewer/, 'contributors remain current after native Start failure');
   assert.ok(document.querySelector('.task-metadata .issue-contributors [aria-label="Author: maintainer"]'));
   assert.equal([...document.querySelectorAll('.task-metadata dt')].some(node => /last loaded/.test(node.textContent)), false, 'native Start failure does not mark issue metadata stale');

@@ -40,7 +40,7 @@ and provider/native evidence own meaning.
   or separate Status details row. Folding retains selection. Repository phases
   remain separately accessible through the Phase facet, row/card badges and
   phase Kanban; native category selection never sets a repository phase.
-- Keep a stable count line, repository disclosure and compact toolbar. Opening
+- Keep the count, repository disclosure and compact filters in one toolbar. Opening
   filters or loading results must not push the list down. Do not add a misleading
   repository-total badge to the Inbox nav.
 - Rows/cards show the title, catalogued repository phase, separate native state,
@@ -132,18 +132,18 @@ states. Match the accepted composition without copying a reference's clipping.
 - At 1440px, compare the candidate to the approved reference: roughly203px
   navigation,56px main margins,212px status rail and48px gap leave a wide issue
   list. Retain the36px/40px project heading, compact facets to the left of view
-  controls/search, one stable results/source line and fine row dividers. Source
+  controls/search, one toolbar with inline result counts and fine row dividers. Source
   identity/closure/freshness, real activity/work type and author/assignee/label
   metadata have readable rows beneath14px/20px titles, rather than a compressed
   single metadata line. An unstarted issue has no invented work type or attempt.
-- At320px and390px, navigation and Native status discovery stay labelled, facets
+- At320px and390px, navigation and Repository workflow discovery stay labelled, facets
   stay visible, and long project/issue titles, identities and metadata wrap with
   no page overflow. The collapsed status control reveals the same cards and
   count/name interactions. Board overflow belongs to its focusable region;
   columns remain horizontal, with a visible scrollbar and keyboard scrolling.
 - In light and dark themes, inspect category/name/count focus, expanded and folded
   selection, provider label colors/count/tooltips, actual avatars and author vs
-  assignee disclosure. Running/implementation is blue, review violet, attention
+  assignee disclosure. Running/implementation is blue, native review violet, repository review pink, attention
   orange, failed red and true completed source closure green. A running native
   turn on a completed GitHub issue must still show both states.
 - Exercise whole checkbox rows, Select all, individual deselection, Reset and
@@ -162,8 +162,32 @@ states. Match the accepted composition without copying a reference's clipping.
 
 The shared owner remains `adlc/lifecycle.json` → `factory/issue-lifecycle.mjs`,
 with GitHub metadata from the provider and normalized Codex states from the native
-engine. Inbox cards/facets/rows/board derive from these definitions. This
-presentation restoration changes no catalog schema, readiness mapping, provider
-or native protocol, CLI/API, method/kit/Foundation, ingress/setup, architecture
-diagram or installation policy. Those projections and ownership boundaries remain
-compatible; the repository-only contributor review rule is not exported.
+engine. Inbox cards/facets/rows/board derive from these definitions. The catalog adds an explicit open `Not planned` stage before Triaging, using
+`factory:not-planned`; it is not GitHub's closed/not-planned reason. Unlabeled
+work remains unresolved. Existing readiness names, native states and protocols
+stay compatible. The flat label export and Foundation guidance follow the same
+catalog; adoption never overwrites a repository's edited labels. The
+repository-only contributor review rule is not exported.
+
+## Accepted October 5 refinement
+
+The owner approved the local design and its Inbox release. At very wide widths,
+keep the heading aligned with the toolbar and rail; do not center it in a second
+capped container. Use dedicated label/contributor columns at wide widths and a
+compact metadata footer at ordinary/narrow widths. Repository workflow is the
+default rail; Display options can select the original native rail. The phase
+children show only observed native activity in loaded work. They do not invent
+Awaiting maintainer or other unsupported badges. Select all checks the children;
+individual deselection changes the actual filter. Expansion alone never filters.
+
+Display options groups the loaded list by repository Status or Agent activity,
+with independently collapsible groups and activity/title ordering. List, detail
+navigation and board use the same ordered filtered records. Empty board columns
+can be hidden. Readable cards use subtle surfaces, restrained hover motion and
+reduced-motion support. Counts always mean loaded scope.
+
+Analytics with historical data, two-way GitHub label editing/dynamic workflow
+mapping, and drag/drop repository transitions were explicitly separated into
+follow-up issues by the owner. Do not ship preview sample data, dead controls or
+pretend these backend capabilities are implemented. The current label chips and
+facets continue to use the provider's actual names/colors on refresh.

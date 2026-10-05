@@ -6,7 +6,7 @@ import { stateLabel, friendlyName, formatTimestamp } from './task-display.jsx';
 import { TaskDetail } from './task-detail.jsx';
 import { RunsOverview } from './runs-overview.jsx';
 import { workRecords, canonicalIssue, closureReasonLabel, projectIssuePhase } from '../../factory/issue-lifecycle.mjs';
-import { filterJobs, filterPhases, searchJobs, jobsByRecentActivity, jobCounts, phaseCounts } from './runs-board.js';
+import { filterJobs, filterPhases, searchJobs, orderJobs, jobCounts, phaseCounts } from './runs-board.js';
 import { filterTaskFacets } from './task-filters.jsx';
 import { Contributors } from './contributors.jsx';
 
@@ -16,8 +16,10 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
   const [state,setState] = useState('open');
   const [snapshot,setSnapshot] = useState(null), [loading,setLoading] = useState(false), [error,setError] = useState('');
   const [drafts,setDrafts] = useState({}), [previewBusy,setPreviewBusy] = useState(false), [previewError,setPreviewError] = useState(''), [starting,setStarting] = useState(false), [startError,setStartError] = useState(null);
+  const [assignees,setAssignees]=useState([]);
   const [filter,setFilter] = useState([]), [phaseFilter,setPhaseFilter] = useState([]), [search,setSearch] = useState(''), [workflowFilter,setWorkflowFilter] = useState([]), [labelFilter,setLabelFilter] = useState([]);
   const [runsView,setRunsView] = useState(()=>window.localStorage.getItem('factory-runs-view') === 'board' ? 'board' : 'list');
+  const [grouping,setGrouping]=useState('none'), [ordering,setOrdering]=useState('recent');
   const pending=useRef(null), previewPending=useRef(null), alive=useRef(true);
   const draftsRef=useRef(drafts);draftsRef.current=drafts;
   const records=useMemo(()=>workRecords(jobs,snapshot?.issues || [],{sourceStale:Boolean(snapshot&&(error||snapshot.state!==state))}),[jobs,snapshot,error,state]);
@@ -28,10 +30,10 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
       href:record.identity ? issueHref(record.key) : `#/runs/${record.execution_id}`};
   }),[records,jobs]);
   const facetJobs=useMemo(()=>filterTaskFacets(searchJobs(overviewJobs,search),workflowFilter).filter(job=>!labelFilter.length || job.work.issue?.labels.some(label=>labelFilter.includes(label.name))),[overviewJobs,search,workflowFilter,labelFilter]);
-  const visibleJobs=useMemo(()=>jobsByRecentActivity(filterPhases(filterJobs(facetJobs,filter),phaseFilter)),[facetJobs,filter,phaseFilter]);
+  const visibleJobs=useMemo(()=>orderJobs(filterPhases(filterJobs(facetJobs,filter),phaseFilter).filter(job=>!assignees.length || (Array.isArray(job.work.issue?.assignees) && (job.work.issue.assignees.length ? job.work.issue.assignees.some(person=>assignees.includes(person.login)) : assignees.includes('__unassigned')))),ordering),[facetJobs,filter,phaseFilter,ordering,assignees]);
   const navigation=useMemo(()=>visibleJobs.map(job=>({id:job.id,executionID:job.work.execution_id,title:job.task.title,href:job.href})),[visibleJobs]);
   useEffect(()=>{onNavigation?.(navigation);},[navigation,onNavigation]);
-  const clearFilters=()=>{setFilter([]);setPhaseFilter([]);setSearch('');setWorkflowFilter([]);setLabelFilter([]);};
+  const clearFilters=()=>{setAssignees([]);setFilter([]);setPhaseFilter([]);setSearch('');setWorkflowFilter([]);setLabelFilter([]);};
   const fallbackIdentity=issueKey && canonicalIssue(issueKey.replace(/^github:/,'').replace(/:(\d+)$/,'/issues/$1'));
   const selected=records.find(row=>row.key===issueKey) || (fallbackIdentity ? {key:issueKey,identity:fallbackIdentity,title:`Issue #${fallbackIdentity.number}`,url:fallbackIdentity.url,executions:[],source_status:'not_loaded'} : null);
   const edit=patch=>setDrafts(previous=>({...previous,[issueKey]:{...previous[issueKey],...patch}}));
@@ -120,7 +122,7 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
   </dl>;
   return <>
     <section className="inbox-page" aria-label="Project Inbox" hidden={Boolean(issueKey)}>
-      <RunsOverview visibleJobs={visibleJobs} jobs={overviewJobs} workflows={['software','defensive']} counts={jobCounts(overviewJobs)} phaseCounts={phaseCounts(overviewJobs)} loaded={loaded} statusError={statusError}
+      <RunsOverview assignees={assignees} setAssignees={setAssignees} grouping={grouping} setGrouping={setGrouping} ordering={ordering} setOrdering={setOrdering} visibleJobs={visibleJobs} jobs={overviewJobs} workflows={['software','defensive']} counts={jobCounts(overviewJobs)} phaseCounts={phaseCounts(overviewJobs)} loaded={loaded} statusError={statusError}
         filter={filter} setFilter={setFilter} phaseFilter={phaseFilter} setPhaseFilter={setPhaseFilter} search={search} setSearch={setSearch} workflowFilter={workflowFilter} setWorkflowFilter={setWorkflowFilter}
         labelFilter={labelFilter} setLabelFilter={setLabelFilter} clearFilters={clearFilters} runsView={runsView} setRunsView={value=>{setRunsView(value);window.localStorage.setItem('factory-runs-view',value);}}
         refresh={refreshStatus} openComposer={onNewIssue} sourceControls={sourceControls} sourceNotice={sourceNotice} sourceLoading={loading && !snapshot} sourceUnavailable={Boolean(error) && !snapshot} />

@@ -1,5 +1,5 @@
-import React, { useId, useRef, useState } from 'react';
-import { Search, List, Columns3, X, Plus, ChevronDown } from 'lucide-react';
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { Search, List, Columns3, X, Plus, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { Card } from './components/ui/card';
 import { Badge } from './components/ui/badge';
@@ -10,15 +10,25 @@ import { statusGroups, boardColumns, groupJobsByBoardColumn, jobDisplayTitle, ne
 import { NATIVE_STATES, closureReasonLabel, nativeState } from '../../factory/issue-lifecycle.mjs';
 import { Labels } from './issue-labels.jsx';
 import { Contributors } from './contributors.jsx';
+import { RepositoryRail } from './repository-rail.jsx';
+import { groupListJobs } from './runs-board.js';
 
 export function RunsOverview({ visibleJobs, jobs, workflows, counts, phaseCounts, loaded, statusError, filter, setFilter, phaseFilter, setPhaseFilter,
   search, setSearch, workflowFilter, setWorkflowFilter, clearFilters, runsView, setRunsView, refresh, openComposer, composer, labelFilter = [],
-  setLabelFilter, sourceControls, sourceNotice, sourceLoading, sourceUnavailable }) {
-  const filtering = phaseFilter.length > 0 || labelFilter.length > 0 || filter.length > 0 || Boolean(search.trim()) || workflowFilter.length > 0;
+  setLabelFilter, sourceControls, sourceNotice, sourceLoading, sourceUnavailable, grouping='none', setGrouping, ordering='recent', setOrdering, assignees=[],setAssignees }) {
+  const [rail,setRail]=useState('repository'), [hideEmpty,setHideEmpty]=useState(false);
+  const display=useRef(null);
+  useEffect(()=>{
+    const dismiss=event=>{if(display.current?.open && !display.current.contains(event.target))display.current.open=false;};
+    document.addEventListener('pointerdown',dismiss);document.addEventListener('focusin',dismiss);
+    return()=>{document.removeEventListener('pointerdown',dismiss);document.removeEventListener('focusin',dismiss);};
+  },[]);
+  const filtering = assignees.length > 0 || phaseFilter.length > 0 || labelFilter.length > 0 || filter.length > 0 || Boolean(search.trim()) || workflowFilter.length > 0;
   const selectPhase = value => setPhaseFilter(previous => value === 'all' ? [] : previous.includes(value) ? previous.filter(item => item !== value) : [...previous, value]);
   const selectStatus = value => setFilter(previous => toggleNativeFilter(previous, value));
   const nativeFilterOptions = NATIVE_STATES.map(state => ({ ...state, count: counts[state.id] || 0 }));
   const activeFilters = [
+    ...assignees.map(value=>({key:`assignee:${value}`,label:value==='__unassigned'?'Unassigned':`Assignee: ${value}`,remove:()=>setAssignees(assignees.filter(item=>item!==value))})),
     ...filter.map(value => ({ key: `native:${value}`, label: `Native: ${nativeFilterOptions.find(option => option.id === value)?.label || value}`, remove: () => selectStatus(value) })),
     ...phaseFilter.map(value => ({ key: `phase:${value}`, label: `Phase: ${boardColumns.find(stage => stage.id === value)?.label || value}`, remove: () => selectPhase(value) })),
     ...workflowFilter.map(value => ({ key: `work:${value}`, label: friendlyName(value), remove: () => setWorkflowFilter(workflowFilter.filter(item => item !== value)) })),
@@ -28,9 +38,17 @@ export function RunsOverview({ visibleJobs, jobs, workflows, counts, phaseCounts
   return <div className="runs-page">
     <div className="tasks-toolbar">
       <h2 className="sr-only">Inbox work</h2>
-      <TaskFilters jobs={jobs} availableWorkflows={workflows} workflow={workflowFilter} setWorkflow={setWorkflowFilter} filter={filter}
+      <TaskFilters assignees={assignees} setAssignees={setAssignees} jobs={jobs} availableWorkflows={workflows} workflow={workflowFilter} setWorkflow={setWorkflowFilter} filter={filter}
         setFilter={setFilter} phaseFilter={phaseFilter} setPhaseFilter={setPhaseFilter} phaseCounts={phaseCounts} labels={labelFilter} setLabels={setLabelFilter} options={nativeFilterOptions} disabled={!loaded} />
       <div className="tasks-tools">
+        {sourceControls}
+        <details ref={display} className="display-options" onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();display.current.open=false;display.current.querySelector('summary').focus();}}}><summary aria-label="Display options"><SlidersHorizontal size={15}/></summary><div className="display-popover">
+          <label>Grouping<select aria-label="Group work" value={grouping} onChange={event=>setGrouping?.(event.target.value)}><option value="none">None</option><option value="phase">Status</option><option value="native">Agent activity</option></select></label>
+          <label>Ordering<select aria-label="Order work" value={ordering} onChange={event=>setOrdering?.(event.target.value)}><option value="recent">Last activity</option><option value="oldest">Oldest activity</option><option value="title">Title</option></select></label>
+          <label>Filter rail<select aria-label="Filter rail" value={rail} onChange={event=>setRail(event.target.value)}><option value="repository">Repository workflow</option><option value="native">Native status</option></select></label>
+          <div className="display-extra-filters"><TaskFilters advanced jobs={jobs} availableWorkflows={workflows} workflow={workflowFilter} setWorkflow={setWorkflowFilter} filter={filter} setFilter={setFilter} phaseFilter={phaseFilter} setPhaseFilter={setPhaseFilter} phaseCounts={phaseCounts} options={nativeFilterOptions} disabled={!loaded}/></div>
+          <label className="display-checkbox"><input type="checkbox" checked={hideEmpty} onChange={event=>setHideEmpty(event.target.checked)}/>Hide empty board columns</label>
+        </div></details>
         <div className="view-toggle" role="group" aria-label="Work view">
           <Button variant="ghost" size="sm" className={cn(runsView === "list" && "view-active")} aria-pressed={runsView === "list"} onClick={() => setRunsView("list")} aria-label="List" title="List view"><List className="size-3.5" /><span className="sr-only">List</span></Button>
           <Button variant="ghost" size="sm" className={cn(runsView === "board" && "view-active")} aria-pressed={runsView === "board"} onClick={() => setRunsView("board")} aria-label="Board" title="Kanban board"><Columns3 className="size-3.5" /><span className="sr-only">Board</span></Button>
@@ -41,14 +59,13 @@ export function RunsOverview({ visibleJobs, jobs, workflows, counts, phaseCounts
           {search && <button type="button" className="clear-search" aria-label="Clear search" onClick={() => setSearch("")}><X className="size-3.5" /></button>}
         </div>
       </div>
-    </div>
     <div className="active-filters">
       <div className="results-summary">
         <span className="results-count" role="status">{loaded ? `${visibleJobs.length === jobs.length ? jobs.length : `${visibleJobs.length} of ${jobs.length}`} items` : "Loading work…"}</span>
         <div className="active-filter-chips" aria-label="Applied filters">{activeFilters.map(item => <button className="active-filter-chip" type="button" key={item.key} onClick={item.remove} aria-label={`Remove ${item.label} filter`} title={`Remove ${item.label} filter`}><span>{item.label}</span><X size={12} aria-hidden="true" /></button>)}</div>
         <button className="clear-all-filters" type="button" onClick={clearFilters} disabled={!filtering}>Clear filters</button>
       </div>
-      {sourceControls}
+    </div>
     </div>
     {sourceNotice}
 
@@ -57,15 +74,16 @@ export function RunsOverview({ visibleJobs, jobs, workflows, counts, phaseCounts
     {statusError && loaded && <div className="stale-banner" role="status"><span><strong>Status stale.</strong> Showing the last available task data. {statusError}</span><Button variant="outline" size="sm" onClick={refresh}>Refresh</Button></div>}
 
     <div className={cn("run-workspace", runsView === "board" && "is-board")}>
-      <TaskFilterRail counts={counts} loaded={loaded} filter={filter} setFilter={selectStatus} />
+      {rail==='native' ? <TaskFilterRail counts={counts} loaded={loaded} filter={filter} setFilter={selectStatus} />
+        : <RepositoryRail jobs={jobs} loaded={loaded} phaseFilter={phaseFilter} setPhaseFilter={setPhaseFilter} filter={filter} setFilter={setFilter}/> }
       <section className="task-results" aria-label="Work results">
         {!loaded && !statusError ? <TaskMessage kind="loading" title="Loading project work" description="Checking GitHub issues and native Codex history." />
           : !loaded && statusError ? <TaskMessage kind="error" title="Project status unavailable" description={statusError} action="Retry status" onAction={refresh} />
             : !jobs.length && sourceLoading ? <TaskMessage kind="loading" title="Loading repository work" description="Waiting for the requested provider page." />
             : !jobs.length && sourceUnavailable ? <TaskMessage kind="error" title="Repository issues unavailable" description="No issue snapshot is available. Refresh issues to retry the provider read." />
             : !visibleJobs.length ? <EmptyRuns filtered={filtering} clearFilters={clearFilters} openComposer={openComposer} />
-                : runsView === "board" ? <RunBoard jobs={visibleJobs} phaseFilter={phaseFilter} selectPhase={selectPhase} filter={filter} setFilter={setFilter} />
-                : <div className="task-list" role="list">{visibleJobs.map(job => <RunRow key={job.id} job={job} phaseFilter={phaseFilter} selectPhase={selectPhase} filter={filter} setFilter={setFilter} />)}</div>}
+                : runsView === "board" ? <RunBoard hideEmpty={hideEmpty} jobs={visibleJobs} phaseFilter={phaseFilter} selectPhase={selectPhase} filter={filter} setFilter={setFilter} />
+                : <WorkList jobs={visibleJobs} grouping={grouping} phaseFilter={phaseFilter} selectPhase={selectPhase} filter={filter} setFilter={setFilter}/>}
       </section>
     </div>
   </div>;
@@ -106,10 +124,10 @@ function TaskMessage({ kind, title, description, action, onAction }) {
   </div>;
 }
 
-function RunBoard({ jobs, phaseFilter, selectPhase, filter, setFilter }) {
+function RunBoard({ hideEmpty, jobs, phaseFilter, selectPhase, filter, setFilter }) {
   const groupedJobs = groupJobsByBoardColumn(jobs);
   return <div className="kanban-scroll" role="region" aria-label="Issue board — scroll horizontally" tabIndex={0}><div className="kanban-board">
-    {boardColumns.map(stage => <section key={stage.id} className={`run-column tone-${stage.tone}`} aria-labelledby={`board-${stage.id}`}>
+    {boardColumns.filter(stage=>!hideEmpty || groupedJobs[stage.id].length).map(stage => <section key={stage.id} className={`run-column tone-${stage.tone}`} aria-labelledby={`board-${stage.id}`}>
       <header className="run-column-heading">
         <div className="run-column-title"><LifecycleGlyph definition={stage} size={15} /><div className="min-w-0"><h2 id={`board-${stage.id}`}>{stage.label}</h2><p>{stage.description}</p></div></div>
         <Badge className="shrink-0 border-border bg-surface text-muted-foreground" aria-label={`${groupedJobs[stage.id].length} visible ${stage.label.toLowerCase()} work records`}>{groupedJobs[stage.id].length}</Badge>
@@ -194,8 +212,10 @@ function RunRow({ job, phaseFilter, selectPhase, filter, setFilter }) {
       <a href={job.href || `#/runs/${encodeURIComponent(job.id)}`} className="task-row-link" aria-label={`Open work ${title}, repository phase ${phase?.label || 'unresolved'}, native state ${stateLabel(job.state)}`}>
         <p className="task-row-title">{title}</p>
       </a>
-      <WorkMetadata job={job} />
+      <WorkMetadata job={job} separatePeople />
     </div>
+    <div className="task-row-details"><div className="task-row-labels">{job.work?.issue?.labels && <Labels labels={job.work.issue.labels}/>}</div>
+    <div className="task-row-contributors">{job.work?.issue && <Contributors {...job.work.issue} compact/>}</div></div>
     <div className="task-row-actions"><PhaseFilterButton phase={phase} phaseFilter={phaseFilter} selectPhase={selectPhase} compact />
       <NativeFilterButton job={job} filter={filter} setFilter={setFilter} /></div>
   </article>;
@@ -209,7 +229,7 @@ function EmptyRuns({ filtered, clearFilters, openComposer }) {
   </div>;
 }
 
-function WorkMetadata({ job }) {
+function WorkMetadata({ job, separatePeople=false }) {
   const record = job.work, workflow = job.workflow?.name || job.command, phase = taskPhase(job);
   const source = record?.issue;
   const sourceState = source?.state === 'closed' ? `Closed · ${closureReasonLabel(source.state_reason ?? source.stateReason)}`
@@ -227,6 +247,17 @@ function WorkMetadata({ job }) {
   return <div className="work-metadata">
     {parts.length > 0 && <div className="task-row-meta">{parts.map((part, index) => <span className="work-meta-part" key={index}>{part}</span>)}</div>}
     {activity.length > 0 && <div className="task-row-meta">{activity.map((part, index) => <span className="work-meta-part" key={index}>{part}</span>)}</div>}
-    {source && <div className="task-row-meta task-row-people">{source.author && <span>Opened by {source.author}</span>}<Contributors {...source} compact />{Array.isArray(source.labels) && <Labels labels={source.labels} />}</div>}
+    {source && !separatePeople && <div className="task-row-meta task-row-people">{source.author && <span>Opened by {source.author}</span>}<Contributors {...source} compact />{Array.isArray(source.labels) && <Labels labels={source.labels} />}</div>}
   </div>;
+}
+
+function WorkList({ jobs, grouping, ...rowProps }) {
+  const [collapsed,setCollapsed]=useState({});
+  return <div className="grouped-work">{groupListJobs(jobs,grouping).map(group=>{
+    const key=`${grouping}:${group.id}`,folded=Boolean(collapsed[key]),id=`work-group-${grouping}-${group.id}`;
+    return <section key={key} className={`work-group tone-${group.tone||'neutral'}`}>
+      {grouping!=='none' && <button className="work-group-heading" type="button" aria-expanded={!folded} aria-controls={id} onClick={()=>setCollapsed(previous=>({...previous,[key]:!folded}))}><ChevronDown size={14}/><LifecycleGlyph definition={group} size={14}/><span>{group.label}</span><span className="work-group-count">{group.jobs.length}</span></button>}
+      <div id={id} className="task-list" role="list" hidden={grouping!=='none' && folded}>{group.jobs.map(job=><RunRow key={job.id} job={job} {...rowProps}/>)}</div>
+    </section>;
+  })}</div>;
 }

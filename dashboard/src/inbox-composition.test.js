@@ -61,6 +61,25 @@ test('approved composition keeps native disclosure, source phases and checkbox f
     document.documentElement.classList.toggle('dark', theme === 'dark');
     await act(async () => root.render(React.createElement(Inbox, { key: theme, token: 'synthetic', issueKey: '', jobs, loaded: true,
       provider: { supported: true }, nativeReadiness: { ready: true }, statusError: '', refreshStatus: () => {} })));
+    const phaseCard=document.querySelector('[aria-label="Implementing repository phase"]');
+    await click(phaseCard.querySelector('[aria-label="Expand Implementing"]'));
+    await click(phaseCard.querySelector('.phase-subheading button'));
+    assert.equal(titles().includes('running'),false,'closed source remains outside Implementing even while native running');
+    assert.ok([...phaseCard.querySelectorAll('[role="checkbox"]')].every(button=>button.getAttribute('aria-checked')==='true'),'Select all visibly selects each actual child');
+    await click([...phaseCard.querySelectorAll('[role="checkbox"]')].find(button=>button.textContent.includes('Failed')));
+    assert.equal(titles().includes('failed'),false,'individual deselection after phase Select all changes the list');
+    assert.equal(titles().length,4);
+    await clear();
+    const groupSelect=document.querySelector('[aria-label="Group work"]');
+    await act(async()=>{groupSelect.value='phase';groupSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
+    const groupHeading=document.querySelector('.work-group-heading');
+    assert.ok(groupHeading);
+    await click(groupHeading);
+    assert.equal(document.getElementById(groupHeading.getAttribute('aria-controls')).hidden,true);
+    await click(groupHeading);
+    assert.equal(document.getElementById(groupHeading.getAttribute('aria-controls')).hidden,false);
+    const railSelect=document.querySelector('[aria-label="Filter rail"]');
+    await act(async()=>{railSelect.value='native';railSelect.dispatchEvent(new window.Event('change',{bubbles:true}));});
     assert.equal(document.querySelectorAll('.task-row').length, issues.length);
     assert.equal(document.querySelectorAll('.filter-card').length, NATIVE_GROUPS.length);
     assert.equal(document.querySelectorAll('button button,a a').length, 0);
@@ -109,6 +128,15 @@ test('approved composition keeps native disclosure, source phases and checkbox f
     assert.deepEqual(titles().sort(), ['running', 'unknown'], 'repository phase uses OR');
     await clear();
 
+    await click(facet('contributors'));
+    await click(option('contributors','Unassigned'));
+    assert.equal(titles().length,0,'the author does not count as an assignee');
+    await clear();
+    await click(facet('contributors'));
+    await click(option('contributors','actual-assignee'));
+    assert.equal(titles().length,issues.length,'actual source assignees filter all matching issues');
+    await clear();
+
     await click(facet('labels'));
     assert.equal(option('labels', 'blue label').querySelector('.facet-label-dot').style.backgroundColor, 'rgb(0, 117, 202)', 'facet color comes from the provider');
     await click(option('labels', 'blue label'));
@@ -126,8 +154,9 @@ test('approved composition keeps native disclosure, source phases and checkbox f
     await clear();
 
     const row = document.querySelector('.task-row');
-    assert.equal(row.querySelectorAll('.work-metadata > .task-row-meta').length, 3, 'source, activity and responsibility have readable rows');
-    assert.match(row.textContent, /Opened by source-author/);
+    assert.equal(row.querySelectorAll('.work-metadata > .task-row-meta').length, 2, 'source and activity have readable rows');
+    assert.ok(row.querySelector('.task-row-labels .label-summary'));
+    assert.ok(row.querySelector('.task-row-contributors .issue-contributors'), 'responsibility has a distinct metadata column');
     assert.ok(row.querySelector('[aria-label="Author: source-author"] img'));
     assert.ok(row.querySelector('[aria-label="Assignee: actual-assignee"]'));
     assert.ok(row.querySelector('.label-summary[aria-label^="2 labels:"]'));

@@ -6,6 +6,16 @@ retired implementation evidence remain in Git and private installation records.
 
 ## Current scoped work
 
+- [ ] [#140](https://github.com/arcitai/factory-software-defence/issues/140):
+  October 5 owner-approved Inbox release in PR #142: aligned original shell,
+  single toolbar, source workflow rail, visible child selection, grouped/sorted
+  lists, contributor filtering and improved read-only Kanban. Candidate 0.18.7
+  leaves the separate unpublished 0.18.6 ingress proposal out of this release.
+  Protected review/CI/publication and installed Z13 adoption must finish before
+  marking delivery complete. Analytics, GitHub label editing/workflow mapping and
+  Kanban writes are separate owner-selected follow-ups, not preview fixtures in
+  the production runtime.
+
 - [x] [#131](https://github.com/arcitai/factory-software-defence/issues/131):
   repository-only cross-layer contributor rule delivered by merged
   [PR #132](https://github.com/arcitai/factory-software-defence/pull/132) at

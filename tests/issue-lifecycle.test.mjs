@@ -16,7 +16,7 @@ test('the documented lifecycle catalog drives its label projection and preserves
   assert.deepEqual(DEFAULT_READINESS_LABELS, { triage: 'factory:triage', spec: 'factory:spec', ready: 'factory:ready', blocked: 'factory:blocked' });
   assert.deepEqual(readinessMapping(), DEFAULT_READINESS_LABELS);
   assert.deepEqual(exportedLabels, catalog.labels.map(({ name, color, description }) => ({ name, color, description })));
-  assert.deepEqual(ISSUE_STAGES.map(stage => stage.id), ['triage', 'ready_to_spec', 'creating_spec', 'ready_to_implement', 'implementing', 'needs_review', 'needs_attention', 'done', 'closed', 'unresolved']);
+  assert.deepEqual(ISSUE_STAGES.map(stage => stage.id), ['not_planned', 'triage', 'ready_to_spec', 'creating_spec', 'ready_to_implement', 'implementing', 'needs_review', 'needs_attention', 'done', 'closed', 'unresolved']);
   assert.ok(NATIVE_STATES.some(state => state.id === 'needs_review'));
   assert.equal(projectIssuePhase(issue(1, 'open', [{ name: 'factory:ready' }])).id, 'ready_to_implement');
   assert.equal(issueReadiness([{ name: 'factory:spec' }]).state, 'spec');
@@ -26,6 +26,7 @@ test('the documented lifecycle catalog drives its label projection and preserves
 
 test('open repository phases require one actual catalogued label and expose conflicts or missing data', () => {
   const cases = [
+    [['factory:not-planned'], 'not_planned'],
     [['factory:triage'], 'triage'],
     [['factory:spec'], 'ready_to_spec'],
     [['factory:creating-spec'], 'creating_spec'],
@@ -70,7 +71,7 @@ test('closure, reopen and stale reads stay tied to provider data without inventi
   const stale = projectIssuePhase(issue(12, 'open', [{ name: 'factory:review' }]), { sourceStatus: 'stale' });
   assert.equal(stale.id, 'unresolved');
   assert.equal(stale.resolution, 'stale');
-  assert.deepEqual(stale.observed_phase, { id: 'needs_review', label: 'Needs review' });
+  assert.deepEqual(stale.observed_phase, { id: 'needs_review', label: 'Reviewing' });
 });
 
 test('work records preserve provider phase, native outcome and off-page identity independently', () => {

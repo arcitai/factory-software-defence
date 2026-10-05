@@ -103,3 +103,9 @@ The bridge accepts the selected runtime through a narrow contract; only that
 integration knows native protocol details. Capability flags describe what is
 available. No CLI command may spin up a temporary agent server for a live action
 and then close it while the work is running.
+
+Inbox Display options groups loaded work by repository Status or Agent activity,
+orders by activity/title, switches between repository/native filter rails and
+can hide empty board columns. These are read-only view preferences. The open
+`Not planned` phase comes from the catalog label `factory:not-planned`, before
+Triaging; it is never inferred from GitHub's closed/not-planned reason.

@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { Activity, Check, ChevronDown, Layers, Tag } from 'lucide-react';
+import { Activity, Check, ChevronDown, Layers, Tag, UsersRound } from 'lucide-react';
 import { LifecycleGlyph, friendlyName } from './task-display.jsx';
 import { ISSUE_STAGES } from '../../factory/issue-lifecycle.mjs';
 
@@ -8,13 +8,14 @@ export function filterTaskFacets(jobs,workTypes) {
   const chosen=selections(workTypes);
   return jobs.filter(job=>!chosen.length||chosen.includes(job.workflow?.name||job.command));
 }
-export function TaskFilters({jobs,availableWorkflows=[],workflow,setWorkflow,filter,setFilter,phaseFilter,setPhaseFilter,phaseCounts={},options,disabled,labels=[],setLabels}) {
+export function TaskFilters({jobs,availableWorkflows=[],workflow,setWorkflow,filter,setFilter,phaseFilter,setPhaseFilter,phaseCounts={},options,disabled,labels=[],setLabels,assignees=[],setAssignees,advanced=false}) {
   const workTypes=[...new Set([...availableWorkflows,...jobs.map(job=>job.workflow?.name||job.command)].filter(Boolean))].sort();
-  return <div className="task-facets" aria-label="Work filters">
-    <Facet label="Work type" value={workflow} change={setWorkflow} disabled={disabled} Icon={Layers} options={workTypes.map(id=>({id,label:friendlyName(id)}))}/>
-    {setPhaseFilter&&<Facet label="Phase" value={phaseFilter} change={setPhaseFilter} disabled={disabled} Icon={Layers} options={ISSUE_STAGES.map(stage=>({...stage,count:phaseCounts[stage.id]||0}))}/>}
-    {setLabels&&<Facet label="Labels" value={labels} change={setLabels} disabled={disabled} Icon={Tag} searchable options={[...new Map(jobs.flatMap(job=>job.work?.issue?.labels||[]).map(label=>[label.name,label])).values()].sort((a,b)=>a.name.localeCompare(b.name)).map(label=>({id:label.name,label:label.name,color:label.color}))}/>}
-    <Facet label="Native state" value={filter} change={setFilter} disabled={disabled} Icon={Activity} options={options.filter(option=>option.id!=='all')}/>
+  return <div className="task-facets" aria-label={advanced?"Additional filters":"Work filters"}>
+    {advanced&&<Facet label="Work type" value={workflow} change={setWorkflow} disabled={disabled} Icon={Layers} options={workTypes.map(id=>({id,label:friendlyName(id)}))}/> }
+    {advanced&&setPhaseFilter&&<Facet label="Phase" value={phaseFilter} change={setPhaseFilter} disabled={disabled} Icon={Layers} options={ISSUE_STAGES.map(stage=>({...stage,count:phaseCounts[stage.id]||0}))}/>}
+    {!advanced&&setAssignees&&<Facet label="Contributors" value={assignees} change={setAssignees} disabled={disabled} Icon={UsersRound} searchable options={[{id:'__unassigned',label:'Unassigned'},...[...new Set(jobs.flatMap(job=>job.work?.issue?.assignees||[]).map(person=>person.login))].sort().map(login=>({id:login,label:login}))]}/>}
+    {!advanced&&setLabels&&<Facet label="Labels" value={labels} change={setLabels} disabled={disabled} Icon={Tag} searchable options={[...new Map(jobs.flatMap(job=>job.work?.issue?.labels||[]).map(label=>[label.name,label])).values()].sort((a,b)=>a.name.localeCompare(b.name)).map(label=>({id:label.name,label:label.name,color:label.color}))}/>}
+    {!advanced&&<Facet label="Native state" value={filter} change={setFilter} disabled={disabled} Icon={Activity} options={options.filter(option=>option.id!=='all')}/>}
   </div>;
 }
 function Facet({label,value,change,disabled,Icon,options,searchable=false}) {
