@@ -1,5 +1,9 @@
 # Recovery
 
+For approval-mode changes, native denials or a partial configuration write, see
+[Auto-review recovery](auto-review.md#observe-and-recover). Preserve the recorded
+native session and its receipts; a missing review observation is not approval.
+
 Preserve history and determine which process owns work before changing anything.
 Reconnection, continuation and a fresh start are different operations.
 

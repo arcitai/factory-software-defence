@@ -40,6 +40,12 @@ These receipts prevent uncertain writes being replayed; they are not a queue or
 copy of native conversation history. There is one writer per project workspace.
 The repository's normal Git tools own commits and branches.
 
+[Codex Auto-review](auto-review.md) is an explicit native approval mode. Existing
+profiles keep their selection. The bridge passes the reviewer through start,
+continuation and reconnect and exposes only bounded live decision observations;
+native history owns full reasons. No Factory approval or automatic retry path is
+added, and source phases and independent acceptance are unaffected.
+
 Operator release checks read public npm metadata independently of the bridge or
 native harness. An optional OS timer only schedules that read; activation remains
 manual and must preserve native work. See [packages and releases](npm.md).

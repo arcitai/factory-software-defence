@@ -37,4 +37,12 @@ test('native detail respects capabilities and a newer unresolved result',async t
   await render({job:result,capabilities:{continue_turn:true,resume_thread:true,interrupt:true}});
   assert.ok(buttons().includes('Continue in Codex'));
   assert.ok(buttons().includes('Reconnect without starting a turn'));
+
+  const approvals={mode:'auto-review',connection:'connected',reviews:[{review_id:'review-1',status:'denied',summary:'Codex declined this action. Inspect the native session for its reason.',observed_at:'2026-10-06T08:00:00Z'}]};
+  await render({job:{...result,native_approvals:approvals},capabilities:{continue_turn:true,resume_thread:true}});
+  assert.match(document.querySelector('[aria-label="Native action reviews"]').textContent,/Codex declined this action/);
+  assert.ok(!buttons().some(text=>/^Approve/.test(text)),'the dashboard cannot manufacture native authorization');
+  await render({job:{...result,native_approvals:{...approvals,connection:'disconnected',reviews:[]}}});
+  assert.match(document.querySelector('[aria-label="Native action reviews"]').textContent,/Disconnected/);
+  assert.match(document.querySelector('[aria-label="Native action reviews"]').textContent,/does not establish that earlier actions were approved/);
 });

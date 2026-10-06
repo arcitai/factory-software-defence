@@ -5,6 +5,8 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setupNative, readNative, nativePolicy } from '../factory/native/setup.mjs';
+import { changeCodexApprovals } from '../factory/native/approval-config.mjs';
+import { acquireProcessLock } from '../factory/native/process-lock.mjs';
 import { AppServer, nativeReadiness } from '../factory/native/app-server.mjs';
 import { NativeEngine } from '../factory/native/engine.mjs';
 import { NativeIssueSubmissions } from '../factory/native/issue-submissions.mjs';
@@ -12,12 +14,12 @@ import { NativeIssueSubmissions } from '../factory/native/issue-submissions.mjs'
 const url='https://github.com/example/project/issues/7';
 const issue={url,title:'Fix useful behavior',spec:'Accepted scope and check',body:'Accepted scope and check',state:'open',labels:[],recommendation:{workflow:'software',reason:'Scoped issue'}};
 const provider={preview:async()=>issue};
-function fixture(t,mode='normal') {
+function fixture(t,mode='normal',approvals) {
   const root=mkdtempSync(join(tmpdir(),'factory-native-fixture-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
   const repo=join(root,'repo'),state=join(root,'state'),codex=join(root,'tools/codex/bin/codex');
   mkdirSync(repo);execFileSync('git',['init','-q',repo]);mkdirSync(dirname(codex),{recursive:true});
-  writeFileSync(codex,`#!${process.execPath}\nconst readline=require('node:readline');\nlet cwd='',interrupted=false;\nconst send=x=>process.stdout.write(JSON.stringify(x)+'\\n');\nreadline.createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.method==='initialized')return;if(m.id===900)return;if(m.id===undefined)return;let result={};\nswitch(m.method){\ncase 'initialize':result={codexHome:process.env.CODEX_HOME,platformOs:'linux',platformFamily:'unix',userAgent:'fixture'};break;\ncase 'account/read':result={account:{type:'chatgpt'},requiresOpenaiAuth:true};break;\ncase 'config/read':{const policy=JSON.parse(require('node:fs').readFileSync(process.env.CODEX_HOME+'/fixture-policy.json','utf8'));result={config:{...policy,tools:{}},origins:{},layers:[{name:{type:'user',file:process.env.CODEX_HOME+'/config.toml'},version:'1',config:policy}]};break;}\ncase 'permissionProfile/list':result={data:[{id:'factory',allowed:true}],nextCursor:null};break;\ncase 'app/installed':result={apps:[]};break;\ncase 'mcpServerStatus/list':result={data:[],nextCursor:null};break;\ncase 'thread/list':result={data:[],nextCursor:null};break;\ncase 'thread/read':result={thread:{id:'thread-1',cwd}};break;\ncase 'thread/turns/list':result={data:[{id:'turn-1',status:interrupted?'interrupted':'completed',completedAt:1700000000,items:[]}]};break;\ncase 'thread/start':cwd=m.params.cwd;if('${mode}'==='disconnect')process.exit(0);if('${mode}'==='failure')return send({id:m.id,error:{code:-32000,message:'start failed'}});result={thread:{id:'thread-1'},cwd,approvalPolicy:'never',activePermissionProfile:{id:'factory'}};break;\ncase 'turn/start':result={turn:{id:'turn-1',status:'inProgress'}};break;\ncase 'turn/interrupt':interrupted=true;break;\ndefault:return send({id:m.id,error:{code:-32601,message:'unsupported'}});\n}\nsend({id:m.id,result});if(m.method==='turn/start'&&'${mode}'==='approval')send({id:900,method:'item/commandExecution/requestApproval',params:{threadId:'thread-1',turnId:'turn-1'}});\n});\n`,{mode:0o755});chmodSync(codex,0o755);
-  setupNative(repo,state,codex);
+  writeFileSync(codex,`#!${process.execPath}\nconst readline=require('node:readline');\nlet cwd='',interrupted=false;\nconst send=x=>process.stdout.write(JSON.stringify(x)+'\\n');\nreadline.createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.method==='initialized')return;if(m.id===900)return;if(m.id===undefined)return;let result={};\nswitch(m.method){\ncase 'initialize':result={codexHome:process.env.CODEX_HOME,platformOs:'linux',platformFamily:'unix',userAgent:'fixture'};break;\ncase 'account/read':result={account:{type:'chatgpt'},requiresOpenaiAuth:true};break;\ncase 'config/read':{const policy=JSON.parse(require('node:fs').readFileSync(process.env.CODEX_HOME+'/fixture-policy.json','utf8'));const toml=require('node:fs').readFileSync(process.env.CODEX_HOME+'/config.toml','utf8');policy.approval_policy=toml.includes('on-request')?'on-request':'never';if(toml.includes('approvals_reviewer'))policy.approvals_reviewer=toml.includes('auto_review')?'auto_review':'user';else delete policy.approvals_reviewer;result={config:{...policy,tools:{}},origins:{},layers:[{name:{type:'user',file:process.env.CODEX_HOME+'/config.toml'},version:'1',config:policy}]};break;}\ncase 'permissionProfile/list':result={data:[{id:'factory',allowed:true}],nextCursor:null};break;\ncase 'app/installed':result={apps:[]};break;\ncase 'mcpServerStatus/list':result={data:[],nextCursor:null};break;\ncase 'thread/list':result={data:[],nextCursor:null};break;\ncase 'thread/read':result={thread:{id:'thread-1',cwd}};break;\ncase 'thread/turns/list':result={data:[{id:'turn-1',status:interrupted?'interrupted':'completed',completedAt:1700000000,items:[]}]};break;\ncase 'thread/start':cwd=m.params.cwd;if('${mode}'==='disconnect')process.exit(0);if('${mode}'==='failure')return send({id:m.id,error:{code:-32000,message:'start failed'}});result={thread:{id:'thread-1'},cwd,approvalPolicy:'never',activePermissionProfile:{id:'factory'}};break;\ncase 'turn/start':result={turn:{id:'turn-1',status:'inProgress'}};break;\ncase 'turn/interrupt':interrupted=true;break;\ndefault:return send({id:m.id,error:{code:-32601,message:'unsupported'}});\n}\nsend({id:m.id,result});if(m.method==='turn/start'&&'${mode}'==='approval')send({id:900,method:'item/commandExecution/requestApproval',params:{threadId:'thread-1',turnId:'turn-1'}});\n});\n`,{mode:0o755});chmodSync(codex,0o755);
+  setupNative(repo,state,codex,undefined,null,approvals);
   const installed=readNative(state);
   installed.config.writer_root=join(root,'locks'); // Keep fixture reservations in its disposable root.
   writeFileSync(join(installed.env.CODEX_HOME,'fixture-policy.json'),JSON.stringify(nativePolicy(installed.config,state)));
@@ -38,6 +40,23 @@ test('setup keeps a dedicated HOME and native profile, refuses overwrite and rep
   assert.throws(()=>setupNative(f.repo,f.state,f.codex),/already exists/);
   const impostor=join(f.repo,'codex');writeFileSync(impostor,'#!/bin/sh\n',{mode:0o755});
   assert.throws(()=>setupNative(f.repo,join(dirname(f.state),'new-state'),impostor),/outside the repository/);
+});
+test('approval mode adoption requires a stopped bridge and restores the previous mode deliberately',async t=>{
+  const f=fixture(t),before=nativePolicy(f.config,f.state);
+  const release=acquireProcessLock(join(f.state,'serve.lock'));
+  await assert.rejects(changeCodexApprovals(f.state,'auto-review'),/already running/);release();
+  const changed=await changeCodexApprovals(f.state,'auto-review');
+  assert.equal(changed.approvals,'auto-review');assert.equal(changed.readiness.ready,true);assert.equal(existsSync(changed.backup),true);
+  const after=readNative(f.state);assert.equal(after.config.approvals,'auto-review');
+  assert.deepEqual(nativePolicy(after.config,f.state).permissions,before.permissions);
+  const reverted=await changeCodexApprovals(f.state,'never');assert.equal(reverted.approvals,'never');
+  assert.equal((await changeCodexApprovals(f.state,'never')).changed,false);
+});
+test('setup auto-review is explicit and unsupported modes are rejected',t=>{
+  const f=fixture(t,'normal','auto-review');
+  assert.equal(nativePolicy(f.config,f.state).approval_policy,'on-request');
+  assert.match(readFileSync(join(f.env.CODEX_HOME,'config.toml'),'utf8'),/approvals_reviewer = "auto_review"/);
+  assert.throws(()=>setupNative(f.repo,join(dirname(f.state),'other'),f.codex,undefined,null,'full-access'),/Unsupported/);
 });
 test('personal bin executable grants only its file, and bundle reads need explicit narrow selection',t=>{
   const f=fixture(t),personal=join(dirname(f.state),'personal'),binary=join(personal,'bin','codex');

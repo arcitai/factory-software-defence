@@ -33,8 +33,10 @@ Codex installation directory, never an operator home or broad tool folder.
 
 Setup stages six ADLC skills in the separate Codex home. It does not copy personal
 login, plugins, connections or settings. Login is performed natively in that home.
-The initial profile has unattended approvals but restricted filesystem/network
-access; personal apps/MCP/plugins are excluded. The host GitHub integration uses
+The initial profile refuses escalation (`never`) and restricts filesystem/network
+access; personal apps/MCP/plugins are excluded. [Native Auto-review](auto-review.md)
+is an explicit alternative, including deliberate adoption for existing profiles.
+The host GitHub integration uses
 the operator's GitHub identity without forwarding its environment to the agent.
 
 Run `factory login` on the host running Factory. Open the login link in your
