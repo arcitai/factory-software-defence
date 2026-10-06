@@ -25,7 +25,9 @@ and provider/native evidence own meaning.
 
 - Keep `factory.` with the smaller SOFTWARE & DEFENCE descriptor. Inbox is the
   primary page; theme and infrequent controls belong in the sidebar footer.
-  Do not restore the retired Agents/Definition/Infrastructure/Analytics pages.
+  Do not restore the retired Agents/Definition/Infrastructure pages.
+  Analytics presents connected-harness usage from the existing native readings;
+  historical charts remain a separate evidence-backed slice.
 - Show the real project identity, with a hover/focus/tap tooltip for its path.
   Long names wrap; never infer owner, model or revision from a directory name.
 - Default to the compact searchable list with a left status rail on wide screens.
@@ -191,3 +193,15 @@ mapping, and drag/drop repository transitions were explicitly separated into
 follow-up issues by the owner. Do not ship preview sample data, dead controls or
 pretend these backend capabilities are implemented. The current label chips and
 facets continue to use the provider's actual names/colors on refresh.
+
+## Connected-harness Analytics
+
+The owner selected Analytics as the home for account usage, using Kastanje's
+provider/window presentation as inspiration. Keep free-standing summary counts
+and softly tinted provider surfaces. Show each reported window independently,
+with a large remaining percentage, its used percentage and reset time. Never
+sum quota percentages or infer window duration from a plan. Preserve the native
+source, original observation time, Last known state and explicit missing data.
+Unknown usage has no meter. Historical charts require the separate #51 data
+work; do not restore preview metrics, account-pool controls or billing fixtures.
+Analytics navigation must retain the Inbox's filters, board and scroll state.

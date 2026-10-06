@@ -7,15 +7,21 @@ retired implementation evidence remain in Git and private installation records.
 ## Current scoped work
 
 - [ ] [#51](https://github.com/arcitai/factory-software-defence/issues/51):
-  current 0.18.9 candidate adds read-only native account usage to the Inbox and
-  CLI. Real historical Analytics remains separate. See [usage](docs/usage.md).
+  0.18.9 delivers read-only native account usage. The 0.18.10 candidate places
+  those readings in Analytics with separate provider/window surfaces. Real
+  historical Analytics remains separate. See [usage](docs/usage.md).
 - [ ] [#143](https://github.com/arcitai/factory-software-defence/issues/143):
   [Agent Ops pilot](docs/agent-ops.md) defines one accepted assignment, owner
-  decisions, native ownership and communication proof. No channel or recurring
-  operation is enabled. The selected communication route needs live qualification.
+  decisions, native ownership and communication proof. The first route is the
+  native chat, with the lead on the Factory host. Mobile access and host handoff
+  still need complete installed proof; no external channel or schedule is enabled.
 - [ ] [#147](https://github.com/arcitai/factory-software-defence/issues/147):
-  reviewed triage-method candidate remains separate in draft PR #151; custom
-  parked-label mapping belongs to #145. No owner re-review is currently needed.
+  the independently reviewed triage method is merged in PR #151. The next
+  installed release stages and qualifies its updated skill; custom parked-label
+  mapping remains #145, so #147 is not yet closed.
+- [ ] [#154](https://github.com/arcitai/factory-software-defence/issues/154):
+  qualify native Codex Auto-review through setup, effective policy, continuation,
+  denial/recovery and installed evidence. It does not replace code/result review.
 
 - [x] [#140](https://github.com/arcitai/factory-software-defence/issues/140):
   Owner-approved Inbox delivered in merged PR #142 and installed 0.18.7: aligned original shell,

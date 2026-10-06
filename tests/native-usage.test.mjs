@@ -20,6 +20,21 @@ test('Codex keeps independent named buckets, provider durations and unknown fiel
   assert.equal(codexUsage({rateLimitsByLimitId:{},rateLimits:{primary:{usedPercent:99}}}).windows.length,0,'present empty map does not revive legacy values');
   assert.equal(codexUsage({rateLimits:{primary:{usedPercent:101}}}).windows[0].used_percent,null);
 });
+test('Codex reports five-hour and weekly windows from native durations, independent of plan or bucket order',()=>{
+  for(const planType of ['plus','pro',null]) {
+    for(const reversed of [false,true]) {
+      const short={usedPercent:78,windowDurationMins:300,resetsAt:1791300000};
+      const week={usedPercent:32,windowDurationMins:10080,resetsAt:1791580526};
+      const value=codexUsage({rateLimits:{planType,primary:reversed?week:short,secondary:reversed?short:week}});
+      const windows=Object.fromEntries(value.windows.map(limit=>[limit.label,limit]));
+      assert.equal(value.windows.length,2);
+      assert.equal(windows['codex · 5 hours'].used_percent,78);
+      assert.equal(windows['codex · 5 hours'].resets_at,'2026-10-06T15:20:00.000Z');
+      assert.equal(windows['codex · 7 days'].used_percent,32);
+      assert.equal(windows['codex · 7 days'].resets_at,'2026-10-09T21:15:26.000Z');
+    }
+  }
+});
 test('Claude /usage percentages are not streaming fractions or API-equivalent session costs',()=>{
   const value=claudeUsage({subscription_type:'pro',rate_limits_available:true,session:{total_cost_usd:99},rate_limits:{
     five_hour:{utilization:63,resets_at:'2026-10-06T14:00:00Z'},seven_day:{utilization:5,resets_at:null},
