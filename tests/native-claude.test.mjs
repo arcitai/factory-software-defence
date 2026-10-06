@@ -14,7 +14,9 @@ import { projectHistory } from '../factory/native/claude-history.mjs';
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const ISSUE='https://github.com/acme/app/issues/7';
-const settle=()=>new Promise(resolve=>setTimeout(resolve,20));
+// Drain the mock's queued output and close callbacks, including their microtasks.
+// A wall-clock delay may expire before setImmediate under a busy Node 22 loop.
+const settle=()=>new Promise(resolve=>setImmediate(()=>setImmediate(resolve)));
 
 // A fake native child: `script(frame, child)` reacts to each stdin frame.
 function fakeSpawn(script) {
