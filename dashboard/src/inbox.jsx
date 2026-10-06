@@ -116,6 +116,7 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
     <div><dt>Source state</dt><dd>{sourceStateLabel(detailIssue)}{previewError?' · unavailable / stale':''}{previewBusy?' · source refresh pending':''}</dd></div>
     <div><dt>Repository phase</dt><dd>{detailPhase?.label || 'Source not loaded'}{detailPhase?.detail?` · ${detailPhase.detail}`:''}</dd></div>
     <div><dt>Readiness{detailMetadataPending && detailIssue?' · last loaded':''}</dt><dd>{detailIssue?.readiness.label || 'Unknown'}</dd></div>
+    {nativeReadiness?.checked_at&&<div><dt>{harnessLabel(nativeReadiness.harness)} access checked</dt><dd>{new Date(nativeReadiness.checked_at).toLocaleString()} · Checked again before starting work.</dd></div>}
     <div><dt>Labels{detailMetadataPending && detailIssue?' · last loaded':''}</dt><dd>{detailIssue && Array.isArray(detailIssue.labels) ? <Labels labels={detailIssue.labels} /> : <span>{detailIssue ? 'Labels unavailable' : 'Not loaded'}</span>}</dd></div>
     <div><dt>Created</dt><dd>{formatTimestamp(detailIssue?.created_at)}</dd></div>
     <div><dt>Contributors{detailMetadataPending && detailIssue?' · last loaded':''}</dt><dd>{detailIssue ? <Contributors {...detailIssue} /> : <span>Not loaded</span>}</dd></div>

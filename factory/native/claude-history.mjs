@@ -23,6 +23,6 @@ if (process.argv[1]===fileURLToPath(import.meta.url)) {
     return projectHistory(info,messages,value.input);
   };
   // A status read uses one SDK process for all receipts, without caching native truth.
-  const result=Array.isArray(sessions) ? await Promise.all(sessions.map(read)) : await read({session,input});
+  const result=Array.isArray(sessions) ? await Promise.all(sessions.map(value=>read(value).catch(()=>null))) : await read({session,input});
   process.stdout.write(JSON.stringify(result));
 }

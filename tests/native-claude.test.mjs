@@ -248,6 +248,26 @@ test('status polling reuses readiness without launching probes and retains obser
   await f.engine.doctor();assert.equal(calls,2);
 });
 
+test('native usage aliases or helper models do not invalidate a verified session result',async t=>{
+  const f=fixture(t,{script:nativeScript({onUser:(frame,child,session)=>child.emitLine(success(frame,session,{modelUsage:{'claude-opus-5':{},'claude-haiku-helper':{}}}))})});
+  const job=await start(f.engine);await settle();const done=await f.engine.result(job.id);
+  assert.equal(done.state,'needs_review');assert.deepEqual(done.native_result.usage.native_models,['claude-opus-5','claude-haiku-helper']);
+});
+
+test('synchronous spawn failure releases an unsent admission rather than leaving a running writer',async t=>{
+  const f=fixture(t);f.engine.spawnImpl=()=>{throw new Error('spawn unavailable');};
+  await assert.rejects(start(f.engine),/No prompt was sent/);assert.equal(f.engine.runs.size,0);
+  assert.deepEqual(await f.engine.jobs(),[]);await f.engine.assertWorkspaceIdle();
+});
+
+test('readiness recreates cleaned temporary storage and refuses an unsafe replacement before execution',async t=>{
+  const f=readinessFixture(t),path=prepareClaudeTemp(f.state);f.config.tmp_dir=path;t.after(()=>rmSync(path,{recursive:true,force:true}));
+  const settings=JSON.stringify(claudeSettings(f.config,f.state));writeFileSync(claudeSettingsPath(f.state),settings);f.config.settings_sha256=sha(settings);
+  rmSync(path,{recursive:true});await f.run();assert.equal(lstatSync(path).mode&0o777,0o700);
+  chmodSync(path,0o755);const calls=f.calls.version+f.calls.auth;const refused=await f.run();
+  assert.equal(refused.ready,false);assert.match(refused.gaps.join(),/owned private/);assert.equal(f.calls.version+f.calls.auth,calls);
+});
+
 test('long state paths get an owned short socket directory, recreated safely after cleanup',async t=>{
   const state='/absolute/'+('long-state-path/'.repeat(12))+Math.random();
   const path=prepareClaudeTemp(state);t.after(()=>rmSync(path,{recursive:true,force:true}));
@@ -411,7 +431,7 @@ function readinessFixture(t,{effort='medium',skills,hooks=[],policy={disabledByP
     if(frame.request.subtype==='initialize')return child.emitLine(ok(frame,{account:{apiProvider:'firstParty'}},initEnvelope||{pending_permission_requests:[],pending_user_dialog_requests:[]}));
     child.emitLine(ok(frame,replies[frame.request.subtype]));
   });
-  return {claude,calls,spawned,run:()=>claudeReadiness(config,state,{spawnImpl,
+  return {state,config,claude,calls,spawned,run:()=>claudeReadiness(config,state,{spawnImpl,
     version:()=>{calls.version++;return '2.1.289 (Claude Code)';},auth:async()=>{calls.auth++;return auth;}})};
 }
 

@@ -145,6 +145,10 @@ export function setupClaude({ repo, state, claude: selected, model, effort, prof
     skills:'staged for native discovery; unqualified', login:'not checked; run factory doctor', qualification:'unverified' };
 }
 export function verifyClaudeConfig(state, config,{reuseExecutable=false}={}) {
+  if(config.tmp_dir) {
+    if(config.tmp_dir!==claudeTempPath(state))throw new Error('Claude temporary directory changed; refuse admission.');
+    prepareClaudeTemp(state);
+  }
   const path=claudeSettingsPath(state);
   if (!existsSync(path) || (lstatSync(path).mode & 0o077) || sha(readFileSync(path))!==config.settings_sha256)
     throw new Error('Native permissions configuration changed; refuse admission.');

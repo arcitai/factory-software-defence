@@ -84,9 +84,9 @@ export class ClaudeProcess {
   emit(value) {for (const listener of this.listeners) listener(value);}
   on(listener) {this.listeners.add(listener);}
   send(value) {
-    if (!this.child?.stdin?.writable || this.exited) throw new Error('Native Claude process unavailable.');
+    if (!this.child?.stdin?.writable || this.exited) throw Object.assign(new Error('Native Claude process unavailable.'),{notSent:true});
     const frame=`${JSON.stringify(value)}\n`;
-    if (Buffer.byteLength(frame)>MAX_FRAME) throw new Error('Native frame too large.');
+    if (Buffer.byteLength(frame)>MAX_FRAME) throw Object.assign(new Error('Native frame too large.'),{notSent:true});
     this.child.stdin.write(frame);
   }
   request(subtype,extra={},timeout=15000) {
@@ -376,7 +376,7 @@ export class ClaudeEngine {
   async launch(record,text,resume) {
     const config=this.config,previous=structuredClone(record);
     try {verifyClaudeConfig(this.state,config);}
-    catch {throw new FactoryError('Pinned Claude configuration or executable changed; no native process was started.',503);}
+    catch {throw Object.assign(new FactoryError('Pinned Claude configuration or executable changed; no native process was started.',503),{notSent:true});}
     const input=randomUUID();
     record.phase='sending';record.pending_input_uuid=input;record.ambiguous=null;record.result=null;record.exited_at=null;record.interrupt=null;record.history_tip=null;
     record.expected_turn_id=resume?record.turn_id:null;record.updated_at=new Date().toISOString();
@@ -447,13 +447,12 @@ export class ClaudeEngine {
         run.result=true;
         const uuids=[message.user_message_uuid,...(Array.isArray(message.user_message_uuids)?message.user_message_uuids:[])];
         if (!validResult(message)) return doubt('Native completion had an unexpected shape.');
-        if (plain(message.modelUsage) && Object.keys(message.modelUsage).some(model=>model!==config.model))
-          return doubt('Native completion reported a model outside the selected model.');
         if (!run.turn || message.session_id!==record.session_id || !uuids.includes(run.turn)) return doubt('Native completion did not match the confirmed input.');
         record.result={turn_id:run.turn,subtype:message.subtype,is_error:message.is_error,stop_reason:message.stop_reason??null,
           terminal_reason:message.terminal_reason??null,num_turns:message.num_turns??null,completed_at:new Date().toISOString(),
           response:message.subtype==='success'?boundedText(message.result):boundedText(message.errors.join('\n'),2000),
-          usage:{input_tokens:message.usage?.input_tokens??null,output_tokens:message.usage?.output_tokens??null,api_equivalent_cost_usd:message.total_cost_usd??null}};
+          usage:{input_tokens:message.usage?.input_tokens??null,output_tokens:message.usage?.output_tokens??null,api_equivalent_cost_usd:message.total_cost_usd??null,
+            native_models:plain(message.modelUsage)?Object.keys(message.modelUsage).slice(0,16).map(bounded):[]}};
         // Native confirms an interrupt with an execution error for the same input.
         if (record.interrupt?.turn_id===run.turn && message.subtype==='error_during_execution' && message.is_error)
           record.interrupt.confirmed_at=record.result.completed_at;
@@ -463,13 +462,9 @@ export class ClaudeEngine {
       }
     });
     this.runs.set(record.id,run);
-    let heldInitialization=false;
-    try {
-      proc.start();
-      const gaps=initializationGaps(await proc.request('initialize',{},20000));
-      if (gaps.length) {heldInitialization=true;throw new Error(gaps.join('; '));}
-    } catch {
+    const abortBeforePrompt=async heldInitialization=>{
       record.note='The native process did not initialize cleanly; no prompt was sent and session state is unknown.';save();proc.end();proc.kill();
+      if(!proc.child)proc.finish(null);
       let timer;
       await Promise.race([finalized,new Promise(resolve=>{timer=setTimeout(resolve,5000);})]);clearTimeout(timer);
       const live=proc.exited&&!heldInitialization&&!proc.malformed&&!proc.refused.length&&!record.ambiguous?await this.liveSessions():null;
@@ -478,12 +473,23 @@ export class ClaudeEngine {
         throw Object.assign(new FactoryError('Native Claude initialization failed. No prompt was sent; the previous state is retained. Correct the problem before an explicit retry.',503),{notSent:true});
       }
       throw new FactoryError('Native Claude process did not initialize cleanly; no prompt was sent. Inspect the session before any new work.',503);
+    };
+    let heldInitialization=false;
+    try {
+      proc.start();
+      const gaps=initializationGaps(await proc.request('initialize',{},20000));
+      if (gaps.length) {heldInitialization=true;throw new Error(gaps.join('; '));}
+    } catch {
+      return abortBeforePrompt(heldInitialization);
     }
     if (record.ambiguous) {proc.end();proc.kill();throw new FactoryError(`${record.ambiguous} No prompt was sent.`,409);}
     record.phase='sent';save();
     try {
       proc.send({type:'user',uuid:input,session_id:record.session_id,parent_tool_use_id:null,message:{role:'user',content:text}});
-    } catch {throw new FactoryError('Native prompt delivery is ambiguous; inspect Claude history before any new work.',503);}
+    } catch(error) {
+      if(error.notSent)return abortBeforePrompt(false);
+      throw new FactoryError('Native prompt delivery is ambiguous; inspect Claude history before any new work.',503);
+    }
     const timer=setTimeout(()=>doubt('Native input confirmation timed out; outcome unknown. No retry was attempted.'),this.confirmTimeout);
     try {await confirmed;} finally {clearTimeout(timer);}
     return this.makeJob(record);
