@@ -127,7 +127,7 @@ async function command(args) {
     if(!flags['--repo'])throw new Error('Setup needs --repo PATH.');
     const harness=flags['--harness'] || 'codex';
     if(!['codex','claude'].includes(harness))throw new Error('Choose --harness codex or claude.');
-    if(harness==='codex'&&['--claude','--model','--effort','--claude-config','--approvals'].some(key=>flags[key]))throw new Error('--claude, --model, --effort and --claude-config apply only to --harness claude.');
+    if(harness==='codex'&&['--claude','--model','--effort','--claude-config'].some(key=>flags[key]))throw new Error('--claude, --model, --effort and --claude-config apply only to --harness claude.');
     const claude=harness==='claude'?{claude:flags['--claude'],model:flags['--model'],effort:flags['--effort'],profile:flags['--claude-config']}:null;
     print(setupNative(flags['--repo'],flags['--state'] || stateDefault,flags['--codex'],flags['--bundle-read'],claude,flags['--approvals']));return;
   }

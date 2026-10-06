@@ -60,6 +60,11 @@ test('failed native mode verification restores both pinned files without startin
   assert.deepEqual(readNative(f.state).config,config);
   assert.equal(readdirSync(join(f.state,'receipts')).length,0);
 });
+test('installed command grammar accepts the Codex-only auto-review setup option',t=>{
+  const f=fixture(t),selected=join(dirname(f.state),'cli-state');
+  execFileSync(process.execPath,[new URL('../bin/software-defence-factory.mjs',import.meta.url).pathname,'setup','--repo',f.repo,'--state',selected,'--codex',f.codex,'--approvals','auto-review']);
+  assert.equal(readNative(selected).config.approvals,'auto-review');
+});
 test('setup auto-review is explicit and unsupported modes are rejected',t=>{
   const f=fixture(t,'normal','auto-review');
   assert.equal(nativePolicy(f.config,f.state).approval_policy,'on-request');
