@@ -26,8 +26,8 @@ repository declaration, never evidence that a native turn is running.
 `factory:not-planned` retains open work before Triaging. It is distinct from
 GitHub closure with reason `not_planned`; unlabeled work remains unresolved.
 The `factory-triage` skill parks deliberately deferred work there with a
-revisit trigger; missing owner decisions and unavailable capabilities remain
-blocked with their own reason.
+revisit trigger after an accepted owner decision. Missing owner decisions and
+unavailable capabilities propose the blocked label with their distinct reason.
 The catalog supplies defaults; preserve repository edits when adopting or
 re-running Foundation. Adding a stage never starts or accepts native work.
 
