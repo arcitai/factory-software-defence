@@ -1,10 +1,13 @@
 # Harness usage
 
-Open **Usage** in the dashboard sidebar to see the limits reported by connected
+Open **Analytics** in the dashboard sidebar to see the limits reported by connected
 Factory profiles. `factory usage --state /absolute/private/factory-state` returns
 the same projection as JSON. The read does not require a running dashboard.
 
-Each window shows its percentage used, remaining percentage and reset time.
+Each profile has a separate provider surface with its reported plan and reading
+state. Each window shows a remaining-allowance meter, percentage used and reset
+time. Expand **Reading details** for its source and observation time. These are
+current account readings; historical charts are not included.
 These are account limits, including work outside this project. Windows and
 profiles are independent; their percentages must not be added together.
 A session's tokens and API-equivalent cost are different measurements and are
@@ -28,11 +31,13 @@ to the same profile are deduplicated. Different profiles may share an account.
 Reads are coalesced and cached for two minutes in the serving process. Use
 **Refresh** to read again; the cache also bounds repeated clicks. A failed read
 retains a previous reading as **Last known**, with its original timestamp.
-Without a reading, the panel shows **Unavailable**. Passing a reset time does
+Without a reading, the profile shows **Unavailable**. Passing a reset time does
 not prove that quota has reset or that execution is permitted.
 
 Codex uses its native `account/rateLimits/read` contract, including named buckets
-and their reported durations. Claude uses the pinned CLI's experimental
+and their reported durations. Codex can report both five-hour and weekly windows;
+Factory does not infer either window from the subscription plan or its primary/
+secondary position. Claude uses the pinned CLI's experimental
 `get_usage` control request with `skip_behaviors: true`; no prompt is sent, no
 session is saved and local transcripts are not scanned. This native endpoint can
 return no quota data even for a signed-in subscriber. Factory preserves that

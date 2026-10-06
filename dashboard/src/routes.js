@@ -1,5 +1,6 @@
 export function routeFromHash(hash) {
   const value=String(hash||'').replace(/^#\//,'');
+  if(value==='analytics')return {view:'analytics',jobID:'',issueKey:''};
   if(value.startsWith('issues/')) {
     try {return {view:'issue',issueKey:decodeURIComponent(value.slice(7)),jobID:''};}
     catch {return {view:'runs',issueKey:'',jobID:''};}

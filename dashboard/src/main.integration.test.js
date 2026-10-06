@@ -139,7 +139,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
       assert.equal(options.headers['X-Factory-Session'],session);
       if(failUsage)return jsonResponse({},503);
       return jsonResponse({profiles:[
-        {id:'codex',harness:'codex',plan:'pro',status:'reported',checked_at:new Date().toISOString(),windows:[{id:'weekly',label:'7 days',used_percent:32,resets_at:new Date(Date.now()+86400000).toISOString()}]},
+        {id:'codex',harness:'codex',plan:'pro',status:'reported',checked_at:new Date().toISOString(),windows:[{id:'short',label:'5 hours',used_percent:78,resets_at:new Date(Date.now()+3600000).toISOString()},{id:'weekly',label:'7 days',used_percent:32,resets_at:new Date(Date.now()+86400000).toISOString()}]},
         {id:'claude',harness:'claude',plan:'pro',status:'unavailable',checked_at:null,windows:[]}
       ]});
     }
@@ -262,18 +262,29 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   await act(async () => { appRoot = (await vite.ssrLoadModule('/src/main.jsx')).appRoot; });
   await waitFor(() => issueListReads >= 1 && document.querySelector('.run-card-link'), 'initial Inbox issues should load');
   assert.equal(usageReads,0,'normal Inbox polling never reads account limits');
-  await click(document.querySelector('.usage-control'));
+  await click(document.querySelector('.desktop-nav a[href="#/analytics"]'));
   await waitFor(()=>document.querySelector('meter'),'usage window should render');
-  assert.equal(document.querySelector('meter').value,32);
+  assert.equal(document.querySelector('.desktop-nav a[aria-current="page"]').textContent,'Analytics');
+  assert.deepEqual([...document.querySelectorAll('meter')].map(meter=>meter.value),[22,68]);
+  assert.equal(document.querySelector('meter').getAttribute('aria-label'),'5 hours: 22% remaining');
   assert.match(document.querySelector('.usage-claude').textContent,/Unavailable/);
-  assert.equal(document.querySelectorAll('meter').length,1,'missing Claude values do not become zero');
+  assert.equal(document.querySelectorAll('meter').length,2,'missing Claude values do not become zero');
+  assert.deepEqual([...document.querySelectorAll('.usage-summary dd')].map(item=>item.textContent),['2','2','1']);
   failUsage=true;await click(document.querySelector('[aria-label="Refresh usage"]'));
   await waitFor(()=>document.querySelector('.usage-tools').textContent.includes('could not'),'failed usage read should be visible');
-  assert.equal(document.querySelector('meter').value,32,'last reading is retained after a failed refresh');
+  assert.equal(document.querySelector('meter').value,22,'last reading is retained after a failed refresh');
   assert.match(document.querySelector('.usage-codex').textContent,/Last known/);
-  await act(async()=>document.querySelector('.usage-dialog').dispatchEvent(new window.Event('cancel',{cancelable:true})));
-  assert.equal(document.querySelector('.usage-dialog'),null);
-  assert.ok(document.querySelector('.run-card-link'),'closing Usage retains the Inbox');
+  await click(document.querySelector('.desktop-nav a[href="#/inbox"]'));
+  await waitFor(()=>!document.querySelector('.analytics-page'),'Inbox navigation should leave Analytics');
+  assert.ok(document.querySelector('.run-card-link'),'leaving Analytics retains the Inbox');
+  await click(document.querySelector('.desktop-nav a[href="#/analytics"]'));
+  await waitFor(()=>document.querySelector('.usage-tools')?.textContent.includes('could not'),'initial error should be visible');
+  assert.equal(document.querySelectorAll('meter').length,0,'initial error cannot invent a zero allowance');
+  assert.deepEqual([...document.querySelectorAll('.usage-summary dd')].map(item=>item.textContent),['—','—','—']);
+  failUsage=false;await click(document.querySelector('[aria-label="Refresh usage"]'));
+  await waitFor(()=>document.querySelectorAll('meter').length===2,'refresh should recover real windows');
+  await click(document.querySelector('.desktop-nav a[href="#/inbox"]'));
+  await waitFor(()=>!document.querySelector('.analytics-page'),'return to the same Inbox');
 
   assert.equal(document.querySelector('button[aria-label="Board"]')?.getAttribute('aria-pressed'), 'true');
   assert.ok(document.querySelector('.run-column-heading [data-lucide="inbox"]') || document.querySelector('#board-triage'), 'phase catalog drives board columns');

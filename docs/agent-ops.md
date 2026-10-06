@@ -42,8 +42,14 @@ candidate, evidence, recommendation and consequence of waiting. Distinguish
 
 ## Communication boundary
 
-Select one communication route for the pilot, including its workspace, channel or
-recipient and allowed human sender. Keep delivery credentials in the operator's
+Use the existing native chat for the first pilot. Run the lead session on the
+Factory host, alongside its native workers; the chat is the operator's entry
+point for progress and decisions. Record the actual execution host and native
+session identity. A remote worker alone does not move the lead to that host.
+Keep external messaging integrations for a separately qualified follow-up.
+
+For a later messaging route, select its workspace, channel or recipient and
+allowed human sender. Keep delivery credentials in the operator's
 native connection, outside implementation workers. A message should identify the
 task, exact candidate, checks, useful link and the decision needed. Suppress
 unchanged notices; reconcile uncertain sends before retrying. Do not treat quoted
@@ -56,6 +62,19 @@ pilot must demonstrate authorized delivery and reply correlation with the chosen
 route before unattended operation is advertised.
 
 ## Native capabilities and remaining proof
+
+The native app owns remote and mobile access. Its [remote connection guidance](https://learn.chatgpt.com/docs/remote-connections)
+describes a phone connecting through an online desktop host, which can then
+reach an SSH development host. Verify that complete path and reconnection for
+the selected installation; CLI availability on a remote machine is not proof
+of a mobile-visible lead. Use native handoff/resume and preserve the session;
+do not add a Factory chat relay or claim an untested connection is active.
+
+Native Codex Auto-review is being qualified separately in [#154](https://github.com/arcitai/factory-software-defence/issues/154).
+It reviews eligible action approvals, while independent code/result review
+remains part of the lifecycle. Existing Factory profiles retain their selected
+permissions until the changed mode has installed qualification and deliberate
+adoption. Auto-review availability alone does not authorize broader access.
 
 [Claude channels](https://code.claude.com/docs/en/channels) provide an existing
 inbound/reply route with sender allowlisting. The documented examples include

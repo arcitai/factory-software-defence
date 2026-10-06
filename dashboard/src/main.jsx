@@ -5,12 +5,12 @@ import { TaskDetail } from './task-detail.jsx';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/geist';
-import { ExternalLink, Inbox as InboxGlyph, Menu, Moon, Plus, Sun, CircleHelp } from 'lucide-react';
+import { BarChart3, ExternalLink, Inbox as InboxGlyph, Menu, Moon, Plus, Sun, CircleHelp } from 'lucide-react';
 import { cn } from './lib/utils';
 import { routeFromHash } from './routes.js';
 import { projectIdentity } from './project-identity.js';
 import { createStatusLoader } from './status-loader.js';
-import { UsageControl } from './usage-panel.jsx';
+import { Analytics } from './analytics.jsx';
 import './styles.css';
 
 function App() {
@@ -39,12 +39,12 @@ function App() {
       <div className="brand-lockup flex h-10 shrink-0 items-center gap-3 px-1"><a href="#/inbox" className="brand-wordmark" aria-label="Factory home"><span>factory<span className="brand-period">.</span></span><span className="brand-descriptor">Software &amp; Defence</span></a></div>
       <nav className="desktop-nav" aria-label="Primary"><PrimaryLink view={view}/></nav>
       <details className="mobile-nav"><summary aria-label="Open navigation"><Menu className="size-4"/><span>Menu</span></summary><nav aria-label="Primary mobile"><PrimaryLink view={view} mobile/></nav></details>
-      <div className="sidebar-bottom"><UsageControl token={status.csrf_token}/><button onClick={()=>setDark(value=>!value)} className="nav-item theme-switch" aria-label={`Switch to ${dark?'light':'dark'} theme`}>{dark?<Moon className="size-4"/>:<Sun className="size-4"/>}<span>{dark?'Dark':'Light'} theme</span></button></div>
-      <div className="mobile-usage"><UsageControl token={status.csrf_token}/></div>
+      <div className="sidebar-bottom"><button onClick={()=>setDark(value=>!value)} className="nav-item theme-switch" aria-label={`Switch to ${dark?'light':'dark'} theme`}>{dark?<Moon className="size-4"/>:<Sun className="size-4"/>}<span>{dark?'Dark':'Light'} theme</span></button></div>
       <button onClick={()=>setDark(value=>!value)} className="mobile-theme ml-auto grid size-9 place-items-center text-muted-foreground md:hidden" aria-label={`Switch to ${dark?'light':'dark'} theme`}>{dark?<Moon className="size-4"/>:<Sun className="size-4"/>}</button>
     </aside>
     <main className="workshop min-w-0 flex-1">
       <ProjectContext identity={identity} links={status.project_links} compact={view==='task'||view==='issue'} loaded={statusLoaded} error={statusError} showNewIssue={view==='runs'&&showNewIssue} onNewIssue={()=>setComposerOpen(true)}/>
+      {view==='analytics'&&<Analytics token={status.csrf_token}/>}
       {view==='task'?<TaskDetail identity={identity} links={status.project_links} navigation={workNavigation} csrfToken={status.csrf_token} job={selectedJob} loaded={statusLoaded} error={statusError} actionError={taskActionError} onWorkflowAction={nativeAction} capabilities={status.native_capabilities}/>:null}
       <div hidden={view!=='runs'&&view!=='issue'}>
         <Inbox jobs={status.jobs} loaded={statusLoaded} active={view==='runs'||view==='issue'} issueKey={route.issueKey} identity={identity} links={status.project_links} onNavigation={setWorkNavigation}
@@ -56,7 +56,7 @@ function App() {
     </main>
   </div>;
 }
-function PrimaryLink({view,mobile=false}) {return <a href="#/inbox" aria-current={['runs','task','issue'].includes(view)?'page':undefined} className={cn('nav-item',['runs','task','issue'].includes(view)&&'nav-item-active')} onClick={event=>{if(mobile)event.currentTarget.closest('details')?.removeAttribute('open');}}><InboxGlyph className="size-4"/><span>Inbox</span></a>;}
+function PrimaryLink({view,mobile=false}) {return <>{[{href:'#/inbox',label:'Inbox',Icon:InboxGlyph,active:['runs','task','issue'].includes(view)},{href:'#/analytics',label:'Analytics',Icon:BarChart3,active:view==='analytics'}].map(({href,label,Icon,active})=><a key={href} href={href} aria-current={active?'page':undefined} className={cn('nav-item',active&&'nav-item-active')} onClick={event=>{if(mobile)event.currentTarget.closest('details')?.removeAttribute('open');}}><Icon className="size-4"/><span>{label}</span></a>)}</>;}
 function ProjectContext({identity,links,compact,loaded,error,showNewIssue,onNewIssue}) {
   const title=identity?.name||(!loaded&&!error?'Loading configured project…':'Project identity unavailable');
   const freshness=error?loaded?'Status stale':'Status unavailable':loaded?'Status current':'Loading status';
