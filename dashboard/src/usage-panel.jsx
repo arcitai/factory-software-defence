@@ -1,13 +1,20 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Activity, RefreshCw, X } from 'lucide-react';
 
 const time=value=>value ? new Date(value).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : 'Not reported';
 const harnessName=value=>({codex:'Codex',claude:'Claude Code'})[value]||value||'Native harness';
 
 export function UsageControl({token}) {
-  const [open,setOpen]=useState(false),trigger=useRef(null);
+  const [open,setOpen]=useState(false),trigger=useRef(null),restoreFocus=useRef(false);
+  useLayoutEffect(()=>{
+    if(!open&&restoreFocus.current) {
+      const target=trigger.current?.getClientRects().length?trigger.current:[...document.querySelectorAll('.usage-control')].find(button=>button.getClientRects().length);
+      target?.focus();restoreFocus.current=false;
+    }
+  },[open]);
   return <><button ref={trigger} className="nav-item usage-control" onClick={()=>setOpen(true)} aria-haspopup="dialog"><Activity size={16}/><span>Usage</span></button>
-    {open&&<UsagePanel token={token} close={()=>{setOpen(false);trigger.current?.focus();}}/>}</>;
+    {open&&createPortal(<UsagePanel token={token} close={()=>{restoreFocus.current=true;setOpen(false);}}/>,document.body)}</>;
 }
 export function UsagePanel({token,close}) {
   const dialog=useRef(null),[data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[tick,setTick]=useState(Date.now());
