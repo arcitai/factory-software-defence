@@ -18,6 +18,34 @@ bridge. Native Codex owns the full history. Another app-server may read persiste
 history without knowing a different process's live state; that read alone cannot
 authorize a competing writer or stopping the original process.
 
+## Claude sessions
+
+Use `factory status` and `factory result` through the owning bridge. Claude keeps
+its full history in the selected Factory profile. Continue only from a confirmed
+terminal turn; continuation uses that same native session. Factory cannot attach
+to a Claude process owned by another bridge.
+
+After a bridge crash, unfinished admission remains Unknown. Inspect the recorded
+session with the native CLI and reconcile workspace ownership before new work.
+Do not delete its receipt or replay the prompt. An idle bridge restart retains
+completed history without starting another turn.
+
+If initialization fails before any prompt is sent, Factory waits for its process
+to exit and checks ownership. A clean, unchanged native state retains the previous
+result or releases the unused admission. Correct the error and explicitly retry;
+Factory does not retry for you. Pending authority, changed history or uncertain
+process state still remains Unknown.
+
+A crash during admission may leave a private `native-writers/*.gate` beside the
+writer receipt. Preserve both and inspect the recorded process and native history.
+Only after proving that the owning process has exited and no admission remains in
+flight may the operator archive that gate. Removing a gate does not resolve an
+unknown writer receipt or authorize replay.
+
+For expired login, run `factory login --state PATH`, then `factory doctor --state PATH`.
+An active run is not restarted by either command. Native cost estimates are not
+subscription charges or remaining plan allowance; unavailable usage stays unknown.
+
 ## Native Codex login recovery
 
 For an expired or revoked login, first inspect work and the selected service:

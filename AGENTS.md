@@ -8,7 +8,7 @@ This is an independent repository. Start with [VISION.md](VISION.md),
 ## Ownership
 
 Factory owns Foundation, the portable method in `adlc/`, the project Inbox,
-a small npm CLI and the minimal native-harness bridge. Codex owns execution,
+a small npm CLI and the minimal native-harness bridge. The selected native harness owns execution,
 context, tools, permissions, session history and recovery. GitHub owns issues,
 pull requests and CI. The OS service manager owns process startup.
 

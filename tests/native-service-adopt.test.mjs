@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -111,6 +112,19 @@ test('canonical target verifies a legacy installed pin without replacing its sta
   const collision=fixture(t,{oldName:'software-defence-factory',targetVersion:'0.18.3'});
   await assert.rejects(collision.run(),/different release/);
   assert.equal(collision.calls.some(call=>call.startsWith('stop ')),false);
+});
+
+test('adoption accepts the existing Codex unit description from pre-Claude releases',async t=>{
+  const h=fixture(t);
+  // Model the already-installed unit independently of the current description template.
+  const definition=h.manifest.definition.replace(/^Description=.*$/m,'Description=Factory native Codex Inbox');
+  writeFileSync(h.manifest.file,definition,{mode:0o600});
+  writeFileSync(join(h.state,'service.json'),JSON.stringify({...h.oldRecord,
+    definition_sha256:createHash('sha256').update(definition).digest('hex')}),{mode:0o600});
+  const result=await h.run();
+  assert.equal(result.status,'adopted',JSON.stringify(result));
+  assert.equal(h.selected,'0.18.4');
+  assert.equal(readFileSync(join(h.state,'receipts','retained.json'),'utf8'),'prior native history');
 });
 
 test('adoption refuses an arbitrary package identity before service mutation',async t=>{

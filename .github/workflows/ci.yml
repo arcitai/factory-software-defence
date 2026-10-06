@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           package-manager-cache: false
-      - run: npm ci --ignore-scripts
+      - run: npm ci --ignore-scripts --omit=optional
       - run: npm run build:dashboard
       - run: npm run check
   publish:
@@ -48,7 +48,7 @@ jobs:
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
       - run: npm install --global npm@11.19.1 --ignore-scripts
-      - run: npm ci --ignore-scripts
+      - run: npm ci --ignore-scripts --omit=optional
       - run: npm run build:dashboard
       - id: release
         run: node scripts/release.mjs

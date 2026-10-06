@@ -3,14 +3,14 @@ import { ChevronUp, ChevronDown, Link2, X, FileText } from 'lucide-react';
 import { Tabs } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { State, friendlyName, stateLabel, TaskStateIcon } from './task-display.jsx';
+import { State, friendlyName, harnessLabel, stateLabel, TaskStateIcon } from './task-display.jsx';
 
 const terminal = new Set(['needs_review','failed','interrupted']);
 function time(value) {
   if(typeof value==='number')return new Date(value<1e12?value*1000:value).toLocaleString();
   return typeof value==='string'&&Number.isFinite(Date.parse(value))?new Date(value).toLocaleString():'Unavailable';
 }
-export function TaskDetail({source,identity,links,navigation=[],csrfToken,job,loaded,error,actionError,onWorkflowAction}) {
+export function TaskDetail({source,identity,links,navigation=[],csrfToken,job,loaded,error,actionError,onWorkflowAction,capabilities={}}) {
   const [feedback,setFeedback]=useState(''),[busy,setBusy]=useState(false),[localError,setLocalError]=useState('');
   const [nativeResult,setNativeResult]=useState(null),[resultLoading,setResultLoading]=useState(false),[resultError,setResultError]=useState('');
   useEffect(()=>{setFeedback('');setBusy(false);setLocalError('');},[job?.id,job?.turn_id]);
@@ -18,8 +18,8 @@ export function TaskDetail({source,identity,links,navigation=[],csrfToken,job,lo
   if(!job&&!source)return <div className="p-8"><a href="#/inbox" className="text-sm underline">Back to inbox</a><p className="mt-4">{!loaded?'Loading issue…':'Issue not found.'}</p>{error&&<p role="alert">{error}</p>}</div>;
   const item=source||{id:job.id,href:`#/runs/${encodeURIComponent(job.id)}`};
   if(!job)return <div className="task-detail-layout"><div className="task-detail-main"><DetailToolbar item={item} navigation={navigation}/><header className="task-detail-heading"><TaskStateIcon value="not_started"/><h2>{source.title}</h2></header>{source.panel}</div><aside className="task-metadata" aria-label="Issue details"><h3><FileText size={15}/>Metadata</h3>{source.metadata}</aside></div>;
-  const resultJob=nativeResult?.turn_id===job.turn_id&&nativeResult.state===job.state?nativeResult:job;
-  const canContinue=terminal.has(resultJob.state)&&Boolean(resultJob.turn_id)&&resultJob.native_turn_status!=='running';
+  const resultJob=nativeResult?.id===job.id&&nativeResult.turn_id===job.turn_id?nativeResult:job;
+  const canContinue=capabilities.continue_turn===true&&terminal.has(resultJob.state)&&Boolean(resultJob.turn_id)&&resultJob.native_turn_status!=='running';
   async function act(action,payload={}) {
     setBusy(true);setLocalError('');
     try {await onWorkflowAction?.(job,action,payload);if(action==='continue')setFeedback('');}
@@ -31,26 +31,27 @@ export function TaskDetail({source,identity,links,navigation=[],csrfToken,job,lo
   return <div className="task-detail-layout">
     <div className="task-detail-main">
       <DetailToolbar item={item} navigation={navigation}/>
-      <header className="task-detail-heading"><TaskStateIcon value={job.state}/><h2>{source?.title||job.task?.title||'Native Codex work'}</h2>{error&&<p role="alert" className="text-sm text-danger">{error}</p>}</header>
+      <header className="task-detail-heading"><TaskStateIcon value={job.state}/><h2>{source?.title||job.task?.title||`Native ${harnessLabel(job.harness)} work`}</h2>{error&&<p role="alert" className="text-sm text-danger">{error}</p>}</header>
       {source?.panel}
       <Tabs key={`${job.id}:${job.turn_id}`} label="Issue sections" items={[
-        {id:'result',label:'Result',content:<Card className="task-result space-y-5 p-5 sm:p-6" aria-label="Native Codex result">
-          <h2 className="text-lg font-semibold">Codex · {stateLabel(job.state)}</h2>
-          <p className="text-sm text-muted-foreground">Codex owns execution and native history. A completed turn needs project checks and independent review before acceptance.</p>
+        {id:'result',label:'Result',content:<Card className="task-result space-y-5 p-5 sm:p-6" aria-label={`Native ${harnessLabel(job.harness)} result`}>
+          <h2 className="text-lg font-semibold">{harnessLabel(job.harness)} · {stateLabel(resultJob.state)}</h2>
+          <p className="text-sm text-muted-foreground">{harnessLabel(job.harness)} owns execution and native history. A completed turn needs project checks and independent review before acceptance.</p>
           <dl className="grid gap-2 break-all text-sm sm:grid-cols-2"><div><dt className="text-muted-foreground">Thread ID</dt><dd><code>{job.thread_id||'Unconfirmed'}</code></dd></div><div><dt className="text-muted-foreground">Current turn ID</dt><dd><code>{job.turn_id||'Unconfirmed'}</code></dd></div></dl>
           {resultJob.native_result?.completed_at&&<p className="text-xs text-muted-foreground">Native completion · {time(resultJob.native_result.completed_at)}</p>}
           {resultLoading&&<p role="status" className="text-sm text-muted-foreground">Loading native result…</p>}
           {resultError&&<p role="alert" className="text-sm text-danger">Native result unavailable: {resultError}</p>}
-          {response!==null&&response!==undefined?<section aria-label="Native agent response"><h3 className="mb-2 text-sm font-medium">{terminal.has(resultJob.state)?'Final agent response':'Latest agent response'}</h3><pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 font-sans text-sm leading-6">{response}</pre></section>:!resultLoading&&<p className="text-sm text-muted-foreground">{resultJob.state==='unknown'?'Native status or result is unresolved. Inspect the Codex thread before acting.':'Codex has not recorded an agent response for this turn.'}</p>}
+          {response!==null&&response!==undefined?<section aria-label="Native agent response"><h3 className="mb-2 text-sm font-medium">{terminal.has(resultJob.state)?'Final agent response':'Latest agent response'}</h3><pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 font-sans text-sm leading-6">{response}</pre></section>:!resultLoading&&<p className="text-sm text-muted-foreground">{resultJob.state==='unknown'?'Native status or result is unresolved. Inspect the native session before acting.':`${harnessLabel(job.harness)} has not recorded an agent response for this turn.`}</p>}
           {resultJob.state==='unknown'&&<p role="alert" className="text-sm text-danger">Native state is stale, disconnected or ambiguous. Factory will not retry or start another turn automatically.</p>}
           {job.native_state_note&&<p role="status" className="text-sm">{job.native_state_note}</p>}
           {actionError&&<p role="alert" className="text-sm text-danger">{actionError}</p>}{localError&&<p role="alert" className="text-sm text-danger">{localError}</p>}
-          {job.state==='running'&&<Button type="button" variant="outline" disabled={busy||!job.turn_id} onClick={()=>act('interrupt',{turn_id:job.turn_id})}>{busy?'Interrupting…':'Interrupt native turn'}</Button>}
-          {job.thread_id&&job.state!=='running'&&<Button type="button" variant="outline" disabled={busy||resultJob.state==='unknown'} onClick={()=>act('resume')}>{busy?'Reconnecting…':'Reconnect without starting a turn'}</Button>}
+          {capabilities.interrupt===true&&job.state==='running'&&<Button type="button" variant="outline" disabled={busy||!job.turn_id} onClick={()=>act('interrupt',{turn_id:job.turn_id})}>{busy?'Interrupting…':'Interrupt native turn'}</Button>}
+          {capabilities.resume_thread===true&&job.thread_id&&job.state!=='running'&&<Button type="button" variant="outline" disabled={busy||resultJob.state==='unknown'} onClick={()=>act('resume')}>{busy?'Reconnecting…':'Reconnect without starting a turn'}</Button>}
+          {capabilities.resume_thread===false&&job.thread_id&&resultJob.state==='unknown'&&<p className="text-xs text-muted-foreground">Inspect this session in the native CLI. Reconnecting to a running session is unavailable here.</p>}
           {canContinue&&<form className="space-y-3 border-t border-border pt-4" onSubmit={event=>{event.preventDefault();if(!feedback.trim()||busy)return;act('continue',{expected_turn_id:resultJob.turn_id,feedback});}}>
-            <label className="block"><span className="field-label">Continue this Codex thread</span><textarea className="field-control min-h-28" maxLength={16000} value={feedback} onChange={event=>setFeedback(event.target.value)} placeholder="Give Codex explicit feedback or the next bounded step…" required/></label>
+            <label className="block"><span className="field-label">Continue this {harnessLabel(job.harness)} session</span><textarea className="field-control min-h-28" maxLength={16000} value={feedback} onChange={event=>setFeedback(event.target.value)} placeholder={`Give ${harnessLabel(job.harness)} explicit feedback or the next bounded step…`} required/></label>
             <p className="text-xs text-muted-foreground">This records a new native turn after the displayed terminal turn. An ambiguous start remains blocked for inspection.</p>
-            <Button type="submit" disabled={busy||!feedback.trim()}>{busy?'Continuing…':'Continue in Codex'}</Button>
+            <Button type="submit" disabled={busy||!feedback.trim()}>{busy?'Continuing…':`Continue in ${harnessLabel(job.harness)}`}</Button>
           </form>}
         </Card>},
         {id:'history',label:'History',content:<ol className="space-y-4" aria-label="Native turn history">{(job.native_turns||[]).length?(job.native_turns||[]).slice().reverse().map(turn=><li key={turn.id} className="space-y-2 border-l-2 border-border pl-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium">Native turn</h3><State value={turn.state}/></div><p className="break-all text-xs text-muted-foreground">Turn <code>{turn.id}</code></p>{turn.started_at&&<p className="text-xs text-muted-foreground">Started · {time(turn.started_at)}</p>}{turn.completed_at&&<p className="text-xs text-muted-foreground">Completed · {time(turn.completed_at)}</p>}</li>):<li className="text-sm text-muted-foreground">Native turn history is unavailable.</li>}</ol>},
@@ -63,7 +64,7 @@ export function TaskDetail({source,identity,links,navigation=[],csrfToken,job,lo
       <div><dt>Thread</dt><dd><code className="source-revision-sha">{job.thread_id||'Unconfirmed'}</code></dd></div><div><dt>Turn</dt><dd><code className="source-revision-sha">{job.turn_id||'Unconfirmed'}</code></dd></div>
       {links?.repository&&<div><dt>Repository</dt><dd><a className="metadata-link" href={links.repository} target="_blank" rel="noreferrer">View repo</a></dd></div>}
       {issueUrl&&<div><dt>GitHub issue</dt><dd><a className="metadata-link" href={issueUrl} target="_blank" rel="noreferrer">Open issue</a></dd></div>}
-      <div><dt>Codex visibility</dt><dd>Standalone CLI/app-server history. Desktop visibility depends on Codex support for this identity.</dd></div>
+      <div><dt>{harnessLabel(job.harness)} visibility</dt><dd>{job.harness==='claude'?'Native CLI session history in the dedicated Factory profile.':'Standalone CLI/app-server history. Desktop visibility depends on Codex support for this identity.'}</dd></div>
     </dl></aside>
   </div>;
 }

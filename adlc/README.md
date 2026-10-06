@@ -53,7 +53,7 @@ must fit the owner's vision and show an observed problem; they cannot alter
 permissions or rewrite the vision to justify themselves.
 
 When using the native Factory integration, setup stages these skills in its
-separate Codex home. Otherwise verify discovery using the chosen harness's native
+separate native profile. Otherwise verify discovery using the chosen harness's native
 mechanism. Native instruction-loading support is version-specific; do not assume
 all harnesses discover identical directories. The method does not install tools,
 providers or schedules.

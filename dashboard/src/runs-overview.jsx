@@ -5,7 +5,7 @@ import { Card } from './components/ui/card';
 import { Badge } from './components/ui/badge';
 import { cn } from './lib/utils';
 import { TaskFilters } from './task-filters.jsx';
-import { State, LifecycleGlyph, friendlyName, relativeTime, stateLabel } from './task-display.jsx';
+import { State, LifecycleGlyph, friendlyName, harnessLabel, relativeTime, stateLabel } from './task-display.jsx';
 import { statusGroups, boardColumns, groupJobsByBoardColumn, jobDisplayTitle, nextOperatorAction, taskPhase, toggleNativeFilter } from './runs-board.js';
 import { NATIVE_STATES, closureReasonLabel, nativeState } from '../../factory/issue-lifecycle.mjs';
 import { Labels } from './issue-labels.jsx';
@@ -77,7 +77,7 @@ export function RunsOverview({ visibleJobs, jobs, workflows, counts, phaseCounts
       {rail==='native' ? <TaskFilterRail counts={counts} loaded={loaded} filter={filter} setFilter={selectStatus} />
         : <RepositoryRail jobs={jobs} loaded={loaded} phaseFilter={phaseFilter} setPhaseFilter={setPhaseFilter} filter={filter} setFilter={setFilter}/> }
       <section className="task-results" aria-label="Work results">
-        {!loaded && !statusError ? <TaskMessage kind="loading" title="Loading project work" description="Checking GitHub issues and native Codex history." />
+        {!loaded && !statusError ? <TaskMessage kind="loading" title="Loading project work" description="Checking GitHub issues and native history." />
           : !loaded && statusError ? <TaskMessage kind="error" title="Project status unavailable" description={statusError} action="Retry status" onAction={refresh} />
             : !jobs.length && sourceLoading ? <TaskMessage kind="loading" title="Loading repository work" description="Waiting for the requested provider page." />
             : !jobs.length && sourceUnavailable ? <TaskMessage kind="error" title="Repository issues unavailable" description="No issue snapshot is available. Refresh issues to retry the provider read." />
@@ -186,7 +186,7 @@ function usePhaseTooltip(description) {
 function NativeFilterButton({ job, filter, setFilter }) {
   const selected = filter.includes(job.state);
   return <button type="button" className="native-filter-badge" aria-label={`Filter by native state: ${stateLabel(job.state)}`} aria-pressed={selected}
-    title={`Codex native state: ${stateLabel(job.state)}`} onClick={() => setFilter(previous => previous.includes(job.state) ? previous.filter(value => value !== job.state) : [...previous, job.state])}>
+    title={`${harnessLabel(job.harness)} native state: ${stateLabel(job.state)}`} onClick={() => setFilter(previous => previous.includes(job.state) ? previous.filter(value => value !== job.state) : [...previous, job.state])}>
     <State value={job.state} />
   </button>;
 }

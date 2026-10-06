@@ -9,6 +9,8 @@ import { probeCodex } from '../scripts/probe-harness.mjs';
 import { setupNative, readNative } from '../factory/native/setup.mjs';
 import { AppServer, nativeReadiness } from '../factory/native/app-server.mjs';
 import { NativeEngine } from '../factory/native/engine.mjs';
+import { ClaudeEngine, claudeReadiness } from '../factory/native/claude.mjs';
+import { claudeLoginEnvironment } from '../factory/native/claude-setup.mjs';
 import { connectBridge, registerBridge } from '../factory/native/bridge-client.mjs';
 import { acquireProcessLock } from '../factory/native/process-lock.mjs';
 import { manageNativeService, pendingServiceAdoptionToken } from '../factory/native/service.mjs';
@@ -19,10 +21,11 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 const packageIdentity=JSON.parse(readFileSync(join(root,'package.json'),'utf8'));
 const version=packageIdentity.version;
 const stateDefault=join(process.env.XDG_STATE_HOME || join(homedir(),'.local','state'),'software-defence-factory','native');
-const usage=`Factory ${version} · native Codex and GitHub Inbox
+const usage=`Factory ${version} · native Codex or Claude and GitHub Inbox
 
 Usage:
   factory setup --repo PATH [--state PATH] [--codex PATH] [--bundle-read PATH]
+  factory setup --harness claude --repo PATH --model MODEL --effort EFFORT [--state PATH] [--claude PATH] [--claude-config PATH]
   factory login [--state PATH]
   factory doctor [--state PATH]
   factory serve [--state PATH] [--port PORT]
@@ -45,8 +48,8 @@ Usage:
   factory probe codex
   factory runtime [--state PATH]
 
-GitHub owns issues, pull requests and CI. Codex owns sessions, execution,
-permissions and history. Continue is explicit and always requires the current
+GitHub owns issues, pull requests and CI. The selected native harness owns
+sessions, execution, permissions and history. Continue is explicit and always requires the current
 terminal turn identity. Nothing is automatically replayed or published.
 `;
 function parse(args,{positionals=0,allowed=[]}={}) {
@@ -71,13 +74,17 @@ function jobID(value) {if(!/^job_[a-f0-9]+$/.test(value||''))throw new Error('Ch
 async function serve(state,port) {
   if(!Number.isSafeInteger(port)||port<1024||port>65535)throw new Error('Choose a loopback port from 1024 to 65535.');
   const {state:realState,config,env}=readNative(state),release=acquireProcessLock(join(realState,'serve.lock'),'Factory dashboard');
-  const client=new AppServer({config,env});
-  let unregister=()=>{},server;
+  const claude=config.harness==='claude',client=claude?null:new AppServer({config,env});
+  let unregister=()=>{},server,engine;
   try {
-    await client.connect();
     const {createNativeServer}=await import('../factory/native/server.mjs');
-    const provider=issueProvider(config.repo),engine=new NativeEngine(realState,config,client,provider);
-    Object.defineProperties(engine,{name:{value:'codex'},available:{get:()=>client.available}});
+    const provider=issueProvider(config.repo);
+    if(claude)engine=new ClaudeEngine(realState,config,provider);
+    else {
+      await client.connect();
+      engine=new NativeEngine(realState,config,client,provider);
+      Object.defineProperties(engine,{name:{value:'codex'},available:{get:()=>client.available}});
+    }
     const instance=randomUUID();
     ({server}=createNativeServer(realState,config,{harness:engine,provider,instance,maintenanceToken:pendingServiceAdoptionToken(realState)}));
     await new Promise((done,reject)=>server.once('error',reject).listen(port,'127.0.0.1',done));
@@ -93,7 +100,7 @@ async function serve(state,port) {
     });
   } finally {
     if(server?.listening)await new Promise(resolve=>server.close(resolve));
-    unregister();client.close();release();
+    unregister();client?.close();engine?.close?.();release();
   }
 }
 async function command(args) {
@@ -102,15 +109,27 @@ async function command(args) {
   if(!name||name==='help'||name==='--help'||name==='-h'){process.stdout.write(usage);return;}
   if(name==='--version'||name==='-v'){console.log(version);return;}
   if(name==='setup') {
-    const {flags}=parse(rest,{allowed:['--repo','--state','--codex','--bundle-read']});
+    const {flags}=parse(rest,{allowed:['--repo','--state','--codex','--bundle-read','--harness','--claude','--model','--effort','--claude-config']});
     if(!flags['--repo'])throw new Error('Setup needs --repo PATH.');
-    print(setupNative(flags['--repo'],flags['--state'] || stateDefault,flags['--codex'],flags['--bundle-read']));return;
+    const harness=flags['--harness'] || 'codex';
+    if(!['codex','claude'].includes(harness))throw new Error('Choose --harness codex or claude.');
+    if(harness==='codex'&&['--claude','--model','--effort','--claude-config'].some(key=>flags[key]))throw new Error('--claude, --model, --effort and --claude-config apply only to --harness claude.');
+    const claude=harness==='claude'?{claude:flags['--claude'],model:flags['--model'],effort:flags['--effort'],profile:flags['--claude-config']}:null;
+    print(setupNative(flags['--repo'],flags['--state'] || stateDefault,flags['--codex'],flags['--bundle-read'],claude));return;
   }
   if(name==='login'||name==='doctor') {
     const {flags}=parse(rest,{allowed:['--state']}),state=stateFrom(flags),native=readNative(state);
+    const claude=native.config.harness==='claude';
     if(name==='login') {
-      const code=await new Promise((done,reject)=>{const child=spawn(native.config.codex,['login'],{cwd:native.config.repo,env:native.env,stdio:'inherit'});child.once('error',reject);child.once('close',done);});
-      if(code!==0)throw new Error('Native Codex login did not complete.');return;
+      // The native CLI owns its login flow (browser or printed URL); Factory never handles tokens.
+      const loginEnv=claude?claudeLoginEnvironment(native.config,native.state):native.env;
+      const code=await new Promise((done,reject)=>{const child=spawn(claude?native.config.claude:native.config.codex,claude?['auth','login','--claudeai']:['login'],{cwd:native.config.repo,env:loginEnv,stdio:'inherit'});child.once('error',reject);child.once('close',done);});
+      if(code!==0)throw new Error(`Native ${claude?'Claude':'Codex'} login did not complete.`);return;
+    }
+    if(claude) {
+      const readiness=await claudeReadiness(native.config,native.state);
+      print({mode:'native',harness:'claude',repo:native.config.repo,state,readiness,live_qualification:'not established by doctor'});
+      if(!readiness.ready)process.exitCode=1;return;
     }
     const client=new AppServer({config:native.config,env:native.env});
     try {
@@ -201,7 +220,7 @@ async function command(args) {
     const {flags}=parse(rest,{allowed:['--state']});
     const result={package:packageIdentity.name,version,entrypoint:root,source_checkout:existsSync(join(root,'.git')),native_state:'unknown'};
     if(existsSync(join(stateFrom(flags),'native.json'))) {
-      const native=readNative(stateFrom(flags));result.native_state='configured';result.repository=native.config.repo;result.node=native.config.node;result.codex=native.config.codex;
+      const native=readNative(stateFrom(flags));result.native_state='configured';result.repository=native.config.repo;result.node=native.config.node;result.harness=native.config.harness||'codex';result[result.harness]=native.config[result.harness];
     }
     print(result);return;
   }
@@ -220,7 +239,7 @@ async function command(args) {
     if(result.error)throw result.error;if(result.status!==0)process.exitCode=result.status || 1;return;
   }
   throw new Error(name==='claude'||name==='pi'||name==='cursor'||name==='grok'
-    ? `Harness '${name}' is not available in this release; Codex is the selected native integration.`
+    ? `Harness '${name}' is not a command. Select Codex (default) or Claude with factory setup --harness.`
     : `Unknown command '${name}'. Use factory help.`);
 }
 

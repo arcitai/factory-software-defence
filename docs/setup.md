@@ -7,8 +7,8 @@ code/design standards, real checks and delivery rules. Use [repository readiness
 to adapt issue templates, labels and CI. Factory does not modify these automatically.
 
 The executable integration currently requires Linux, Node 22.13+, Git, native
-Codex and the GitHub CLI authenticated for the selected repository. A stable
-external Codex installation is required. `factory probe codex` discovers the
+Codex or Claude Code, and the GitHub CLI authenticated for the selected repository.
+Select a stable external native installation. `factory probe codex` discovers the
 binary/version; it does not prove login, isolation or tool readiness.
 
 Prefer a dedicated OS user on the execution host. Under an existing user, record
@@ -37,10 +37,55 @@ The initial profile has unattended approvals but restricted filesystem/network
 access; personal apps/MCP/plugins are excluded. The host GitHub integration uses
 the operator's GitHub identity without forwarding its environment to the agent.
 
+Run login on the host that runs Factory. It opens the native browser flow when
+available; otherwise, open the displayed link in your browser and complete the
+login there. Factory keeps that login in its selected profile.
+
 Doctor checks effective configuration and connection inventory. A passing doctor
 is not a real execution or sandbox proof. Model preferences belong in the native
 configuration; access changes require deliberate requalification. Factory refuses
 an unexplained change to its pinned configuration or skill catalog.
+
+## Configure Claude instead
+
+Codex remains the default. To use the native Claude CLI, select it at setup and
+pin an exact model and effort:
+
+```sh
+factory setup --harness claude --repo /absolute/project \
+  --state /absolute/private/factory-state --model MODEL_ID --effort medium \
+  [--claude /absolute/path/to/claude] [--claude-config /absolute/dedicated/profile]
+factory login --state /absolute/private/factory-state
+factory doctor --state /absolute/private/factory-state
+```
+
+Setup pins the executable bytes and version, a private profile with the six
+Factory skills and a Factory settings file. `--claude-config` adopts an existing
+private profile dedicated to Factory; never select your personal Claude profile.
+`login` uses your Claude subscription (browser, or a printed URL without one); Factory
+never reads tokens. Doctor reads `claude auth status`, then starts the native CLI
+without a prompt or saved session and checks pending requests, applied
+model/effort, effective permissions and sandbox, hooks policy, skills and MCP.
+Doctor does not report the tool list; each run checks the native startup
+inventory (tools, MCP, plugins, skills, permission mode) before it is recognized.
+Usage limits Claude does not report stay unknown; cost fields are API-equivalent
+estimates, not subscription usage or a charge. An existing Factory login can be
+checked with `doctor`; log in only when needed. API-billed login is not selected.
+
+Work runs as `claude -p` with stream-json, the user setting source only, strict
+empty MCP, the pinned settings and the tools Bash, Read, Edit, Write, Glob, Grep
+and Skill. Bash runs in the mandatory native sandbox with no network and a private
+temporary directory; the project `AGENTS.md` is appended by reference. One
+installation, and one harness, writes a repository. A result is shown only after
+the native process ends and native history confirms it. Interrupt works only for
+a run started by the running bridge and is reported once native confirms it.
+History reconnect is unsupported. A refused permission request, unexpected output
+or a bridge restart during a run leaves it unknown until you inspect native
+history; Factory never replays it. The profile is not an OS-user isolation boundary.
+Factory creates an owned private temporary directory with a short path so native
+sandbox sockets also work with long project or state paths. The Inbox shows the
+last readiness check; admission and continuation verify readiness again. Reading
+status does not repeatedly start a full native probe.
 
 ## Native Codex session visibility
 
@@ -94,7 +139,7 @@ factory service status --state /absolute/private/factory-state
 
 The service pins package bytes and the selected Node/state/repository paths.
 The package rename does not rename an existing service unit, state directory,
-Codex home, credentials or native history. Preserve an old pin until its owner
+native profile, credentials or history. Preserve an old pin until its owner
 is reconciled and a new installed package is qualified.
 Every systemd start verifies the runtime, including its bundled dependency,
 against the recorded digest. Unused npm executable shims are excluded; changed
@@ -108,7 +153,7 @@ reboot was tested merely because a service is enabled.
 In the Inbox, choose **New issue** and select a repository template or **Blank
 issue**. Complete every required field. Review the compiled title and description,
 then check the repository and acting GitHub identity shown before choosing **Create
-issue**. The receipt confirms the GitHub issue; creation does not start Codex.
+issue**. The receipt confirms the GitHub issue; creation does not start native work.
 **Done** returns to the Inbox, which refreshes its issue list.
 
 Once the UI shows **Issue #N created**, GitHub creation is confirmed, even if the
@@ -132,14 +177,14 @@ and prevents another submission.
 
 After the issue appears in the Inbox, open it, review its current content and
 readiness, then choose **Start work** deliberately. The result shows the native
-Codex response and thread identity. A completed turn needs project checks and an
+agent response and session identity. A completed turn needs project checks and an
 independent review of the exact candidate. Use **Continue** to send bounded
 feedback to that same thread. Prepare a protected pull request through the
 project's normal GitHub process, then wait for its required CI checks and review;
 Factory does not treat a completed turn as acceptance or publish a PR for you.
 
 The Inbox shows the repository phase from actual GitHub labels and open/closed
-metadata, beside Codex's separate native state. Review the exported lifecycle
+metadata, beside the harness's separate native state. Review the exported lifecycle
 catalog against existing repository labels before adopting it. Changing list,
 phase, history or page only reads repository data; phase labels and issue creation
 do not start work. Closed history is paged GitHub data: Done requires a completed

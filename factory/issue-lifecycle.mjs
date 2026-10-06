@@ -137,8 +137,8 @@ export function associateIssue(issue, jobs, mapping = DEFAULT_READINESS_LABELS) 
   if (!identity) throw new Error('Provider returned an unsupported issue identity.');
   const association = executionAssociation(jobs, identity), readiness = issueReadiness(issue.labels, mapping);
   const phase = projectIssuePhase(issue, { mapping });
-  const start_block_reason = association.active_execution ? 'Native work is active or unresolved. Inspect its Codex history first.'
-    : association.executions.length ? 'This issue has native history. Continue its recorded Codex thread from the detail view.'
+  const start_block_reason = association.active_execution ? 'Native work is active or unresolved. Inspect its native history first.'
+    : association.executions.length ? 'This issue has native history. Continue its recorded session from the detail view.'
     : issue.state !== 'open' ? 'Only an open repository issue can start work.'
     : readiness.state === 'blocked' || readiness.state === 'conflicting' ? 'Resolve the readiness labels on the repository before starting work.'
       : phase.resolution === 'conflicting' ? 'Resolve the conflicting phase labels on the repository before starting work.' : null;

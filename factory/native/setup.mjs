@@ -1,35 +1,23 @@
-import { accessSync, closeSync, constants, cpSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
+import { readClaude, setupClaude } from './claude-setup.mjs';
+import { nativeExecutable, within } from './executable.mjs';
 
-const within = (root, path) => { const r = relative(root, path); return r === '' || (r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r)); };
 const quote = value => JSON.stringify(value);
 const CONFIG = 'native.json';
 // Account identity, not the launch environment, owns isolation and writer locks.
 const accountHome = () => realpathSync(userInfo().homedir);
 const writerRoot = () => join(accountHome(),'.local','state','software-defence-factory','native-writers');
 
-function executable(candidate, repo) {
-  if (!isAbsolute(candidate)) throw new Error('Select an absolute Codex executable path.');
-  const path = resolve(candidate), target = realpathSync(path);
-  if (within(repo, path) || within(repo, target) || !lstatSync(target).isFile())
-    throw new Error('Codex executable must be a file outside the repository.');
-  accessSync(path, constants.X_OK);
-  const fd=openSync(target,'r'), header=Buffer.alloc(256);
-  try {readSync(fd,header,0,header.length,0);} finally {closeSync(fd);}
-  const elf=header.subarray(0,4).equals(Buffer.from([0x7f,0x45,0x4c,0x46]));
-  const nodeScript=header.toString('utf8').startsWith(`#!${realpathSync(process.execPath)}\n`);
-  if (!elf && !nodeScript) throw new Error('Unsupported Codex executable layout; select a native binary or explicit Node script.');
-  return path; // Preserve argv[0] for a selected symlink or shim.
-}
 export function findNativeCodex(repo, selected) {
-  if (selected) return executable(selected, repo);
+  if (selected) return nativeExecutable(selected, repo);
   for (const entry of (process.env.PATH || '').split(':')) {
     if (!isAbsolute(entry) || within(repo, resolve(entry))) continue;
-    try { return executable(join(entry, 'codex'), repo); } catch { /* Continue to trusted PATH entries. */ }
+    try { return nativeExecutable(join(entry, 'codex'), repo); } catch { /* Continue to trusted PATH entries. */ }
   }
   throw new Error('Codex executable unavailable. Pass --codex with an absolute external path.');
 }
@@ -54,7 +42,7 @@ export function nativePolicy(config, state) {
       network:{enabled:false}}},
   };
 }
-export function setupNative(repoPath, statePath, selectedCodex, bundleRead) {
+export function setupNative(repoPath, statePath, selectedCodex, bundleRead, claude=null) {
   if (process.platform !== 'linux') throw new Error('Native isolation is currently supported only on Linux.');
   const repo = realpathSync(resolve(repoPath));
   if (!lstatSync(repo).isDirectory()) throw new Error('--repo must be a directory.');
@@ -67,6 +55,10 @@ export function setupNative(repoPath, statePath, selectedCodex, bundleRead) {
   if (within(repo,lockRoot) || within(lockRoot,repo) || within(state,lockRoot) || within(lockRoot,state))
     throw new Error('Repository and native state must be separate from the writer lock directory.');
   if (existsSync(state)) throw new Error('Native state path already exists; choose an empty new directory.');
+  if (claude) {
+    if (selectedCodex || bundleRead) throw new Error('--codex and --bundle-read apply only to the Codex harness.');
+    return setupClaude({...claude, repo, state});
+  }
   const codex = findNativeCodex(repo, selectedCodex);
   const node = realpathSync(process.execPath), codexTarget = realpathSync(codex);
   const reads = [...new Set([node, codex, codexTarget])];
@@ -141,6 +133,8 @@ export function readNative(statePath) {
   if (process.platform !== 'linux') throw new Error('Native isolation is currently supported only on Linux.');
   const state = realpathSync(resolve(statePath));
   const config = JSON.parse(readFileSync(join(state,CONFIG),'utf8'));
+  if (config.harness === 'claude') return readClaude(state, config);
+  if (config.harness !== undefined) throw new Error('Unsupported native harness in state; refuse to start.');
   if (config.version !== 1 || config.profile !== 'factory' || !isAbsolute(config.repo) || !isAbsolute(config.codex)
     || !isAbsolute(config.node) || !lstatSync(state).isDirectory() || (lstatSync(state).mode & 0o077)
     || realpathSync(config.repo) !== config.repo || !Array.isArray(config.runtime_reads)

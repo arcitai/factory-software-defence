@@ -584,3 +584,12 @@ Apache License 2.0. The original license files are retained in the built image
 under `/opt/factory-web/node_modules/playwright/LICENSE` and
 `/opt/factory-web/node_modules/playwright-core/LICENSE`. Factory does not bundle
 the built browser image in its npm package.
+
+## Claude native history utilities
+
+`@anthropic-ai/claude-agent-sdk` 0.3.289 is distributed intact for its read-only
+native session-history functions. Its original README and package metadata are
+included under `node_modules/@anthropic-ai/claude-agent-sdk/`. The package
+declares `SEE LICENSE IN README.md` and refers to [Anthropic Commercial Terms](https://www.anthropic.com/legal/commercial-terms).
+Factory's MIT license does not relicense this component. Native Claude execution
+uses the operator's separate CLI installation, not SDK `query()` or bundled CLI binaries.

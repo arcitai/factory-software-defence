@@ -2,7 +2,7 @@ import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { Labels } from './issue-labels.jsx';
-import { stateLabel, friendlyName, formatTimestamp } from './task-display.jsx';
+import { harnessLabel, stateLabel, friendlyName, formatTimestamp } from './task-display.jsx';
 import { TaskDetail } from './task-detail.jsx';
 import { RunsOverview } from './runs-overview.jsx';
 import { workRecords, canonicalIssue, closureReasonLabel, projectIssuePhase } from '../../factory/issue-lifecycle.mjs';
@@ -71,7 +71,7 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
   const detailPhase=selected && (detailMetadataPending
     ? projectIssuePhase(detailIssue, { sourceStatus: detailIssue ? 'stale' : 'not_loaded' })
     : context?.phase || selected.phase);
-  const blocked=selected?.active_execution ? 'Native work is active or unresolved. Open its history to inspect it.' : context?.start_block_reason || (jobs.some(job=>['running','unknown'].includes(job.state)) ? 'The native workspace has active or unresolved work. Inspect Codex history first.' : null) || (!nativeReadiness?.ready ? `Native Codex unavailable: ${(nativeReadiness?.gaps || ['readiness unknown']).join('; ')}` : null);
+  const blocked=selected?.active_execution ? 'Native work is active or unresolved. Open its history to inspect it.' : context?.start_block_reason || (jobs.some(job=>['running','unknown'].includes(job.state)) ? 'The native workspace has active or unresolved work. Inspect native history first.' : null) || (!nativeReadiness?.ready ? `Native ${harnessLabel(nativeReadiness?.harness)} unavailable: ${(nativeReadiness?.gaps || ['readiness unknown']).join('; ')}` : null);
   async function start(event) {
     event.preventDefault();if(starting || !context || blocked || previewError || startFailure || statusError)return;setStarting(true);
     try {const created=await api('/api/v1/issues/start',{url:context.url,expected_spec:context.spec,brief:draft.brief,work_type:draft.workType});
@@ -83,7 +83,7 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
   const sourceNotice=<>
     {!provider?.supported && provider && <p className="source-boundary">GitHub issues are unavailable for this project identity. Select a supported GitHub repository to use the Inbox.</p>}
     {error && <p role="alert" className="form-error">{snapshot?'Repository data stale. ':'Repository issues unavailable. '}{error}</p>}
-    {!nativeReadiness?.ready && <p role="alert" className="source-boundary">Native Codex unavailable: {(nativeReadiness?.gaps || ['readiness unknown']).join('; ')}</p>}
+    {!nativeReadiness?.ready && <p role="alert" className="source-boundary">Native {harnessLabel(nativeReadiness?.harness)} unavailable: {(nativeReadiness?.gaps || ['readiness unknown']).join('; ')}</p>}
     {snapshot && !snapshot.issues?.length && !error && !loading && <p className="source-boundary">No issues on this page. Other pages or states may contain issues.</p>}
   </>;
   const panel=selected && <section className="issue-context" aria-label="Repository issue context">
@@ -116,10 +116,11 @@ export function Inbox({ token, provider, jobs = [], loaded, refreshKey, onStarte
     <div><dt>Source state</dt><dd>{sourceStateLabel(detailIssue)}{previewError?' · unavailable / stale':''}{previewBusy?' · source refresh pending':''}</dd></div>
     <div><dt>Repository phase</dt><dd>{detailPhase?.label || 'Source not loaded'}{detailPhase?.detail?` · ${detailPhase.detail}`:''}</dd></div>
     <div><dt>Readiness{detailMetadataPending && detailIssue?' · last loaded':''}</dt><dd>{detailIssue?.readiness.label || 'Unknown'}</dd></div>
+    {nativeReadiness?.checked_at&&<div><dt>{harnessLabel(nativeReadiness.harness)} access checked</dt><dd>{new Date(nativeReadiness.checked_at).toLocaleString()} · Checked again before starting work.</dd></div>}
     <div><dt>Labels{detailMetadataPending && detailIssue?' · last loaded':''}</dt><dd>{detailIssue && Array.isArray(detailIssue.labels) ? <Labels labels={detailIssue.labels} /> : <span>{detailIssue ? 'Labels unavailable' : 'Not loaded'}</span>}</dd></div>
     <div><dt>Created</dt><dd>{formatTimestamp(detailIssue?.created_at)}</dd></div>
     <div><dt>Contributors{detailMetadataPending && detailIssue?' · last loaded':''}</dt><dd>{detailIssue ? <Contributors {...detailIssue} /> : <span>Not loaded</span>}</dd></div>
-    {!selected.execution_id && <><div><dt>Codex</dt><dd>Not started</dd></div><div><dt>Work type</dt><dd>Choose when starting work</dd></div></>}
+    {!selected.execution_id && <><div><dt>{harnessLabel(nativeReadiness?.harness)}</dt><dd>Not started</dd></div><div><dt>Work type</dt><dd>Choose when starting work</dd></div></>}
   </dl>;
   return <>
     <section className="inbox-page" aria-label="Project Inbox" hidden={Boolean(issueKey)}>
@@ -158,7 +159,7 @@ function RepositoryControls({ snapshot, state, setState, loading, token, load, r
         {snapshot?.next_page && <Button variant="ghost" size="sm" disabled={loading} onClick={()=>load(snapshot.next_page)}>Next page</Button>}
       </div>
       <p className="source-boundary">{snapshot?`${snapshot.loaded_count} issues loaded on page ${snapshot.page} (${snapshot.state}); ${snapshot.total == null?'total unknown':`${snapshot.total} total`}. Read at ${snapshot.fetched_at}.`:'Repository page not loaded.'} Search covers loaded issues and retained native history only.{snapshot && snapshot.state!==state?' Showing the previous issue-state filter until refresh succeeds.':''}</p>
-      <p className="source-boundary">{records.length} project issues with {turns} native issue histories, including histories outside the loaded page. Codex remains the source of turn status and results.</p>
+      <p className="source-boundary">{records.length} project issues with {turns} native issue histories, including histories outside the loaded page. The native harness remains the source of turn status and results.</p>
     </div>}
   </div>;
 }

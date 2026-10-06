@@ -19,8 +19,8 @@ using accepted context. A draft cannot authorize new goals. Improvements must
 state the observed problem, fit with the vision and an observable acceptance
 check. Scope or access expansion needs the owner's decision.
 
-Inspect the actual host, repository remote and native harness. Codex and GitHub
-are the current supported integration; record unsupported capabilities rather
+Inspect the actual host, repository remote and native harness. Codex and Claude Code on Linux with GitHub
+are the supported integrations; record unsupported capabilities rather
 than inventing an adapter or treating binary discovery as readiness. Application
 hosting is separate from Factory's execution host. Keep missing obligations in
 the existing issue/task record, not a second project registry.
@@ -43,7 +43,7 @@ the existing issue/task record, not a second project registry.
   private-path denial and the tool/connection inventory. Unattended approval
   does not mean unrestricted host access. Keep provider credentials with the
   component needing them, outside the agent environment unless explicitly needed.
-- **Operation:** install a pinned package, stable Node and Codex binaries, a
+- **Operation:** install a pinned package, stable Node and native harness binaries, a
   private state directory and a loopback listener. Use the supported OS service
   manager and authenticated SSH forwarding for remote access. Record boot/login
   prerequisites and test restart recovery without starting another native turn.
@@ -57,7 +57,7 @@ the existing issue/task record, not a second project registry.
   delivery. Distinguish mock/synthetic checks from real integration and a tested
   restart from an untested reboot.
 
-Codex owns sessions, tools, context and execution. Requested schedules belong
+The selected native harness owns sessions, tools, context and execution. Requested schedules belong
 to the native harness; do not install a Factory scheduler. Issue creation and
 labels alone never authorize execution. Model choices such as Local Build ·
 Cloud Review need support and measured qualification through the chosen harness.
