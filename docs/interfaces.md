@@ -17,7 +17,7 @@ There is no second CLI execution engine.
 | Start an accepted issue | `factory start URL --brief TEXT --state PATH` |
 | Continue the same native history | `factory continue ID --turn TURN_ID --feedback TEXT --state PATH` |
 | Interrupt the identified active turn | `factory interrupt ID --turn TURN_ID --state PATH` |
-| Reconnect without starting work | `factory reconnect ID --state PATH` |
+| Reconnect without starting work (Codex) | `factory reconnect ID --state PATH` |
 | Export the portable method | `factory kit --output NEW_DIRECTORY` |
 | Adopt a reviewed installed patch into the owned user service | `factory service adopt --state PATH` |
 
@@ -85,7 +85,7 @@ only a successful response clears that failure.
 
 List and Kanban show the same records and filters. A closed GitHub issue is a
 repository decision, not proof of successful execution. Results show native
-thread/turn identities and bounded final text; Codex retains full history.
+thread/turn identities and bounded final text; the selected harness retains full history.
 
 ## Local HTTP boundary
 

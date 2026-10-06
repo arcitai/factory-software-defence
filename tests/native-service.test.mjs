@@ -7,6 +7,20 @@ import { spawnSync } from 'node:child_process';
 import { pinInstalledRuntime, serviceManifest, assertStoppedReconciled } from '../factory/native/service.mjs';
 import { acquireProcessLock, inspectProcessLock } from '../factory/native/process-lock.mjs';
 
+test('a release declaring Claude refuses a missing or mismatched bundled history reader',t=>{
+  const root=mkdtempSync(join(tmpdir(),'factory-service-claude-'));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const name='@anthropic-ai/claude-agent-sdk',version='0.3.289';
+  writeFileSync(join(root,'package.json'),JSON.stringify({name:'factory-software-defence',version:'0.18.8',dependencies:{yaml:'2.9.1',[name]:version},bundleDependencies:['yaml',name]}));
+  mkdirSync(join(root,'node_modules','yaml'),{recursive:true});
+  writeFileSync(join(root,'node_modules','yaml','package.json'),JSON.stringify({name:'yaml',version:'2.9.1'}));
+  const manifest=()=>serviceManifest({state:join(root,'state'),config:{repo:'/repo',node:process.execPath},root});
+  assert.throws(manifest,/bundled @anthropic-ai\/claude-agent-sdk is missing/);
+  const dependency=join(root,'node_modules',name);mkdirSync(dependency,{recursive:true});
+  writeFileSync(join(dependency,'package.json'),JSON.stringify({name,version:'wrong'}));
+  assert.throws(manifest,/unexpected bundled/);
+});
+
 test('user systemd manifest pins an installed release and a loopback serve command',t=>{
   const root=mkdtempSync(join(tmpdir(),'factory-service-test-'));
   t.after(()=>rmSync(root,{recursive:true,force:true}));

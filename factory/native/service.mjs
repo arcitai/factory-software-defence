@@ -18,7 +18,7 @@ const serviceHash=value=>createHash('sha256').update(value).digest('hex').slice(
 const serviceID=(state,repo)=>`factory-native-${serviceHash(`${state}\n${repo}`)}`;
 const quote=value=>`"${String(value).replaceAll('\\','\\\\').replaceAll('"','\\"').replaceAll('$',()=> '$$').replaceAll('%','%%').replaceAll('\n','\\n')}"`;
 const validPort=port=>Number.isSafeInteger(port)&&port>=1024&&port<=65535;
-const unitText=({state,repo,node,runtime,port,verification})=>`[Unit]\nDescription=Factory native Codex Inbox\nStartLimitIntervalSec=0\n\n[Service]\nType=exec\nExecStartPre=${verification.map(quote).join(' ')}\nExecStart=${[node,join(runtime,'bin/software-defence-factory.mjs'),'serve','--state',state,'--port',String(port)].map(quote).join(' ')}\nRestart=on-failure\nRestartSec=10\nTimeoutStopSec=45\nKillMode=control-group\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`;
+const unitText=({state,repo,node,runtime,port,verification})=>`[Unit]\nDescription=Factory native agent Inbox\nStartLimitIntervalSec=0\n\n[Service]\nType=exec\nExecStartPre=${verification.map(quote).join(' ')}\nExecStart=${[node,join(runtime,'bin/software-defence-factory.mjs'),'serve','--state',state,'--port',String(port)].map(quote).join(' ')}\nRestart=on-failure\nRestartSec=10\nTimeoutStopSec=45\nKillMode=control-group\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`;
 function callSystemctl(args) {
   return execFileSync('systemctl',['--user',...args],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000}).trim();
 }
@@ -56,12 +56,15 @@ function verifyPackageRoot(root,{allowLegacy=false}={}) {
   if (existsSync(join(resolved,'.git')) || !(pkg.name===canonicalPackage || (allowLegacy&&pkg.name===legacyPackage))
     || !/^0\.\d+\.\d+$/.test(pkg.version || ''))
     throw new Error('Native services can only pin an installed Factory package, never a mutable source checkout.');
-  const yamlPath=join(resolved,'node_modules','yaml','package.json');
-  if(!pkg.bundleDependencies?.includes('yaml')||!existsSync(yamlPath))
-    throw new Error('Installed Factory release is incomplete: bundled yaml is missing.');
-  const yaml=JSON.parse(readFileSync(yamlPath,'utf8'));
-  if(yaml.name!=='yaml'||yaml.version!==pkg.dependencies?.yaml)
-    throw new Error('Installed Factory release has an unexpected bundled yaml version.');
+  const dependencies=['yaml',...(pkg.dependencies?.['@anthropic-ai/claude-agent-sdk']?['@anthropic-ai/claude-agent-sdk']:[])];
+  for (const name of dependencies) {
+    const path=join(resolved,'node_modules',name,'package.json');
+    if(!pkg.bundleDependencies?.includes(name)||!existsSync(path))
+      throw new Error(`Installed Factory release is incomplete: bundled ${name} is missing.`);
+    const dependency=JSON.parse(readFileSync(path,'utf8'));
+    if(dependency.name!==name||dependency.version!==pkg.dependencies?.[name])
+      throw new Error(`Installed Factory release has an unexpected bundled ${name} version.`);
+  }
   return {root:resolved,name:pkg.name,version:pkg.version};
 }
 function runtimeDigest(root) {

@@ -43,10 +43,10 @@ function App() {
     </aside>
     <main className="workshop min-w-0 flex-1">
       <ProjectContext identity={identity} links={status.project_links} compact={view==='task'||view==='issue'} loaded={statusLoaded} error={statusError} showNewIssue={view==='runs'&&showNewIssue} onNewIssue={()=>setComposerOpen(true)}/>
-      {view==='task'?<TaskDetail identity={identity} links={status.project_links} navigation={workNavigation} csrfToken={status.csrf_token} job={selectedJob} loaded={statusLoaded} error={statusError} actionError={taskActionError} onWorkflowAction={nativeAction}/>:null}
+      {view==='task'?<TaskDetail identity={identity} links={status.project_links} navigation={workNavigation} csrfToken={status.csrf_token} job={selectedJob} loaded={statusLoaded} error={statusError} actionError={taskActionError} onWorkflowAction={nativeAction} capabilities={status.native_capabilities}/>:null}
       <div hidden={view!=='runs'&&view!=='issue'}>
         <Inbox jobs={status.jobs} loaded={statusLoaded} active={view==='runs'||view==='issue'} issueKey={route.issueKey} identity={identity} links={status.project_links} onNavigation={setWorkNavigation}
-          detailProps={{actionError:taskActionError,onWorkflowAction:nativeAction}} onNewIssue={showNewIssue?()=>setComposerOpen(true):null}
+          detailProps={{actionError:taskActionError,onWorkflowAction:nativeAction,capabilities:status.native_capabilities}} onNewIssue={showNewIssue?()=>setComposerOpen(true):null}
           nativeReadiness={status.native_readiness} token={status.csrf_token} provider={status.issue_provider} statusError={statusError} refreshStatus={refreshStatus}
           refreshKey={issueRefreshKey} onStarted={started}/>
         {composerOpen&&<RunComposer identity={identity} issueProvider={status.issue_provider} csrfToken={status.csrf_token} projectLinks={status.project_links} onCreated={issueCreated} close={()=>setComposerOpen(false)}/>}

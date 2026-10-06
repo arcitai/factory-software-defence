@@ -8,7 +8,7 @@ Read [VISION.md](VISION.md), [AGENTS.md](AGENTS.md), the accepted issue and the
 Use Node22.13+ and Git. Lockfiles in the root and `dashboard/` are committed:
 
 ```sh
-npm ci --ignore-scripts
+npm ci --ignore-scripts --omit=optional
 npm run build:dashboard
 npm run check
 ```
@@ -17,7 +17,7 @@ Dashboard assets are generated into ignored `factory/ui/`; edit `dashboard/`.
 Build before packaging. Package checks must exercise an actual installed tarball,
 not merely imports from a source checkout. CI checks Node22 and24.
 
-Native changes require actual Codex lifecycle/permission proof in addition to
+Native changes require actual lifecycle/permission proof for the affected harness in addition to
 focused tests. UI changes require desktop and narrow browser interaction,
 including relevant empty/failure states and both themes. Mock success does not
 prove native isolation, service recovery or real model execution.
@@ -29,7 +29,7 @@ HTTP/Inbox layer normalized operations and capabilities. Keep native protocol
 and permission details inside their integration. Prefer plain functions/objects
 to a plugin registry or speculative universal runtime.
 
-Codex owns execution, context, tools and history; GitHub owns issues, PRs and CI.
+The selected native harness owns execution, context, tools and history; GitHub owns issues, PRs and CI.
 Factory owns only the connecting method, work surface and necessary receipts.
 Do not recreate native functionality to make it look uniform. Unsupported
 capabilities are explicit. A new harness needs real integration proof before it

@@ -2,8 +2,8 @@
 
 **Software & Defence. A method, a project Inbox, and your native coding agent.**
 
-Factory connects a repository's issues to a separately configured Codex environment.
-Keep the familiar list, Kanban, filters and issue detail; let Codex run the work
+Factory connects a repository's issues to a separately configured native coding agent.
+Keep the familiar list, Kanban, filters and issue detail; let the native agent run the work
 and GitHub handle issues, pull requests and CI. Published by [Arcitai](https://github.com/arcitai).
 
 ## What is included
@@ -17,7 +17,7 @@ and GitHub handle issues, pull requests and CI. Published by [Arcitai](https://g
   as the Inbox, and pinned Linux user-service startup.
 
 Factory does not run another agent loop, queue, execution database or scheduler.
-The current integration is Codex on Linux with GitHub. Other harnesses and hosts
+The supported integrations are Codex and Claude Code on Linux with GitHub. Other harnesses and hosts
 need their own qualified integration; the method can be used independently.
 
 ## Install
@@ -36,7 +36,7 @@ and `factory-software-defence`. If the former npm package owns a global `factory
 command, follow the explicit [package switch](docs/npm.md#switch-global-package-names)
 before installing. Do not overwrite that command with `--force`.
 
-Follow [setup](docs/setup.md) to prepare native Codex and a project Inbox.
+Follow [setup](docs/setup.md) to select a native harness and prepare a project Inbox.
 Existing installations must follow [migration](docs/migration.md); old histories
 stay outside the current package and are never automatically converted into work.
 For method-only use, run `factory kit --output ./factory-kit` and review
@@ -53,7 +53,7 @@ needed to avoid duplicate work. There is no Factory transcript database.
 
 The versioned [ADLC lifecycle catalog](adlc/lifecycle.json) is the single source
 for default repository phases, label identities and semantic presentation. The
-bridge and Inbox share a pure projection; GitHub source phase and Codex execution
+bridge and Inbox share a pure projection; GitHub source phase and native execution
 state remain separate.
 
 A completed agent turn needs checks and independent review. It is not automatic

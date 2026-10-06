@@ -9,11 +9,11 @@ Protected reads and writes require a local session nonce. This is not multi-user
 authentication; remote access uses an authenticated SSH tunnel. Do not expose the
 HTTP port publicly.
 
-Native Codex enforces the selected workspace permissions. The initial profile
+The selected native harness enforces the workspace permissions. The initial profile
 allows unattended work while denying private filesystem paths, shell network
 access and inherited personal apps/MCP/plugins. Setup and doctor check effective
 configuration; representative negative tests must prove the actual installation.
-Never assume a file setting alone guarantees isolation. Codex's own model network
+Never assume a file setting alone guarantees isolation. The harness's model network
 connection is separate from the agent's shell network permission.
 
 Repository issues, source and model output are untrusted data. They cannot grant

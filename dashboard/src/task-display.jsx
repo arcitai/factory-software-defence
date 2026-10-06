@@ -47,6 +47,11 @@ export function formatTimestamp(value) {
     ? "Unavailable"
     : new Date(value).toLocaleString();
 }
+// The bridge reports the selected native harness; Codex is the default.
+export function harnessLabel(value) {
+  return value==='claude' ? 'Claude' : 'Codex';
+}
+
 export function stateLabel(value) {
   return nativeState(value).label;
 }

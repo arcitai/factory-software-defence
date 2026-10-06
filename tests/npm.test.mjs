@@ -6,18 +6,26 @@ import {join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {execFileSync} from 'node:child_process';
 const root=fileURLToPath(new URL('../',import.meta.url));
-test('real tarball installs offline, carries yaml and documentation, and exports the portable method',async t=>{
+test('real tarball installs offline, includes native history utilities, and exports the portable method',async t=>{
  const scratch=mkdtempSync(join(tmpdir(),'factory-pack-'));
  t.after(()=>rmSync(scratch,{recursive:true,force:true}));
  const npm=(args,cwd=root)=>execFileSync('npm',args,{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60000});
  const [packed]=JSON.parse(npm(['pack','--json','--ignore-scripts','--pack-destination',scratch]));
  assert.equal(packed.name,'factory-software-defence');
  const paths=packed.files.map(file=>file.path);
+ assert.ok(paths.includes('node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs'));
+ assert.ok(paths.includes('node_modules/@anthropic-ai/claude-agent-sdk/README.md'));
+ assert.ok(!paths.some(path=>/node_modules\/@anthropic-ai\/claude-agent-sdk-(linux|darwin|win32)/.test(path)),'Factory does not distribute another Claude executable');
  for(const retired of ['factory/queue.mjs','factory/executor.mjs','factory/pins.json','bin/legacy.mjs','factory/updates.mjs','factory/image/Dockerfile'])assert.ok(!paths.includes(retired),retired);
  const prefix=join(scratch,'install');mkdirSync(prefix);
  npm(['install','--prefix',prefix,'--offline','--ignore-scripts','--no-audit','--no-fund',join(scratch,packed.filename)],scratch);
  const installed=join(prefix,'node_modules','factory-software-defence');
  assert.ok(existsSync(join(installed,'node_modules','yaml','package.json')));
+ const profile=join(scratch,'claude-profile');mkdirSync(profile,{mode:0o700});
+ const history=JSON.parse(execFileSync(process.execPath,[join(installed,'factory/native/claude-history.mjs'),JSON.stringify({session:'00000000-0000-4000-8000-000000000000',dir:root,input:'input'})],
+  {encoding:'utf8',env:{PATH:process.env.PATH,HOME:scratch,CLAUDE_CONFIG_DIR:profile}}));
+ assert.equal(history.session,null);assert.equal(history.input,null);
+ assert.deepEqual(readdirSync(profile),[],'reading missing history does not create a conversation');
  execFileSync(process.execPath,['--input-type=module','-e',`await import(${JSON.stringify(pathToFileURL(join(installed,'factory/native/server.mjs')).href)})`],{encoding:'utf8'});
  const {serviceManifest,pinInstalledRuntime}=await import(pathToFileURL(join(installed,'factory/native/service.mjs')));
  const state=join(scratch,'service-state');mkdirSync(state);

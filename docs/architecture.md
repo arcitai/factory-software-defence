@@ -11,7 +11,7 @@ The native harness remains the execution engine.
 | Foundation and ADLC | Deliberate adoption, setup guidance and reusable working instructions |
 | Dashboard and CLI | Select an issue, request a native action and display the same GitHub phase and separate native result |
 | Small bridge | Authenticate local requests, associate issues with native sessions, refuse ambiguous or duplicate operations |
-| Codex | Agent loop, context, tools, permissions, sessions and execution history |
+| Selected native harness | Agent loop, context, tools, permissions, sessions and execution history |
 | GitHub | Repository issues, templates, PRs, checks and authorized publication |
 | OS service manager | Start the pinned bridge after login/boot, supervise its process and optionally schedule metadata-only release checks |
 
@@ -19,7 +19,7 @@ The native harness remains the execution engine.
 
 The launcher composes the concrete native integration and repository provider.
 The HTTP layer consumes a small runtime contract; the Inbox consumes its public
-status/actions. Codex protocol calls and configuration stay within its integration.
+status/actions. Native protocol calls and configuration stay within its integration.
 Issue/template calls stay within the repository integration. Neither needs the
 other's implementation details.
 
@@ -27,7 +27,9 @@ Add another harness by implementing and qualifying the operations the UI actuall
 uses: readiness, list/status/result, explicit start, continuation, interruption
 and history reconnection. Declare unsupported operations. Do not create a provider
 registry, universal agent engine or speculative compatibility layer. Codex is the
-only implemented harness today.
+default harness. A Claude integration drives the native `claude -p` stream-json
+CLI per run and reads native history through its official read-only utilities;
+history reconnection is declared unsupported for it.
 
 The CLI and Inbox use the **same running bridge and native process**. A second
 app-server may read persisted history without seeing another process's live turn,
@@ -49,7 +51,7 @@ manual and must preserve native work. See [packages and releases](npm.md).
 Use a separate configuration/home/login for the selected harness. A separate OS
 user provides another boundary; configuration separation under one OS user is not
 full host isolation. Verify effective native permissions and available tools.
-The first Codex profile excludes personal apps/MCP/plugins and uses a restricted
+The initial profiles exclude personal apps/MCP/plugins and use a restricted
 workspace sandbox. Browser or other capabilities require explicit qualification.
 
 The bridge binds to loopback; remote access uses an authenticated SSH tunnel.
@@ -62,7 +64,7 @@ Application deployment remains in the application's CI/CD.
 
 An issue enters the Inbox without starting an agent. The shared ADLC catalog maps
 actual GitHub labels, open/closed state and closure reason to a repository phase.
-Codex running/completed/failed/interrupted/unknown state remains a separate
+Native running/completed/failed/interrupted/unknown state remains a separate
 record. Phase labels are ordinary authorized repository edits; they are not
 execution triggers. A completed native turn still needs checks and independent
 review. A closed issue is Done only when GitHub supplies the completed reason;

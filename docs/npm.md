@@ -44,7 +44,7 @@ service. If the global install fails, restore the recorded old package/version
 and inspect the failure; do not force an overwrite or change the running pin.
 
 The uninstall affects the old global npm command, not the pinned service runtime,
-private state, Codex home, credentials or history. Do not remove a service pin or
+private state, native profiles, credentials or history. Do not remove a service pin or
 run login as part of the rename. Qualify the new installed package before changing
 the service. Do not use `--force` to resolve a global command collision.
 
@@ -163,7 +163,7 @@ a downgrade, a different minor line, a mutable checkout, an unowned unit, busy
 or unknown native work,
 and uncertain service ownership are refused. A different minor line needs an
 explicit migration policy, not this command. The existing Node, port, unit,
-repository, Codex setup, credentials, receipts and native history remain selected.
+repository, native setup, credentials, receipts and native history remain selected.
 
 Adoption holds admissions, replaces the owned unit, reconnects to its new bridge
 and requires native readiness. A failed target may restore the previous verified
@@ -198,3 +198,8 @@ bytes, release notes and installed artifact before claiming adoption.
 
 Required licensing notices stay in the tarball. Private receipts, native login,
 execution history and raw evidence never belong in a release package.
+
+The source build installs root dependencies with `npm ci --ignore-scripts --omit=optional`.
+This bundles the official read-only Claude history utilities without their optional
+CLI binaries. The dashboard installs its own locked build dependencies normally.
+The installed package still uses the separately selected native executable.
