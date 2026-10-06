@@ -16,8 +16,13 @@ export function projectHistory(info, messages, input) {
   };
 }
 if (process.argv[1]===fileURLToPath(import.meta.url)) {
-  const { session, dir, input }=JSON.parse(process.argv[2]);
-  const info=await getSessionInfo(session,{dir});
-  const messages=info ? await getSessionMessages(session,{dir}) : [];
-  process.stdout.write(JSON.stringify(projectHistory(info,messages,input)));
+  const { session, dir, input, sessions }=JSON.parse(process.argv[2]);
+  const read=async value=>{
+    const info=await getSessionInfo(value.session,{dir});
+    const messages=info ? await getSessionMessages(value.session,{dir}) : [];
+    return projectHistory(info,messages,value.input);
+  };
+  // A status read uses one SDK process for all receipts, without caching native truth.
+  const result=Array.isArray(sessions) ? await Promise.all(sessions.map(read)) : await read({session,input});
+  process.stdout.write(JSON.stringify(result));
 }

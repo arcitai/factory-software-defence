@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { associateIssue, canonicalIssue } from '../issue-lifecycle.mjs';
 import { FactoryError } from '../error.mjs';
 import { CLAUDE_BUILTIN_PLUGINS, CLAUDE_BUILTIN_SKILLS, CLAUDE_INIT_BUILTIN_SKILLS, CLAUDE_TOOLS, FACTORY_SKILLS, FACTORY_SKILL_SOURCE,
-  claudeArgs, claudeAuthArgs, claudeEnvironment, claudeInventoryArgs, claudeSettings, claudeVersion, verifyClaudeConfig } from './claude-setup.mjs';
-import { atomicallyWrite, boundedText, hash, issuePrompt, readReceipts, readWriter, saveReceipt, validStartInput, withWriterGate, writerPath } from './writer.mjs';
+  claudeArgs, claudeAuthArgs, claudeEnvironment, claudeInventoryArgs, claudeSettings, verifyClaudeConfig } from './claude-setup.mjs';
+import { atomicallyWrite, boundedText, discardUnsentReceipt, hash, issuePrompt, readReceipts, readWriter, restoreUnsentWriter, saveReceipt, validStartInput, withWriterGate, writerPath } from './writer.mjs';
 
 const MAX_FRAME = 16 * 1024 * 1024;
 const plain = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -165,18 +165,21 @@ async function claudeAuthStatus(config,env) {
   const status=await runJson(config.claude,claudeAuthArgs,{cwd:config.repo,env,maxBuffer:64*1024});
   return {loggedIn:status?.loggedIn,authMethod:status?.authMethod,subscriptionType:status?.subscriptionType};
 }
+const nativeVersion=(config,env)=>new Promise((resolve,reject)=>execFile(config.claude,['--version'],
+  {cwd:config.repo,env,timeout:15000,maxBuffer:64000},(error,stdout)=>error?reject(error):resolve(stdout.trim())));
 
-export async function claudeReadiness(config,state,{spawnImpl=spawn,version=claudeVersion,auth=claudeAuthStatus}={}) {
+export async function claudeReadiness(config,state,{spawnImpl=spawn,version=nativeVersion,auth=claudeAuthStatus}={}) {
   const gaps=[],env=claudeEnvironment(config,state),result={account:'unknown',permissions:'unknown',connections:'unknown',
     harness:'claude',version:'unknown',model:config.model,effort:config.effort,usage:'unknown',
     tools:'pinned by --tools; live tool inventory is confirmed when each native run starts'};
   // Nothing executes until the pinned settings, skills and executable bytes match.
   try {verifyClaudeConfig(state,config);} catch(error) {return {ready:false,gaps:[error.message],...result};}
-  try {result.version=version(config,env);if (result.version!==config.claude_version) gaps.push('Pinned Claude version changed');}
+  try {result.version=await version(config,env);if (result.version!==config.claude_version) gaps.push('Pinned Claude version changed');}
   catch {gaps.push('Claude executable unavailable');}
   const status=await auth(config,env).catch(()=>null);
   if (status?.loggedIn!==true) gaps.push('Native login required or auth status unavailable');
   else result.account=[status.authMethod,status.subscriptionType].filter(value=>typeof value==='string').join(' · ') || 'logged in';
+  if (status?.loggedIn===true && status.authMethod!=='claude.ai') gaps.push('Claude subscription login required; API billing is not selected.');
   // A probe process never receives a prompt and does not persist a session.
   const probe=new ClaudeProcess({command:config.claude,args:claudeArgs(config,state,{probe:true}),cwd:config.repo,env,spawnImpl});
   try {
@@ -204,12 +207,18 @@ export async function claudeReadiness(config,state,{spawnImpl=spawn,version=clau
 }
 
 function runHistory(config,state,session,input) {
+  return readHistory(config,state,{session,input});
+}
+function runHistories(config,state,records) {
+  return readHistory(config,state,{sessions:records.map(record=>({session:record.session_id,input:record.turn_id}))});
+}
+function readHistory(config,state,query) {
   const env=claudeEnvironment(config,state);
-  return runJson(config.node,[historyScript,JSON.stringify({session,dir:config.repo,input})],
+  return runJson(config.node,[historyScript,JSON.stringify({...query,dir:config.repo})],
     {cwd:config.repo,env:{CLAUDE_CONFIG_DIR:env.CLAUDE_CONFIG_DIR,HOME:env.HOME,TMPDIR:env.TMPDIR,PATH:env.PATH,LANG:env.LANG}});
 }
 function runInventory(config,state) {
-  verifyClaudeConfig(state,config);
+  verifyClaudeConfig(state,config,{reuseExecutable:true});
   return runJson(config.claude,claudeInventoryArgs(config),{cwd:config.repo,env:claudeEnvironment(config,state),maxBuffer:4*1024*1024});
 }
 
@@ -217,12 +226,20 @@ export class ClaudeEngine {
   constructor(state,config,provider,{spawnImpl=spawn,history=runHistory,inventory=runInventory,readiness=claudeReadiness,confirmTimeout=30000}={}) {
     Object.assign(this,{state,config,provider,spawnImpl,historyImpl:history,inventoryImpl:inventory,readinessImpl:readiness,confirmTimeout});
     this.name='claude';this.available=true;this.runs=new Map();this.faults=new Set();this.readiness=null;
+    this.historiesImpl=history===runHistory?runHistories:null;
   }
   async doctor() {
-    const ready=await this.readinessImpl(this.config,this.state,{spawnImpl:this.spawnImpl});
+    if(this.checkingReadiness)return this.checkingReadiness;
+    this.checkingReadiness=this.readinessImpl(this.config,this.state,{spawnImpl:this.spawnImpl});
+    let ready;
+    try {ready=await this.checkingReadiness;} finally {this.checkingReadiness=null;}
     // Faults observed by this bridge keep it unready until an operator inspects them.
     if (this.faults.size) {ready.gaps.push(...this.faults);ready.ready=false;}
-    return this.readiness=ready;
+    return this.readiness={...ready,checked_at:new Date().toISOString()};
+  }
+  async statusReadiness() {
+    if(!this.readiness)await this.doctor();
+    return {...this.readiness,ready:this.readiness.ready&&!this.faults.size,gaps:[...new Set([...this.readiness.gaps,...this.faults])]};
   }
   stateOf(record) {
     if (record.ambiguous) return 'unknown';
@@ -253,33 +270,34 @@ export class ClaudeEngine {
     const listed=await this.inventoryImpl(this.config,this.state).catch(()=>null);
     return Array.isArray(listed) && listed.every(entry=>plain(entry)) ? listed : null;
   }
-  async historySnapshot(record) {
-    const history=await this.historyImpl(this.config,this.state,record.session_id,record.turn_id).catch(()=>null);
+  async historySnapshot(record,snapshot) {
+    const history=snapshot===undefined?await this.historyImpl(this.config,this.state,record.session_id,record.turn_id).catch(()=>null):snapshot;
     return history?.session?.id===record.session_id && history.session.cwd===this.config.repo
       && history.input?.uuid===record.turn_id && history.input.session_id===record.session_id
       && typeof history.tip_uuid==='string' && history.tip_uuid ? history : null;
   }
   // A new native message after finalization invalidates the saved terminal view.
-  async historyConfirms(record) {
-    const history=await this.historySnapshot(record);
+  async historyConfirms(record,snapshot) {
+    const history=await this.historySnapshot(record,snapshot);
     return Boolean(record.history_tip && history?.tip_uuid===record.history_tip);
   }
   // A terminal receipt counts only while native history agrees and no live process holds its session.
-  async reconciled(record,live) {
+  async reconciled(record,live,snapshot) {
     return terminal.has(this.stateOf(record)) && Array.isArray(live)
-      && !live.some(entry=>entry.sessionId===record.session_id) && await this.historyConfirms(record);
+      && !live.some(entry=>entry.sessionId===record.session_id) && await this.historyConfirms(record,snapshot);
   }
-  async projected(record,live) {
+  async projected(record,live,snapshot) {
     const job=this.makeJob(record);
-    if (!terminal.has(job.state) || await this.reconciled(record,live)) return job;
+    if (!terminal.has(job.state) || await this.reconciled(record,live,snapshot)) return job;
     return this.makeJob(record,{state:'unknown',note:'Native Claude history or live inventory does not confirm this result.'});
   }
   async jobs() {
-    const records=readReceipts(this.state),result=[];
-    let live;
+    const records=readReceipts(this.state),result=[],completed=records.filter(record=>terminal.has(this.stateOf(record)));
+    const [live,snapshots]=completed.length?await Promise.all([this.liveSessions(),this.historiesImpl
+      ?this.historiesImpl(this.config,this.state,completed).catch(()=>null):Promise.resolve(undefined)]):[];
     for (const record of records) {
-      if (terminal.has(this.stateOf(record)) && live===undefined) live=await this.liveSessions();
-      result.push(await this.projected(record,live));
+      const index=completed.indexOf(record),snapshot=snapshots===undefined?undefined:snapshots?.[index]||null;
+      result.push(await this.projected(record,live,snapshot));
     }
     return result;
   }
@@ -324,13 +342,18 @@ export class ClaudeEngine {
     return withWriterGate(this.config,async()=>{
       if (readReceipts(this.state).some(item=>item.key===identity.key))
         throw new FactoryError('Issue already has native history or unresolved admission. Continue its recorded session.',409);
+      const final=await this.doctor();
+      if (!final.ready) throw new FactoryError('Native effective permissions changed during admission; no work was reserved.',503);
+      const previousWriter=readWriter(this.config);
       await this.replaceWriter(record);
       try {saveReceipt(this.state,record,true);}
       catch(error) {if (error.code==='EEXIST') throw new FactoryError('Issue already has native history or unresolved admission.',409);throw error;}
       // The writer and admission receipts are durable before the native process starts.
-      const final=await this.doctor();
-      if (!final.ready) throw new FactoryError('Native effective permissions changed during admission; reservation remains unresolved.',503);
-      return this.launch(record,issuePrompt({url:identity.url,specHash:record.spec_hash,spec:issue.spec,brief:input.brief,workType}),false);
+      try {return await this.launch(record,issuePrompt({url:identity.url,specHash:record.spec_hash,spec:issue.spec,brief:input.brief,workType}),false);}
+      catch(error) {
+        if(error.notSent) {restoreUnsentWriter(this.config,this.state,record,previousWriter);discardUnsentReceipt(this.state,record);}
+        throw error;
+      }
     });
   }
   async continue(id,expectedTurnId,feedback) {
@@ -351,7 +374,7 @@ export class ClaudeEngine {
   // Persist before the prompt, then require a verified native startup and
   // confirmation of exactly one input.
   async launch(record,text,resume) {
-    const config=this.config;
+    const config=this.config,previous=structuredClone(record);
     try {verifyClaudeConfig(this.state,config);}
     catch {throw new FactoryError('Pinned Claude configuration or executable changed; no native process was started.',503);}
     const input=randomUUID();
@@ -364,7 +387,8 @@ export class ClaudeEngine {
     // While a run is live its in-memory receipt is the only receipt writer.
     const run={proc,record,turn:null,result:false,startup:false};
     const save=()=>{record.updated_at=new Date().toISOString();saveReceipt(this.state,record);};
-    let confirm;
+    let confirm,finished;
+    const finalized=new Promise(resolve=>{finished=resolve;});
     const confirmed=new Promise((resolve,reject)=>{confirm={resolve,reject};});
     confirmed.catch(()=>{}); // Early failures are reported by the awaiting caller or not at all.
     const doubt=(reason,status=503)=>{
@@ -398,7 +422,7 @@ export class ClaudeEngine {
         if (run.turn && attempt?.turn_id===run.turn) {attempt.completed_at=record.result?.completed_at||null;attempt.state=this.stateOf(record);}
         save();confirm.reject(new FactoryError('Native Claude process ended before confirming the input; outcome unknown. No retry was attempted.',503));
         };
-        finish().catch(()=>{this.runs.delete(record.id);this.faults.add('Native completion could not be saved; inspect native history.');confirm.reject(new FactoryError('Native completion is unresolved.',503));});
+        finish().catch(()=>{this.runs.delete(record.id);this.faults.add('Native completion could not be saved; inspect native history.');confirm.reject(new FactoryError('Native completion is unresolved.',503));}).finally(finished);
         return;
       }
       if (message.type==='system' && message.subtype==='init') {
@@ -423,6 +447,8 @@ export class ClaudeEngine {
         run.result=true;
         const uuids=[message.user_message_uuid,...(Array.isArray(message.user_message_uuids)?message.user_message_uuids:[])];
         if (!validResult(message)) return doubt('Native completion had an unexpected shape.');
+        if (plain(message.modelUsage) && Object.keys(message.modelUsage).some(model=>model!==config.model))
+          return doubt('Native completion reported a model outside the selected model.');
         if (!run.turn || message.session_id!==record.session_id || !uuids.includes(run.turn)) return doubt('Native completion did not match the confirmed input.');
         record.result={turn_id:run.turn,subtype:message.subtype,is_error:message.is_error,stop_reason:message.stop_reason??null,
           terminal_reason:message.terminal_reason??null,num_turns:message.num_turns??null,completed_at:new Date().toISOString(),
@@ -437,12 +463,20 @@ export class ClaudeEngine {
       }
     });
     this.runs.set(record.id,run);
+    let heldInitialization=false;
     try {
       proc.start();
       const gaps=initializationGaps(await proc.request('initialize',{},20000));
-      if (gaps.length) throw new Error(gaps.join('; '));
+      if (gaps.length) {heldInitialization=true;throw new Error(gaps.join('; '));}
     } catch {
       record.note='The native process did not initialize cleanly; no prompt was sent and session state is unknown.';save();proc.end();proc.kill();
+      let timer;
+      await Promise.race([finalized,new Promise(resolve=>{timer=setTimeout(resolve,5000);})]);clearTimeout(timer);
+      const live=proc.exited&&!heldInitialization&&!proc.malformed&&!proc.refused.length&&!record.ambiguous?await this.liveSessions():null;
+      if(Array.isArray(live)&&!live.length&&(!resume||await this.historyConfirms(previous))) {
+        for(const key of Object.keys(record))delete record[key];Object.assign(record,previous);save();
+        throw Object.assign(new FactoryError('Native Claude initialization failed. No prompt was sent; the previous state is retained. Correct the problem before an explicit retry.',503),{notSent:true});
+      }
       throw new FactoryError('Native Claude process did not initialize cleanly; no prompt was sent. Inspect the session before any new work.',503);
     }
     if (record.ambiguous) {proc.end();proc.kill();throw new FactoryError(`${record.ambiguous} No prompt was sent.`,409);}

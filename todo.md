@@ -6,13 +6,12 @@ retired implementation evidence remain in Git and private installation records.
 
 ## Current scoped work
 
-- [ ] [#140](https://github.com/arcitai/factory-software-defence/issues/140):
-  October 5 owner-approved Inbox release in PR #142: aligned original shell,
+- [x] [#140](https://github.com/arcitai/factory-software-defence/issues/140):
+  Owner-approved Inbox delivered in merged PR #142 and installed 0.18.7: aligned original shell,
   single toolbar, source workflow rail, visible child selection, grouped/sorted
-  lists, contributor filtering and improved read-only Kanban. Candidate 0.18.7
+  lists, contributor filtering and improved read-only Kanban. Release 0.18.7
   leaves the separate unpublished 0.18.6 ingress proposal out of this release.
-  Protected review/CI/publication and installed Z13 adoption must finish before
-  marking delivery complete. Analytics, GitHub label editing/workflow mapping and
+  Analytics, GitHub label editing/workflow mapping and
   Kanban writes are separate owner-selected follow-ups, not preview fixtures in
   the production runtime.
 
@@ -40,17 +39,11 @@ retired implementation evidence remain in Git and private installation records.
   source, installed and independent review acceptance. Actual native TLS/proxy/
   policy/device/browser qualification remains pending. Its unpublished `0.18.6`
   candidate is separate; production remains installed `0.18.5` and SSH works.
-- [ ] [#140](https://github.com/arcitai/factory-software-defence/issues/140):
-  owner approved the reconstructed historical Inbox composition. Scoped source
-  restoration candidate prepared on a dedicated branch from `main87971b1`.
-  Use its PR for bound browser/installed qualification and independent review
-  evidence; delivery remains pending.
-  Preserve the minimal native/GitHub product, current semantics and count-only
-  disclosure. Reconcile #138 deliberately before any version/release/adoption.
 - [ ] [#115](https://github.com/arcitai/factory-software-defence/issues/115):
-  Claude Code is the next concrete native harness integration. Existing `2.1.285`
-  discovery is recorded; the native login choice is pending. Auth, inference and integration
-  are unqualified. Do not import personal configuration.
+  Native Claude Code integration is the current candidate. Separate subscription
+  login, exact model/effort, native sessions and installed lifecycle qualification
+  are covered by its PR evidence. The issue remains open until protected release
+  and installed adoption are confirmed. Preserve the active Codex setup.
 - [ ] [#137](https://github.com/arcitai/factory-software-defence/issues/137):
   host guidance only; no migration is authorized or delivered.
 - [ ] [#135](https://github.com/arcitai/factory-software-defence/issues/135):

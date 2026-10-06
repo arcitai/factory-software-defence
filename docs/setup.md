@@ -62,14 +62,15 @@ factory doctor --state /absolute/private/factory-state
 Setup pins the executable bytes and version, a private profile with the six
 Factory skills and a Factory settings file. `--claude-config` adopts an existing
 private profile dedicated to Factory; never select your personal Claude profile.
-`login` runs the native login (browser, or a printed URL without one); Factory
+`login` uses your Claude subscription (browser, or a printed URL without one); Factory
 never reads tokens. Doctor reads `claude auth status`, then starts the native CLI
 without a prompt or saved session and checks pending requests, applied
 model/effort, effective permissions and sandbox, hooks policy, skills and MCP.
 Doctor does not report the tool list; each run checks the native startup
 inventory (tools, MCP, plugins, skills, permission mode) before it is recognized.
 Usage limits Claude does not report stay unknown; cost fields are API-equivalent
-estimates, not subscription usage or a charge.
+estimates, not subscription usage or a charge. An existing Factory login can be
+checked with `doctor`; log in only when needed. API-billed login is not selected.
 
 Work runs as `claude -p` with stream-json, the user setting source only, strict
 empty MCP, the pinned settings and the tools Bash, Read, Edit, Write, Glob, Grep
@@ -81,6 +82,10 @@ a run started by the running bridge and is reported once native confirms it.
 History reconnect is unsupported. A refused permission request, unexpected output
 or a bridge restart during a run leaves it unknown until you inspect native
 history; Factory never replays it. The profile is not an OS-user isolation boundary.
+Factory creates an owned private temporary directory with a short path so native
+sandbox sockets also work with long project or state paths. The Inbox shows the
+last readiness check; admission and continuation verify readiness again. Reading
+status does not repeatedly start a full native probe.
 
 ## Native Codex session visibility
 

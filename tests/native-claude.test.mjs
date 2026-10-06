@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { createHash } from 'node:crypto';
-import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {createServer} from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ClaudeEngine, claudeReadiness } from '../factory/native/claude.mjs';
-import { CLAUDE_TOOLS, FACTORY_SKILLS, claudeEnvironment, claudeLoginEnvironment, claudeInventoryArgs, claudeSettings, claudeSettingsPath } from '../factory/native/claude-setup.mjs';
+import { CLAUDE_TOOLS, FACTORY_SKILLS, claudeEnvironment, claudeLoginEnvironment, claudeInventoryArgs, claudeSettings, claudeSettingsPath, prepareClaudeTemp } from '../factory/native/claude-setup.mjs';
 
 import { projectHistory } from '../factory/native/claude-history.mjs';
 
@@ -215,10 +216,47 @@ test('spawn or initialize failure has no unhandled rejection and sends no prompt
   const unhandled=[];const listener=reason=>unhandled.push(reason);process.on('unhandledRejection',listener);
   t.after(()=>process.off('unhandledRejection',listener));
   const f=fixture(t,{script:(frame,child)=>{if(frame.request?.subtype==='initialize')child.exit(1);}});
-  await assert.rejects(start(f.engine),/did not initialize cleanly/);
+  await assert.rejects(start(f.engine),/No prompt was sent; the previous state is retained/);
   await settle();
   assert.deepEqual(unhandled,[]);
   assert.equal(f.spawned[0].frames.filter(frame=>frame.type==='user').length,0);
+  assert.deepEqual(await f.engine.jobs(),[]);await f.engine.assertWorkspaceIdle();
+});
+
+test('a failed continuation before prompt delivery preserves the previous verified result',async t=>{
+  let fail=false;
+  const f=fixture(t,{script:(frame,child)=>{if(fail&&frame.request?.subtype==='initialize')return child.exit(1);return nativeScript()(frame,child);}});
+  const job=await start(f.engine);await settle();const before=await f.engine.result(job.id);
+  fail=true;
+  await assert.rejects(f.engine.continue(job.id,job.turn_id,'Next.'),/No prompt was sent/);
+  const after=await f.engine.result(job.id);
+  assert.equal(after.state,'needs_review');assert.equal(after.turn_id,before.turn_id);assert.deepEqual(after.native_result,before.native_result);
+  assert.equal(f.spawned.at(-1).frames.filter(frame=>frame.type==='user').length,0);
+  fail=false;assert.equal((await f.engine.continue(job.id,job.turn_id,'Explicit next step.')).thread_id,job.thread_id);
+});
+
+test('readiness failure inside admission leaves no reservation or writer',async t=>{
+  const f=fixture(t);let calls=0;f.engine.readinessImpl=async()=>({ready:++calls===1,gaps:calls===1?[]:['probe unavailable']});
+  await assert.rejects(start(f.engine),/no work was reserved/);assert.deepEqual(await f.engine.jobs(),[]);await f.engine.assertWorkspaceIdle();
+});
+
+test('status polling reuses readiness without launching probes and retains observed faults',async t=>{
+  const f=fixture(t);let calls=0;f.engine.readinessImpl=async()=>{calls++;await settle();return {ready:true,gaps:[]};};
+  await Promise.all([f.engine.statusReadiness(),f.engine.statusReadiness()]);assert.equal(calls,1);
+  await f.engine.statusReadiness();assert.equal(calls,1);
+  f.engine.faults.add('Native run unresolved');assert.equal((await f.engine.statusReadiness()).ready,false);
+  await f.engine.doctor();assert.equal(calls,2);
+});
+
+test('long state paths get an owned short socket directory, recreated safely after cleanup',async t=>{
+  const state='/absolute/'+('long-state-path/'.repeat(12))+Math.random();
+  const path=prepareClaudeTemp(state);t.after(()=>rmSync(path,{recursive:true,force:true}));
+  assert.equal(lstatSync(path).mode&0o777,0o700);
+  const socketPath=join(path,'claude-http-'+('a'.repeat(32))+'.sock'),server=createServer();
+  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(socketPath,resolve);});
+  await new Promise(resolve=>server.close(resolve));
+  chmodSync(path,0o755);assert.throws(()=>prepareClaudeTemp(state),/owned private/);chmodSync(path,0o700);
+  rmSync(path,{recursive:true});assert.equal(prepareClaudeTemp(state),path);
 });
 
 test('changed executable bytes refuse before any native process or inventory command runs', async t => {
@@ -353,8 +391,8 @@ test('readiness or unavailable or nonempty inventory refuse admission before any
 
 test('native inventory is read with safe mode and no setting sources', () => {
   const args=claudeInventoryArgs({repo:'/repo'});
-  assert.deepEqual(args.slice(0,3),['agents','--json','--all']);
-  assert.ok(args.includes('--safe-mode'));
+  assert.ok(args.indexOf('--safe-mode')<args.indexOf('agents'),'native global options must precede the subcommand');
+  assert.deepEqual(args.slice(args.indexOf('agents'),args.indexOf('agents')+3),['agents','--json','--all']);
   assert.equal(args[args.indexOf('--setting-sources')+1],'');
   assert.equal(args[args.indexOf('--cwd')+1],'/repo');
 });
@@ -394,6 +432,11 @@ test('doctor treats a first-party account without a native login as unavailable'
     const ready=await readinessFixture(t,{auth}).run();
     assert.equal(ready.ready,false);assert.match(ready.gaps.join(),/login required/);
   }
+});
+
+test('a logged-in Console account cannot silently replace the selected subscription',async t=>{
+  const ready=await readinessFixture(t,{auth:{loggedIn:true,authMethod:'api_key',apiProvider:'firstParty'}}).run();
+  assert.equal(ready.ready,false);assert.match(ready.gaps.join(),/subscription login required/);
 });
 
 test('doctor refuses drift in effort, hooks policy, skills, sandbox or plugins', async t => {

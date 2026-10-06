@@ -20,6 +20,19 @@ export function saveReceipt(state,record,newFile=false) {
   if (newFile) writeFileSync(path,value,{flag:'wx',mode:0o600});
   else { const temp=`${path}.${randomBytes(6).toString('hex')}`;writeFileSync(temp,value,{flag:'wx',mode:0o600});renameSync(temp,path); }
 }
+// Only an owning admission may discard its intent after proving no prompt was sent.
+export function discardUnsentReceipt(state,record) {
+  const path=receiptPath(state,record.key),saved=JSON.parse(readFileSync(path,'utf8'));
+  if(saved.id!==record.id || saved.session_id!==record.session_id || saved.phase!=='reserved' || saved.turn_id)
+    throw new FactoryError('Admission changed; preserve its receipt.',409);
+  rmSync(path);
+}
+export function restoreUnsentWriter(config,state,record,previous) {
+  const current=readWriter(config);
+  if(current?.job_id!==record.id || current.state!==state)throw new FactoryError('Writer ownership changed; preserve the admission.',409);
+  if(previous)atomicallyWrite(writerPath(config),previous);
+  else rmSync(writerPath(config));
+}
 export function readWriter(config) {
   const path=writerPath(config);
   if (!existsSync(path)) return null;

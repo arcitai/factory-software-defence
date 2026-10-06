@@ -9,6 +9,14 @@ import { nativeExecutable, within } from './executable.mjs';
 const sha = value => createHash('sha256').update(value).digest('hex');
 const accountHome = () => realpathSync(userInfo().homedir);
 const writerRoot = () => join(accountHome(),'.local','state','software-defence-factory','native-writers');
+const executableChecks=new WeakMap();
+export const claudeTempPath=state=>join(realpathSync('/tmp'),`factory-c-${userInfo().uid}-${sha(state).slice(0,12)}`);
+export function prepareClaudeTemp(state) {
+  const path=claudeTempPath(state);
+  try {mkdirSync(path,{mode:0o700});} catch(error) {if(error.code!=='EEXIST')throw error;}
+  privateDirectory(path,'Claude temporary directory');
+  return path;
+}
 export const CLAUDE_TOOLS = ['Bash','Read','Edit','Write','Glob','Grep','Skill'];
 export const FACTORY_SKILLS = ['factory-triage','factory-spec','factory-implement','factory-review','factory-security','factory-evaluate'];
 // Native built-ins that stay visible with the user setting source on the pinned
@@ -34,7 +42,7 @@ export function findNativeClaude(repo, selected) {
 export const claudeSettingsPath = state => join(state,'claude-settings.json');
 export function claudeEnvironment(config, state) {
   // The host environment and its secrets are never forwarded.
-  return { HOME: join(state,'home'), TMPDIR: join(state,'tmp'), CLAUDE_CONFIG_DIR: config.config_dir, LANG: 'C.UTF-8',
+  return { HOME: join(state,'home'), TMPDIR: config.tmp_dir || join(state,'tmp'), CLAUDE_CONFIG_DIR: config.config_dir, LANG: 'C.UTF-8',
     PATH: [dirname(config.node), dirname(config.claude), '/usr/local/bin', '/usr/bin', '/bin'].join(':'),
     ENABLE_CLAUDEAI_MCP_SERVERS: 'false', CLAUDE_CODE_AUTO_CONNECT_IDE: '0', CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL: '1',
     DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', CLAUDE_CODE_DISABLE_BG_EXIT_HANDOFF: '1' };
@@ -61,8 +69,8 @@ export function claudeSettings(config, state) {
         ...protectedFiles.flatMap(path=>[`Edit(${abs(path)})`,`Write(${abs(path)})`])],
       blockReadsOutsideWorkingDirectories: true },
     sandbox: { enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false,
-      filesystem: { denyRead: [config.account_home], allowRead: [repo, join(state,'tmp'), ...config.runtime_reads],
-        allowWrite: [join(state,'tmp')], denyWrite: [...protectedDirs, ...protectedFiles] },
+      filesystem: { denyRead: [config.account_home], allowRead: [repo, config.tmp_dir || join(state,'tmp'), ...config.runtime_reads],
+        allowWrite: [config.tmp_dir || join(state,'tmp')], denyWrite: [...protectedDirs, ...protectedFiles] },
       network: { allowedDomains: [], strictAllowlist: true, allowLocalBinding: false } },
   };
 }
@@ -100,7 +108,7 @@ function stageSkills(skills) {
 }
 function privateDirectory(path, label) {
   const info=lstatSync(path);
-  if (!info.isDirectory() || (info.mode & 0o077) || realpathSync(path)!==path) throw new Error(`${label} must be a private (0700) real directory.`);
+  if (!info.isDirectory() || (info.mode & 0o077) || info.uid!==userInfo().uid || realpathSync(path)!==path) throw new Error(`${label} must be an owned private (0700) real directory.`);
 }
 export function setupClaude({ repo, state, claude: selected, model, effort, profile }) {
   if (typeof model!=='string' || !/^[a-z0-9][a-z0-9.-]{2,80}$/.test(model)) throw new Error('Claude setup needs --model with an exact native model ID.');
@@ -120,10 +128,11 @@ export function setupClaude({ repo, state, claude: selected, model, effort, prof
   if (relative('/',nodeRoot).split(sep).filter(Boolean).length<2 || within(nodeRoot,home) || reads.some(path=>within(path,repo)||within(repo,path)))
     throw new Error('Pinned Node installation must be a narrow directory outside the repository and never the personal home.');
   const config={ version:1, harness:'claude', repo, claude, claude_target:target, node, profile:'factory', model, effort,
-    config_dir:configDir, account_home:home, runtime_reads:reads, writer_root:writerRoot(),
+    config_dir:configDir, account_home:home, runtime_reads:reads, writer_root:writerRoot(),tmp_dir:claudeTempPath(state),
     instructions: existsSync(join(repo,'AGENTS.md')) ? 'AGENTS.md' : null };
   mkdirSync(state,{mode:0o700});
   for (const dir of ['home','tmp','receipts','issue-submissions']) mkdirSync(join(state,dir),{mode:0o700});
+  prepareClaudeTemp(state);
   if (!profile) mkdirSync(configDir,{mode:0o700});
   config.skills=stageSkills(join(configDir,'skills'));
   config.claude_sha256=sha(readFileSync(target));
@@ -133,15 +142,17 @@ export function setupClaude({ repo, state, claude: selected, model, effort, prof
   writeFileSync(claudeSettingsPath(state),settings,{mode:0o600,flag:'wx'});
   writeFileSync(join(state,'native.json'),`${JSON.stringify(config,null,2)}\n`,{mode:0o600,flag:'wx'});
   return { state, repo, harness:'claude', claude, version:config.claude_version, model, effort, profile:configDir,
-    skills:'staged for native discovery; unqualified', login:'required', qualification:'unverified' };
+    skills:'staged for native discovery; unqualified', login:'not checked; run factory doctor', qualification:'unverified' };
 }
-export function verifyClaudeConfig(state, config) {
+export function verifyClaudeConfig(state, config,{reuseExecutable=false}={}) {
   const path=claudeSettingsPath(state);
   if (!existsSync(path) || (lstatSync(path).mode & 0o077) || sha(readFileSync(path))!==config.settings_sha256)
     throw new Error('Native permissions configuration changed; refuse admission.');
+  const stat=lstatSync(config.claude_target,{bigint:true}),stamp=[stat.dev,stat.ino,stat.size,stat.mtimeNs,stat.ctimeNs].join(':');
   if (realpathSync(config.claude)!==config.claude_target || typeof config.claude_sha256!=='string'
-    || sha(readFileSync(config.claude_target))!==config.claude_sha256)
+    || (!(reuseExecutable && executableChecks.get(config)===stamp) && sha(readFileSync(config.claude_target))!==config.claude_sha256))
     throw new Error('Pinned Claude executable changed; refuse admission.');
+  executableChecks.set(config,stamp);
   const skills=join(config.config_dir,'skills');
   if (readdirSync(skills).sort().join(',')!==[...FACTORY_SKILLS].sort().join(',')
     || FACTORY_SKILLS.some(name=>sha(readFileSync(join(skills,name,'SKILL.md')))!==config.skills?.[name]))
@@ -152,9 +163,10 @@ export function readClaude(state, config) {
   if (config.version!==1 || config.harness!=='claude' || config.profile!=='factory' || !isAbsolute(config.repo)
     || !isAbsolute(config.claude) || !isAbsolute(config.config_dir) || realpathSync(config.repo)!==config.repo
     || realpathSync(process.execPath)!==config.node || config.writer_root!==writerRoot() || config.account_home!==accountHome()
-    || !EFFORTS.includes(config.effort) || typeof config.model!=='string')
+    || !EFFORTS.includes(config.effort) || typeof config.model!=='string' || config.tmp_dir!==claudeTempPath(state))
     throw new Error('Native state or selected Node toolchain changed; refuse to start.');
   privateDirectory(config.config_dir,'Claude profile');
+  prepareClaudeTemp(state);
   verifyClaudeConfig(state,config);
   return { state, config, env:claudeEnvironment(config,state) };
 }

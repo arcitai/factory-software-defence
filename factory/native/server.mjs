@@ -51,7 +51,7 @@ export function createNativeServer(state,config,{harness,provider,instance=rando
       if(request.method==='GET'&&url.pathname==='/api/v1/bridge/status')
         return send(200,{version:1,native:true,native_instance:instance,repo:config.repo,csrf_token:csrf});
       if(request.method==='GET'&&url.pathname==='/api/v1/status') {
-        const jobs=await engine.jobs(),ready=await engine.doctor().catch(()=>({ready:false,gaps:['Native state unavailable']}));
+        const jobs=await engine.jobs(),ready=await (engine.statusReadiness?.() || engine.doctor()).catch(()=>({ready:false,gaps:['Native state unavailable']}));
         return send(200,{version:1,native:true,native_instance:instance,maintenance_prepared:Boolean(maintenance),native_capabilities:{issue_start:Boolean(provider.supported)&&typeof engine.start==='function',interrupt:typeof engine.interrupt==='function',
           resume_thread:typeof engine.resume==='function',continue_turn:typeof engine.continue==='function',result:typeof engine.result==='function',issue_create:Boolean(provider.capabilities?.create),local_request:false},
           native_readiness:ready,csrf_token:csrf,repo:config.repo,project_links:readProjectLinks(config.repo) || null,harness:engine.name || 'native',agent:engine.name || 'native',

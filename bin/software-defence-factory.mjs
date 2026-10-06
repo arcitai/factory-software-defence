@@ -123,7 +123,7 @@ async function command(args) {
     if(name==='login') {
       // The native CLI owns its login flow (browser or printed URL); Factory never handles tokens.
       const loginEnv=claude?claudeLoginEnvironment(native.config,native.state):native.env;
-      const code=await new Promise((done,reject)=>{const child=spawn(claude?native.config.claude:native.config.codex,claude?['auth','login']:['login'],{cwd:native.config.repo,env:loginEnv,stdio:'inherit'});child.once('error',reject);child.once('close',done);});
+      const code=await new Promise((done,reject)=>{const child=spawn(claude?native.config.claude:native.config.codex,claude?['auth','login','--claudeai']:['login'],{cwd:native.config.repo,env:loginEnv,stdio:'inherit'});child.once('error',reject);child.once('close',done);});
       if(code!==0)throw new Error(`Native ${claude?'Claude':'Codex'} login did not complete.`);return;
     }
     if(claude) {
