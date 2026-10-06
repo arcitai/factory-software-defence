@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NativeEngine } from '../factory/native/engine.mjs';
 import { nativeEnvironment, nativePolicy } from '../factory/native/setup.mjs';
-import { nativeReadiness } from '../factory/native/app-server.mjs';
+import { AppServer, nativeReadiness } from '../factory/native/app-server.mjs';
 import { codexApprovals } from '../factory/native/codex-approvals.mjs';
 
 function harness(t,approvals) {
@@ -68,6 +68,17 @@ test('unqualified account and downgraded native reviewer cannot start auto-revie
   await assert.rejects(h.start(h.engine(),202),/native ChatGPT login/);assert.equal(h.starts,0);
   h.client.call=async(method,params)=>method==='thread/start'?{thread:{id:'native'},cwd:h.config.repo,approvalPolicy:'on-request',approvalsReviewer:'user',activePermissionProfile:{id:'factory'}}:call(method,params);
   await assert.rejects(h.start(h.engine(),202),/did not confirm/);assert.equal(h.turnStarts,0);
+});
+test('native reviewer downgrade interrupts the current writer and blocks later actions',async t=>{
+  const h=harness(t,'auto-review'),client=new AppServer({config:h.config,env:h.env}),calls=[];
+  client.available=true;client.call=async(method,params)=>{calls.push({method,params});return h.client.call(method,params);};
+  const engine=new NativeEngine(h.state,h.config,client,h.engine().provider),job=await h.start(engine,203);
+  client.receive(JSON.stringify({method:'thread/settings/updated',params:{threadId:job.thread_id,threadSettings:{cwd:h.config.repo,approvalPolicy:'on-request',approvalsReviewer:'user',activePermissionProfile:{id:'factory'}}}}));
+  assert.deepEqual(calls.find(c=>c.method==='turn/interrupt').params,{threadId:job.thread_id,turnId:job.turn_id});
+  h.turns.get(job.thread_id)[0].status='interrupted';
+  await assert.rejects(engine.continue(job.id,job.turn_id,'Continue'),/authority request was refused/);
+  await assert.rejects(engine.resume(job.id),/authority request was refused/);
+  await assert.rejects(h.start(engine,204),/authority request was refused/);
 });
 test('project writer receipt spans engine instances and distinct issues',async t=>{
   const h=harness(t),first=h.engine(),second=h.engine();

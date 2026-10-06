@@ -134,7 +134,7 @@ async function command(args) {
   if(name==='approvals') {
     const {values,flags}=parse(rest,{positionals:1,allowed:['--state']});
     if(!flags['--state'])throw new Error('Approval changes require an explicit --state PATH.');
-    print(await changeCodexApprovals(stateFrom(flags),values[0]));return;
+    print(await changeCodexApprovals(stateFrom(flags),values[0],{onBackup:path=>console.error(`Approval configuration backup: ${path}`)}));return;
   }
   if(name==='login'||name==='doctor') {
     const {flags}=parse(rest,{allowed:['--state']}),state=stateFrom(flags),native=readNative(state);
@@ -215,7 +215,7 @@ async function command(args) {
         print(values.length?getJob(jobs,jobID(values[0])):jobs);
       } else {
         const job=await bridge.request(`/api/v1/jobs/${jobID(values[0])}/result`);
-        print({id:job.id,thread_id:job.thread_id,turn_id:job.turn_id,state:job.state,native_turns:job.native_turns,native_result:job.native_result});
+        print({id:job.id,thread_id:job.thread_id,turn_id:job.turn_id,state:job.state,native_turns:job.native_turns,native_result:job.native_result,native_approvals:job.native_approvals});
       }
     });
   }

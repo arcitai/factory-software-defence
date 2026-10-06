@@ -133,7 +133,7 @@ export class AppServer {
   }
 }
 
-export async function nativeReadiness(client, config, state) {
+export async function nativeReadiness(client, config, state, {requireAccount=true}={}) {
   if (!client.available) return {ready:false,gaps:['Native state unavailable'],account:'unknown',permissions:'unknown',connections:'unknown'};
   const gaps=[];
   if (state) {
@@ -144,7 +144,7 @@ export async function nativeReadiness(client, config, state) {
     || Object.keys(client.env||{}).sort().join(',') !== 'CODEX_HOME,HOME,LANG,PATH,TMPDIR')
     gaps.push('Native child environment changed');
   const account=await client.call('account/read',{}).catch(()=>null);
-  if (!account?.account) gaps.push('Native login required or account state unavailable');
+  if (requireAccount&&!account?.account) gaps.push('Native login required or account state unavailable');
   const selectedApprovals=codexApprovals(config);
   if(config.approvals==='auto-review'&&account?.account?.type!=='chatgpt')
     gaps.push('Auto-review requires a native ChatGPT login; this account is unqualified');

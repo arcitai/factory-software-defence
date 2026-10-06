@@ -12,7 +12,7 @@ function writeProfile(path,text) {
   const temp=`${path}.${randomBytes(8).toString('hex')}`;
   writeFileSync(temp,text,{flag:'wx',mode:0o600});renameSync(temp,path);
 }
-export async function changeCodexApprovals(state,mode) {
+export async function changeCodexApprovals(state,mode,{onBackup=()=>{}}={}) {
   const selection=codexApprovals({approvals:mode}),native=readNative(state);
   if(native.config.harness)throw new Error('Approval mode selection applies only to Codex.');
   const release=acquireProcessLock(join(native.state,'serve.lock'),'Approval configuration; stop the Factory service first');
@@ -34,13 +34,16 @@ export async function changeCodexApprovals(state,mode) {
       const next=nextTop+`approvals_reviewer = ${JSON.stringify(selection.approvalsReviewer)}\n`+rest;
       const config={...native.config,approvals:mode,config_sha256:hash(next)};
       const backups=join(native.state,'approval-backups');mkdirSync(backups,{recursive:true,mode:0o700});
-      const backup=join(backups,`${Date.now()}-${randomBytes(4).toString('hex')}.json`);
-      atomicallyWrite(backup,{config:native.config,toml:before});
+      const backup=join(backups,`${Date.now()}-${randomBytes(4).toString('hex')}`);
+      mkdirSync(backup,{mode:0o700});
+      writeFileSync(join(backup,'config.toml'),before,{flag:'wx',mode:0o600});
+      writeFileSync(join(backup,'native.json'),readFileSync(join(native.state,'native.json')),{flag:'wx',mode:0o600});
+      onBackup(backup); // Report recovery files before either pinned file changes.
       client.close();client=null;
       try {
         writeProfile(path,next);atomicallyWrite(join(native.state,'native.json'),config);
         client=await new AppServer(readNative(native.state)).connect();
-        const readiness=await nativeReadiness(client,config,native.state);
+        const readiness=await nativeReadiness(client,config,native.state,{requireAccount:mode!=='never'});
         if(!readiness.ready)throw new Error(`Native approval configuration rejected: ${readiness.gaps.join('; ')}`);
         return {changed:true,approvals:mode,backup,readiness,qualification:'Effective configuration checked; installed execution proof is separate.'};
       } catch(error) {

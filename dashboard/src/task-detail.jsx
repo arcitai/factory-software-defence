@@ -45,7 +45,7 @@ export function TaskDetail({source,identity,links,navigation=[],csrfToken,job,lo
           {resultJob.state==='unknown'&&<p role="alert" className="text-sm text-danger">Native state is stale, disconnected or ambiguous. Factory will not retry or start another turn automatically.</p>}
           {job.native_state_note&&<p role="status" className="text-sm">{job.native_state_note}</p>}
           {job.native_approvals?.mode==='auto-review'&&<section aria-label="Native action reviews" className="space-y-2 rounded-md bg-muted/30 p-4 text-sm">
-            <h3 className="font-medium">Codex Auto-review</h3>
+            <h3 className="font-medium">Codex Auto-review · recorded turn</h3>
             <p className="text-xs text-muted-foreground">Action approvals observed during this connection. Earlier decisions and full reasons remain in the native session.</p>
             {job.native_approvals.connection==='disconnected'&&<p role="status">Disconnected · these are last observed decisions.</p>}
             {job.native_approvals.reviews?.length?<ul className="space-y-2">{job.native_approvals.reviews.map(review=><li key={review.review_id}>

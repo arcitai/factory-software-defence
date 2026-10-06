@@ -26,10 +26,15 @@ factory service start --state /absolute/private/factory-state
 The command refuses a running bridge or active/unresolved workspace. It preserves
 the existing profile and native history, backs up the two configuration files,
 and checks the changed effective configuration. A failed check restores the
-previous files. Use `factory approvals never --state PATH` with the service
+previous files. The backup directory is printed before the first configuration
+write. Use `factory approvals never --state PATH` with the service
 stopped to return to the previous approval behavior. A crash between file writes
-leaves a hash mismatch and blocks admission; restore both files from the reported
-private `approval-backups` entry before restarting. Do not discard job receipts.
+leaves a hash mismatch and blocks admission. With the service stopped, select
+the backup for that change under `STATE/approval-backups/` and copy its
+`config.toml` to `STATE/home/.codex/config.toml` and its `native.json` to
+`STATE/native.json`, retaining private file permissions. Run doctor before
+restarting. Do not discard job receipts. Returning to `never` can check the
+configuration with an expired login; subsequent work still requires login.
 
 The selection uses native `on-request` and `auto_review` on start, continuation
 and reconnect. It retains Factory's filesystem/network policy and excludes
@@ -43,6 +48,8 @@ qualify an installed candidate with a disposable task before relying on it.
 
 The issue result shows the latest bounded action-review observations from the
 current bridge connection, correlated to the native thread, turn and review.
+The displayed mode belongs to the recorded turn. Reconnecting after a mode
+change starts no new turn and does not rewrite that historical selection.
 It distinguishes approval, denial, timeout, interruption and unknown outcome.
 Approval is not proof that the command executed or that the task is accepted.
 Raw commands, tool arguments and review rationale stay in native history.
