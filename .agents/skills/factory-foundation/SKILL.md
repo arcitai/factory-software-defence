@@ -36,6 +36,10 @@ the existing issue/task record, not a second project registry.
   colors and meanings with the real repository before deliberate adoption.
   Preserve its conventions. GitHub phases and closure reasons describe repository
   work; native running/completed state and accepted delivery remain separate.
+  Open Not planned (`factory:not-planned` or its reviewed equivalent) is parked
+  work retained before Triaging, distinct from blocked work and closure with
+  reason `not_planned`. Missing, stale, unlabeled or conflicting labels stay
+  unresolved.
 - **Native environment:** use separate Factory configuration, native login and
   selected ADLC skills. Do not copy personal login, plugins or connections.
   A dedicated OS user is recommended; a separate configuration directory under

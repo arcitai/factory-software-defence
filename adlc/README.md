@@ -25,6 +25,9 @@ or stale source labels stay unresolved in the Inbox. A stage label is a
 repository declaration, never evidence that a native turn is running.
 `factory:not-planned` retains open work before Triaging. It is distinct from
 GitHub closure with reason `not_planned`; unlabeled work remains unresolved.
+The `factory-triage` skill parks deliberately deferred work there with a
+revisit trigger; missing owner decisions and unavailable capabilities remain
+blocked with their own reason.
 The catalog supplies defaults; preserve repository edits when adopting or
 re-running Foundation. Adding a stage never starts or accepts native work.
 
