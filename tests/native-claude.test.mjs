@@ -14,7 +14,9 @@ import { projectHistory } from '../factory/native/claude-history.mjs';
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const ISSUE='https://github.com/acme/app/issues/7';
-const settle=()=>new Promise(resolve=>setTimeout(resolve,20));
+// Drain the mock's queued output and close callbacks, including their microtasks.
+// A wall-clock delay may expire before setImmediate under a busy Node 22 loop.
+const settle=()=>new Promise(resolve=>setImmediate(()=>setImmediate(resolve)));
 
 // A fake native child: `script(frame, child)` reacts to each stdin frame.
 function fakeSpawn(script) {
@@ -475,4 +477,16 @@ test('doctor refuses drift in effort, hooks policy, skills, sandbox or plugins',
     assert.match(await gaps({effective:edit}),/Effective Claude settings differ/);
   // Empty native defaults inside pinned objects remain acceptable.
   assert.equal((await readinessFixture(t,{effective:s=>({...s,sandbox:{...s.sandbox,excludedCommands:[],ignoreViolations:{}}})}).run()).ready,true);
+});
+
+test('native usage events cannot change the result or admit work and persist only sanitized limits',async t=>{
+  const f=fixture(t,{script:nativeScript({onUser:(frame,child)=>{
+    child.emitLine({type:'rate_limit_event',session_id:child.session,rate_limit_info:{unifiedWindows:{five_hour:{utilization:.23,resetsAt:1791310800}}}});
+    child.emitLine(success(frame,child.session));
+  }})});
+  const job=await start(f.engine);await settle();
+  const saved=JSON.parse(readFileSync(join(f.config.config_dir,'factory-usage.json'),'utf8'));
+  assert.equal(saved.windows.five_hour.utilization,.23);
+  assert.equal(JSON.stringify(saved).includes(job.thread_id),false);
+  assert.equal((await f.engine.result(job.id)).state,'needs_review');
 });

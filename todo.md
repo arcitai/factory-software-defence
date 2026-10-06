@@ -6,6 +6,17 @@ retired implementation evidence remain in Git and private installation records.
 
 ## Current scoped work
 
+- [ ] [#51](https://github.com/arcitai/factory-software-defence/issues/51):
+  current 0.18.9 candidate adds read-only native account usage to the Inbox and
+  CLI. Real historical Analytics remains separate. See [usage](docs/usage.md).
+- [ ] [#143](https://github.com/arcitai/factory-software-defence/issues/143):
+  [Agent Ops pilot](docs/agent-ops.md) defines one accepted assignment, owner
+  decisions, native ownership and communication proof. No channel or recurring
+  operation is enabled. The selected communication route needs live qualification.
+- [ ] [#147](https://github.com/arcitai/factory-software-defence/issues/147):
+  reviewed triage-method candidate remains separate in draft PR #151; custom
+  parked-label mapping belongs to #145. No owner re-review is currently needed.
+
 - [x] [#140](https://github.com/arcitai/factory-software-defence/issues/140):
   Owner-approved Inbox delivered in merged PR #142 and installed 0.18.7: aligned original shell,
   single toolbar, source workflow rail, visible child selection, grouped/sorted
@@ -38,12 +49,12 @@ retired implementation evidence remain in Git and private installation records.
   [draft #141](https://github.com/arcitai/factory-software-defence/pull/141) has
   source, installed and independent review acceptance. Actual native TLS/proxy/
   policy/device/browser qualification remains pending. Its unpublished `0.18.6`
-  candidate is separate; production remains installed `0.18.5` and SSH works.
-- [ ] [#115](https://github.com/arcitai/factory-software-defence/issues/115):
-  Native Claude Code integration is the current candidate. Separate subscription
-  login, exact model/effort, native sessions and installed lifecycle qualification
-  are covered by its PR evidence. The issue remains open until protected release
-  and installed adoption are confirmed. Preserve the active Codex setup.
+  candidate is separate; production adopted `0.18.8` and SSH works.
+- [x] [#115](https://github.com/arcitai/factory-software-defence/issues/115):
+  native Claude Code integration delivered through PR #150, published as 0.18.8
+  and installed with native readiness and preserved Codex history. Separate
+  subscription login, exact model/effort and native lifecycle proof are recorded
+  in that release. The active Codex setup remains the executor.
 - [ ] [#137](https://github.com/arcitai/factory-software-defence/issues/137):
   host guidance only; no migration is authorized or delivered.
 - [ ] [#135](https://github.com/arcitai/factory-software-defence/issues/135):

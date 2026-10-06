@@ -10,6 +10,7 @@ import { cn } from './lib/utils';
 import { routeFromHash } from './routes.js';
 import { projectIdentity } from './project-identity.js';
 import { createStatusLoader } from './status-loader.js';
+import { UsageControl } from './usage-panel.jsx';
 import './styles.css';
 
 function App() {
@@ -38,7 +39,8 @@ function App() {
       <div className="brand-lockup flex h-10 shrink-0 items-center gap-3 px-1"><a href="#/inbox" className="brand-wordmark" aria-label="Factory home"><span>factory<span className="brand-period">.</span></span><span className="brand-descriptor">Software &amp; Defence</span></a></div>
       <nav className="desktop-nav" aria-label="Primary"><PrimaryLink view={view}/></nav>
       <details className="mobile-nav"><summary aria-label="Open navigation"><Menu className="size-4"/><span>Menu</span></summary><nav aria-label="Primary mobile"><PrimaryLink view={view} mobile/></nav></details>
-      <div className="sidebar-bottom"><button onClick={()=>setDark(value=>!value)} className="nav-item theme-switch" aria-label={`Switch to ${dark?'light':'dark'} theme`}>{dark?<Moon className="size-4"/>:<Sun className="size-4"/>}<span>{dark?'Dark':'Light'} theme</span></button></div>
+      <div className="sidebar-bottom"><UsageControl token={status.csrf_token}/><button onClick={()=>setDark(value=>!value)} className="nav-item theme-switch" aria-label={`Switch to ${dark?'light':'dark'} theme`}>{dark?<Moon className="size-4"/>:<Sun className="size-4"/>}<span>{dark?'Dark':'Light'} theme</span></button></div>
+      <div className="mobile-usage"><UsageControl token={status.csrf_token}/></div>
       <button onClick={()=>setDark(value=>!value)} className="mobile-theme ml-auto grid size-9 place-items-center text-muted-foreground md:hidden" aria-label={`Switch to ${dark?'light':'dark'} theme`}>{dark?<Moon className="size-4"/>:<Sun className="size-4"/>}</button>
     </aside>
     <main className="workshop min-w-0 flex-1">
