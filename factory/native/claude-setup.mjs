@@ -80,7 +80,7 @@ export function claudeArgs(config, state, { session = null, resume = null, probe
 }
 // Read-only native inventory of live sessions for this repository. It loads no
 // settings so it cannot run profile hooks or plugins.
-export const claudeInventoryArgs = config => ['agents','--json','--all','--safe-mode','--setting-sources','','--cwd',config.repo];
+export const claudeInventoryArgs = config => ['--safe-mode','--setting-sources','','agents','--json','--all','--cwd',config.repo];
 export const claudeAuthArgs = ['auth','status','--json'];
 export function claudeVersion(config, env) {
   return execFileSync(config.claude,['--version'],{cwd:config.repo,env,encoding:'utf8',timeout:15000,stdio:['ignore','pipe','ignore']}).trim();
