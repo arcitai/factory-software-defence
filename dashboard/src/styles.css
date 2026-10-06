@@ -68,7 +68,8 @@ button:disabled { cursor: not-allowed; }
 ::selection { background: color-mix(in srgb, var(--foreground) 16%, transparent); }
 :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
-.app-shell { min-height: 100vh; }
+/* Route restoration owns scroll position; retained views must not anchor it again. */
+.app-shell { min-height: 100vh; overflow-anchor: none; }
 .app-sidebar { width: 203px; height: 100vh; position: sticky; top: 0; display: flex; flex-direction: column; align-items: stretch; padding: 20px 14px 14px; background: var(--sidebar); border-right: 1px solid var(--border); }
 .brand-lockup { height: 36px; gap: 9px; padding: 0 4px; }
 .brand-wordmark { font-size: 15px; font-weight: 600; letter-spacing: -.025em; }
