@@ -30,7 +30,7 @@ export function UsagePanel({token,close}) {
     const timer=setInterval(()=>setTick(Date.now()),30000);
     return()=>{mounted.current=false;request.current++;clearInterval(timer);};
   },[token]);
-  return <dialog ref={dialog} className="usage-dialog" aria-labelledby="usage-title" onCancel={event=>{event.preventDefault();close();}}>
+  return <dialog ref={dialog} className="usage-dialog" aria-labelledby="usage-title" onClose={close} onCancel={event=>{event.preventDefault();close();}}>
     <header><div><span className="usage-eyebrow">CONNECTED HARNESSES</span><h2 id="usage-title">Usage</h2></div><button className="usage-close" onClick={close} aria-label="Close usage"><X size={18}/></button></header>
     <p className="usage-intro">Account limits include work outside this project. Each window is separate.</p>
     <div className="usage-tools"><span aria-live="polite">{loading?'Reading native usage…':error||'Limits reported by your harnesses'}</span><button onClick={refresh} disabled={loading||!token} aria-label="Refresh usage"><RefreshCw size={14}/>Refresh</button></div>
@@ -41,11 +41,13 @@ export function UsagePanel({token,close}) {
   </dialog>;
 }
 function UsageProfile({profile,now,stale}) {
-  const expired=profile.windows?.some(limit=>limit.resets_at&&Date.parse(limit.resets_at)<=now);
-  const lastKnown=stale||profile.status==='last_known'||expired||(profile.checked_at&&now-Date.parse(profile.checked_at)>120000);
+  const windows=profile.expires_at&&Date.parse(profile.expires_at)<=now?[]:profile.windows||[];
+  const hasData=windows.some(limit=>typeof limit.used_percent==='number');
+  const expired=windows.some(limit=>limit.resets_at&&Date.parse(limit.resets_at)<=now);
+  const lastKnown=hasData&&(stale||profile.status==='last_known'||expired||(profile.checked_at&&now-Date.parse(profile.checked_at)>120000));
   return <section className={`usage-profile usage-${profile.harness}`} aria-label={`${harnessName(profile.harness)} usage`}>
-    <div className="usage-profile-heading"><h3>{harnessName(profile.harness)}</h3>{profile.plan&&<span className="usage-plan">{profile.plan}</span>}<span className={`usage-state ${lastKnown?'is-stale':''}`}>{lastKnown?'Last known':profile.status==='reported'?'Reported':'Unavailable'}</span></div>
-    {profile.windows?.length ? <div className="usage-windows">{profile.windows.map(limit=>{
+    <div className="usage-profile-heading"><h3>{harnessName(profile.harness)}</h3>{profile.plan&&<span className="usage-plan">{profile.plan}</span>}<span className={`usage-state ${lastKnown?'is-stale':''}`}>{lastKnown?'Last known':hasData&&profile.status==='reported'?'Reported':'Unavailable'}</span></div>
+    {windows.length ? <div className="usage-windows">{windows.map(limit=>{
       const used=limit.used_percent,valid=typeof used==='number'&&Number.isFinite(used)&&used>=0&&used<=100;
       const past=limit.resets_at&&Date.parse(limit.resets_at)<=now;
       return <div className="usage-window" key={limit.id}><div className="usage-window-heading"><span>{limit.label}</span><strong>{valid?`${Number(used.toFixed(1))}% used`:'Unavailable'}</strong></div>

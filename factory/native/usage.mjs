@@ -35,8 +35,21 @@ export function claudeUsage(value) {
   return {plan:text(value?.subscription_type),windows,source:'Native Claude /usage'};
 }
 
+export function claudeEventUsage(value,now=Date.now()) {
+  const info=value?.type==='rate_limit_event'?value.rate_limit_info:null,windows=[];
+  if(!plain(info))return null;
+  const limits=plain(info.unifiedWindows)?info.unifiedWindows:{};
+  for(const [id,label] of Object.entries(claudeWindows)) {
+    const limit=limits[id] || (info.rateLimitType===id?info:null);
+    if(!plain(limit)||typeof limit.utilization!=='number'||!Number.isFinite(limit.utilization)||limit.utilization<0||limit.utilization>1)continue;
+    windows.push({...window(id,label,limit.utilization*100,epoch(limit.resetsAt)),observed_at:new Date(now).toISOString()});
+  }
+  return windows.length?{windows,source:'Native Claude usage event',checked_at:new Date(now).toISOString(),expires_at:new Date(now+3600000).toISOString(),status:'last_known'}:null;
+}
+
 export const hasUsage = value => value?.windows?.some(limit=>limit.used_percent!==null);
 export function usageView(value,now,stale=false) {
+  if(value?.expires_at&&Date.parse(value.expires_at)<=now)return {...value,windows:[],status:'unavailable',note:'The last native observation has expired. Refresh to check again.'};
   const windows=(value?.windows||[]).map(limit=>({...limit,reset_passed:Boolean(limit.resets_at&&Date.parse(limit.resets_at)<=now)}));
   return {...value,windows,status:!hasUsage(value)?'unavailable':stale||windows.some(limit=>limit.reset_passed)?'last_known':'reported'};
 }
@@ -54,7 +67,7 @@ export function usageCache({read,now=Date.now,interval=120000}) {
       try {result=await read();} catch {result=null;}
       const checked_at=new Date(now()).toISOString();
       if(hasUsage(result)) {
-        lastGood={...result,checked_at};lastResult=usageView(lastGood,now());
+        lastGood={...result,checked_at:result.checked_at||checked_at};lastResult=usageView(lastGood,now(),result.status==='last_known');
       } else {
         lastResult=usageView({...lastGood,plan:result?.plan||lastGood?.plan||null,
           source:lastGood?.source||result?.source||null,checked_at:lastGood?.checked_at||null,

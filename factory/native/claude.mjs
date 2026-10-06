@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { associateIssue, canonicalIssue } from '../issue-lifecycle.mjs';
 import { FactoryError } from '../error.mjs';
+import { recordClaudeObservation } from './claude-usage-observation.mjs';
 import { CLAUDE_BUILTIN_PLUGINS, CLAUDE_BUILTIN_SKILLS, CLAUDE_INIT_BUILTIN_SKILLS, CLAUDE_TOOLS, FACTORY_SKILLS, FACTORY_SKILL_SOURCE,
   claudeArgs, claudeAuthArgs, claudeEnvironment, claudeInventoryArgs, claudeSettings, verifyClaudeConfig } from './claude-setup.mjs';
 import { atomicallyWrite, boundedText, discardUnsentReceipt, hash, issuePrompt, readReceipts, readWriter, restoreUnsentWriter, saveReceipt, validStartInput, withWriterGate, writerPath } from './writer.mjs';
@@ -402,6 +403,7 @@ export class ClaudeEngine {
       }
     };
     proc.on(message=>{
+      if(message.type==='rate_limit_event') {recordClaudeObservation(config,message);return;}
       if (message.type==='factory/unexpected') {
         record.refused_requests=[...(record.refused_requests||[]),{request_id:message.request_id,subtype:message.subtype}].slice(-20);
         return doubt('An unexpected native authority request was refused.',409);

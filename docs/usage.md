@@ -29,15 +29,19 @@ Reads are coalesced and cached for two minutes in the serving process. Use
 **Refresh** to read again; the cache also bounds repeated clicks. A failed read
 retains a previous reading as **Last known**, with its original timestamp.
 Without a reading, the panel shows **Unavailable**. Passing a reset time does
-not prove that quota has reset or that execution is permitted. After restart,
-a missing reading stays unavailable; there is no invented historical value.
+not prove that quota has reset or that execution is permitted.
 
 Codex uses its native `account/rateLimits/read` contract, including named buckets
 and their reported durations. Claude uses the pinned CLI's experimental
 `get_usage` control request with `skip_behaviors: true`; no prompt is sent, no
 session is saved and local transcripts are not scanned. This native endpoint can
 return no quota data even for a signed-in subscriber. Factory preserves that
-unknown. CLI upgrades require requalification, including this experimental read.
+unknown. When native Claude work reports quota windows, Factory keeps one small
+sanitized observation in that selected private profile. A direct read without
+limits can show this observation for up to one hour as **Last known**, retaining
+its original time. It contains only reported windows, not transcripts or tokens.
+It survives a bridge restart, but expired or malformed observations are ignored.
+CLI upgrades require requalification, including the experimental read.
 The timestamp records when Factory received the native answer; the harness may
 itself return cached data without a server timestamp.
 

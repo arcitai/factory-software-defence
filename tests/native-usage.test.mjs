@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { codexUsage,claudeUsage,usageCache } from '../factory/native/usage.mjs';
 import { createUsageReader,linkUsage } from '../factory/native/usage-sources.mjs';
+import { readClaudeObservation,recordClaudeObservation } from '../factory/native/claude-usage-observation.mjs';
 
 test('Codex keeps independent named buckets, provider durations and unknown fields',()=>{
   const value=codexUsage({accountId:'private-account',rateLimits:{primary:{usedPercent:99}},rateLimitsByLimitId:{
@@ -46,8 +47,9 @@ test('usage links are explicit, deduplicate profiles, survive a missing source a
   const owner=join(root,'owner'),target=join(root,'target'),duplicate=join(root,'duplicate');for(const p of [owner,target,duplicate])mkdirSync(p,{mode:0o700});
   const configs=new Map([[owner,{state:owner,config:{repo:'/one'},env:{CODEX_HOME:'/private/codex'}}],[target,{state:target,config:{harness:'claude',config_dir:'/private/claude',repo:'/two'}}],[duplicate,{state:duplicate,config:{harness:'claude',config_dir:'/private/claude',repo:'/three'}}]]);
   const load=state=>{const value=configs.get(state);if(!value)throw Error('Missing native source');return value;};
-  assert.equal(linkUsage(owner,target,false,{load}).status,'linked');
-  assert.equal(linkUsage(owner,duplicate,false,{load}).status,'already_linked');
+  const options={load,lock:()=>()=>{}};
+  assert.equal(linkUsage(owner,target,false,options).status,'linked');
+  assert.equal(linkUsage(owner,duplicate,false,options).status,'already_linked');
   assert.equal(statSync(join(owner,'usage-links.json')).mode&0o777,0o600);
   assert.equal(JSON.parse(readFileSync(join(owner,'usage-links.json'))).sources.length,1);
   const reader=createUsageReader(owner,{load,read:async native=>native.config.harness==='claude'?claudeUsage({subscription_type:'pro',rate_limits_available:true,rate_limits:null}):codexUsage({rateLimits:{primary:{usedPercent:12}}})});
@@ -55,6 +57,23 @@ test('usage links are explicit, deduplicate profiles, survive a missing source a
   assert.equal(JSON.stringify(result).includes('/private/'),false);
   assert.equal(configs.get(owner).config.harness,undefined);
   configs.delete(target);rmSync(target,{recursive:true});
-  assert.equal(linkUsage(owner,target,true,{load}).status,'unlinked');assert.equal((await reader()).profiles.length,1);
+  assert.equal(linkUsage(owner,target,true,options).status,'unlinked');assert.equal((await reader()).profiles.length,1);
   writeFileSync(join(owner,'usage-links.json'),'{broken',{mode:0o600});await assert.rejects(reader,/unreadable/);
+});
+test('native Claude events retain bounded quota observations with their original age and no session content',async t=>{
+  const root=mkdtempSync(join(tmpdir(),'factory-usage-event-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const config={config_dir:root},now=1791288000000;
+  const event={type:'rate_limit_event',session_id:'private-session',rate_limit_info:{unifiedWindows:{five_hour:{utilization:.63,resetsAt:1791300000},seven_day:{utilization:.05,resetsAt:null}}}};
+  assert.equal(recordClaudeObservation(config,event,now),true);
+  const reading=readClaudeObservation(config,now+300000);
+  assert.deepEqual(reading.windows.map(limit=>limit.used_percent),[63,5]);
+  assert.equal(reading.checked_at,new Date(now).toISOString());assert.equal(reading.status,'last_known');
+  const path=join(root,'factory-usage.json');assert.equal(statSync(path).mode&0o777,0o600);
+  assert.equal(readFileSync(path,'utf8').includes('private-session'),false);
+  const cached=await usageCache({read:async()=>reading,now:()=>now+300000})();assert.equal(cached.checked_at,reading.checked_at);assert.equal(cached.status,'last_known');
+  const expired=await usageCache({read:async()=>reading,now:()=>now+3600001})();assert.equal(expired.status,'unavailable');assert.deepEqual(expired.windows,[]);
+  assert.equal(recordClaudeObservation(config,{type:'rate_limit_event',rate_limit_info:{unifiedWindows:{five_hour:{utilization:63}}}},now+300000),false,'streaming fraction cannot be confused with a percentage');
+  assert.equal(readClaudeObservation(config,now+3600001),null);assert.equal(readClaudeObservation(config,now-1),null);
+  writeFileSync(path,'not JSON');assert.equal(readClaudeObservation(config,now),null);
+  assert.equal(recordClaudeObservation({config_dir:join(root,'missing')},event,now),false,'optional telemetry failure cannot fail native work');
 });
