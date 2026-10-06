@@ -30,6 +30,9 @@ test('user systemd manifest pins an installed release and a loopback serve comma
   mkdirSync(join(installed,'node_modules','yaml'),{recursive:true});
   writeFileSync(join(installed,'node_modules','yaml','package.json'),JSON.stringify({name:'yaml',version:'2.9.1'}));
   const manifest=serviceManifest({state,config:{repo,node:process.execPath},root:installed,home:root,port:7332});
+  assert.match(manifest.definition,/Description=Factory native Codex Inbox/);
+  const claude=serviceManifest({state,config:{repo,node:process.execPath,harness:'claude'},root:installed,home:root,port:7332});
+  assert.match(claude.definition,/Description=Factory native Claude Inbox/);
   assert.match(manifest.definition,/ExecStart=.*serve.*--state.*--port/);
   assert.match(manifest.definition,/bin\/software-defence-factory\.mjs/);
   assert.match(manifest.definition,/NoNewPrivileges=true/);

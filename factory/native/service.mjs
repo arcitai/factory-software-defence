@@ -18,7 +18,8 @@ const serviceHash=value=>createHash('sha256').update(value).digest('hex').slice(
 const serviceID=(state,repo)=>`factory-native-${serviceHash(`${state}\n${repo}`)}`;
 const quote=value=>`"${String(value).replaceAll('\\','\\\\').replaceAll('"','\\"').replaceAll('$',()=> '$$').replaceAll('%','%%').replaceAll('\n','\\n')}"`;
 const validPort=port=>Number.isSafeInteger(port)&&port>=1024&&port<=65535;
-const unitText=({state,repo,node,runtime,port,verification})=>`[Unit]\nDescription=Factory native agent Inbox\nStartLimitIntervalSec=0\n\n[Service]\nType=exec\nExecStartPre=${verification.map(quote).join(' ')}\nExecStart=${[node,join(runtime,'bin/software-defence-factory.mjs'),'serve','--state',state,'--port',String(port)].map(quote).join(' ')}\nRestart=on-failure\nRestartSec=10\nTimeoutStopSec=45\nKillMode=control-group\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`;
+// Keep existing Codex unit bytes stable: adoption verifies the prior definition exactly.
+const unitText=({state,repo,node,runtime,port,verification,harness})=>`[Unit]\nDescription=Factory native ${harness==='claude'?'Claude':'Codex'} Inbox\nStartLimitIntervalSec=0\n\n[Service]\nType=exec\nExecStartPre=${verification.map(quote).join(' ')}\nExecStart=${[node,join(runtime,'bin/software-defence-factory.mjs'),'serve','--state',state,'--port',String(port)].map(quote).join(' ')}\nRestart=on-failure\nRestartSec=10\nTimeoutStopSec=45\nKillMode=control-group\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`;
 function callSystemctl(args) {
   return execFileSync('systemctl',['--user',...args],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000}).trim();
 }
@@ -93,7 +94,7 @@ export function serviceManifest({state,config,root=packageRoot,port=7332,home=ho
   // systemd runs it on every start, including automatic failure/boot restarts.
   const verifier=`import {createHash} from 'node:crypto';import {readdirSync,lstatSync,readFileSync} from 'node:fs';import {join} from 'node:path';\n${runtimeDigest.toString()}\nif(runtimeDigest(process.argv[1])!==process.argv[2])throw new Error('Pinned Factory runtime integrity mismatch; preserve and reconcile the release.');`;
   const verification=[config.node,'--input-type=module','-e',verifier,installed,runtime_sha256];
-  const definition=unitText({state,repo:config.repo,node:config.node,runtime:installed,port,verification});
+  const definition=unitText({state,repo:config.repo,node:config.node,runtime:installed,port,verification,harness:config.harness});
   return {id,unit,port,state,repo:config.repo,node:config.node,version:source.version,runtime:installed,
     folder,file:join(folder,unit),verification,runtime_sha256,definition,definition_sha256:createHash('sha256').update(definition).digest('hex')};
 }
