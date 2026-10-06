@@ -12,7 +12,8 @@ and GitHub handle issues, pull requests and CI. Published by [Arcitai](https://g
 - **ADLC skills**: portable triage, specification, implementation, review, security
   and evaluation instructions, adopted under the project's own vision.
 - **Inbox**: repository issues, explicit Start and Continue, native status/results
-  and issue creation using the repository's templates.
+  and issue creation using the repository's templates. [Harness usage](docs/usage.md)
+  shows native account limits without turning token estimates into charges.
 - **Small CLI and bridge**: setup, native login, diagnostics, the same operations
   as the Inbox, and pinned Linux user-service startup.
 

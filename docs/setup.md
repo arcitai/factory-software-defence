@@ -37,9 +37,8 @@ The initial profile has unattended approvals but restricted filesystem/network
 access; personal apps/MCP/plugins are excluded. The host GitHub integration uses
 the operator's GitHub identity without forwarding its environment to the agent.
 
-Run login on the host that runs Factory. It opens the native browser flow when
-available; otherwise, open the displayed link in your browser and complete the
-login there. Factory keeps that login in its selected profile.
+Run `factory login` on the host running Factory. Open the login link in your
+browser and complete the sign-in. Factory keeps the login in the selected profile.
 
 Doctor checks effective configuration and connection inventory. A passing doctor
 is not a real execution or sandbox proof. Model preferences belong in the native
@@ -62,8 +61,8 @@ factory doctor --state /absolute/private/factory-state
 Setup pins the executable bytes and version, a private profile with the six
 Factory skills and a Factory settings file. `--claude-config` adopts an existing
 private profile dedicated to Factory; never select your personal Claude profile.
-`login` uses your Claude subscription (browser, or a printed URL without one); Factory
-never reads tokens. Doctor reads `claude auth status`, then starts the native CLI
+`login` supplies a link to sign in with your Claude subscription. Factory never
+reads tokens. Doctor reads `claude auth status`, then starts the native CLI
 without a prompt or saved session and checks pending requests, applied
 model/effort, effective permissions and sandbox, hooks policy, skills and MCP.
 Doctor does not report the tool list; each run checks the native startup
@@ -71,6 +70,9 @@ inventory (tools, MCP, plugins, skills, permission mode) before it is recognized
 Usage limits Claude does not report stay unknown; cost fields are API-equivalent
 estimates, not subscription usage or a charge. An existing Factory login can be
 checked with `doctor`; log in only when needed. API-billed login is not selected.
+
+Use [Usage](usage.md) to read native account limits and include another connected
+Factory profile in the dashboard.
 
 Work runs as `claude -p` with stream-json, the user setting source only, strict
 empty MCP, the pinned settings and the tools Bash, Read, Edit, Write, Glob, Grep

@@ -9,6 +9,7 @@ import { readProjectLinks } from '../project-links.mjs';
 import { recommendWork } from '../intake.mjs';
 import { FactoryError } from '../error.mjs';
 import { NativeIssueSubmissions } from './issue-submissions.mjs';
+import { createUsageReader } from './usage-sources.mjs';
 
 const ui=join(fileURLToPath(new URL('../../',import.meta.url)),'factory','ui');
 const equal=(a,b)=>typeof a==='string' && Buffer.byteLength(a)===Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a),Buffer.from(b));
@@ -17,7 +18,7 @@ async function body(request) {
   try { const parsed=JSON.parse(data);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error();return parsed; }
   catch { throw new FactoryError('Expected a JSON object',400); }
 }
-export function createNativeServer(state,config,{harness,provider,instance=randomBytes(16).toString('hex'),maintenanceToken=null}={}) {
+export function createNativeServer(state,config,{harness,provider,instance=randomBytes(16).toString('hex'),maintenanceToken=null,usageReader=createUsageReader(state)}={}) {
   if(!harness||!provider||typeof harness.jobs!=='function'||typeof harness.doctor!=='function')throw new Error('Native server needs an owning harness and issue provider.');
   const engine=harness,submissions=new NativeIssueSubmissions(state,provider),csrf=randomBytes(32).toString('hex');
   const invoke=(name,...args)=>{if(typeof engine[name]!=='function')throw new FactoryError('This harness capability is unavailable.',404);return engine[name](...args);};
@@ -50,6 +51,10 @@ export function createNativeServer(state,config,{harness,provider,instance=rando
       const authenticated=equal(request.headers['x-factory-session'],csrf);
       if(request.method==='GET'&&url.pathname==='/api/v1/bridge/status')
         return send(200,{version:1,native:true,native_instance:instance,repo:config.repo,csrf_token:csrf});
+      if(request.method==='GET'&&url.pathname==='/api/v1/usage') {
+        if(!authenticated)throw new FactoryError('Session required',403);
+        return send(200,await usageReader());
+      }
       if(request.method==='GET'&&url.pathname==='/api/v1/status') {
         const jobs=await engine.jobs(),ready=await (engine.statusReadiness?.() || engine.doctor()).catch(()=>({ready:false,gaps:['Native state unavailable']}));
         return send(200,{version:1,native:true,native_instance:instance,maintenance_prepared:Boolean(maintenance),native_capabilities:{issue_start:Boolean(provider.supported)&&typeof engine.start==='function',interrupt:typeof engine.interrupt==='function',

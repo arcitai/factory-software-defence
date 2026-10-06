@@ -105,6 +105,7 @@ test('Inbox refreshes from created receipts without losing filters, board choice
   let nextIssueNumber = 121;
   let issueListReads = 0;
   let statusReads = 0;
+  let usageReads = 0, failUsage = false;
   let failNextIssueListRead = false;
   let holdNextIssueListRead = false;
   let releaseIssueListRead;
@@ -132,6 +133,15 @@ test('Inbox refreshes from created receipts without losing filters, board choice
     if (url.pathname === '/api/v1/status') {
       statusReads += 1;
       return jsonResponse(status);
+    }
+    if (url.pathname === '/api/v1/usage') {
+      usageReads++;
+      assert.equal(options.headers['X-Factory-Session'],session);
+      if(failUsage)return jsonResponse({},503);
+      return jsonResponse({profiles:[
+        {id:'codex',harness:'codex',plan:'pro',status:'reported',checked_at:new Date().toISOString(),windows:[{id:'weekly',label:'7 days',used_percent:32,resets_at:new Date(Date.now()+86400000).toISOString()}]},
+        {id:'claude',harness:'claude',plan:'pro',status:'unavailable',checked_at:null,windows:[]}
+      ]});
     }
     if (url.pathname === '/api/v1/issues' && method === 'GET') {
       issueListReads += 1;
@@ -251,6 +261,19 @@ test('Inbox refreshes from created receipts without losing filters, board choice
 
   await act(async () => { appRoot = (await vite.ssrLoadModule('/src/main.jsx')).appRoot; });
   await waitFor(() => issueListReads >= 1 && document.querySelector('.run-card-link'), 'initial Inbox issues should load');
+  assert.equal(usageReads,0,'normal Inbox polling never reads account limits');
+  await click(document.querySelector('.usage-control'));
+  await waitFor(()=>document.querySelector('meter'),'usage window should render');
+  assert.equal(document.querySelector('meter').value,32);
+  assert.match(document.querySelector('.usage-claude').textContent,/Unavailable/);
+  assert.equal(document.querySelectorAll('meter').length,1,'missing Claude values do not become zero');
+  failUsage=true;await click(document.querySelector('[aria-label="Refresh usage"]'));
+  await waitFor(()=>document.querySelector('.usage-tools').textContent.includes('could not'),'failed usage read should be visible');
+  assert.equal(document.querySelector('meter').value,32,'last reading is retained after a failed refresh');
+  assert.match(document.querySelector('.usage-codex').textContent,/Last known/);
+  await act(async()=>document.querySelector('.usage-dialog').dispatchEvent(new window.Event('cancel',{cancelable:true})));
+  assert.equal(document.querySelector('.usage-dialog'),null);
+  assert.ok(document.querySelector('.run-card-link'),'closing Usage retains the Inbox');
 
   assert.equal(document.querySelector('button[aria-label="Board"]')?.getAttribute('aria-pressed'), 'true');
   assert.ok(document.querySelector('.run-column-heading [data-lucide="inbox"]') || document.querySelector('#board-triage'), 'phase catalog drives board columns');

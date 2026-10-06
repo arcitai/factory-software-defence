@@ -478,3 +478,15 @@ test('doctor refuses drift in effort, hooks policy, skills, sandbox or plugins',
   // Empty native defaults inside pinned objects remain acceptable.
   assert.equal((await readinessFixture(t,{effective:s=>({...s,sandbox:{...s.sandbox,excludedCommands:[],ignoreViolations:{}}})}).run()).ready,true);
 });
+
+test('native usage events cannot change the result or admit work and persist only sanitized limits',async t=>{
+  const f=fixture(t,{script:nativeScript({onUser:(frame,child)=>{
+    child.emitLine({type:'rate_limit_event',session_id:child.session,rate_limit_info:{unifiedWindows:{five_hour:{utilization:.23,resetsAt:1791310800}}}});
+    child.emitLine(success(frame,child.session));
+  }})});
+  const job=await start(f.engine);await settle();
+  const saved=JSON.parse(readFileSync(join(f.config.config_dir,'factory-usage.json'),'utf8'));
+  assert.equal(saved.windows.five_hour.utilization,.23);
+  assert.equal(JSON.stringify(saved).includes(job.thread_id),false);
+  assert.equal((await f.engine.result(job.id)).state,'needs_review');
+});

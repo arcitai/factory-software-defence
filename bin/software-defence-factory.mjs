@@ -16,6 +16,7 @@ import { acquireProcessLock } from '../factory/native/process-lock.mjs';
 import { manageNativeService, pendingServiceAdoptionToken } from '../factory/native/service.mjs';
 import { issueProvider } from '../factory/issue-provider.mjs';
 import { checkRelease } from '../factory/release-check.mjs';
+import { createUsageReader, linkUsage } from '../factory/native/usage-sources.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const packageIdentity=JSON.parse(readFileSync(join(root,'package.json'),'utf8'));
@@ -28,6 +29,8 @@ Usage:
   factory setup --harness claude --repo PATH --model MODEL --effort EFFORT [--state PATH] [--claude PATH] [--claude-config PATH]
   factory login [--state PATH]
   factory doctor [--state PATH]
+  factory usage [--state PATH]
+  factory usage link|unlink --from-state PATH [--state PATH]
   factory serve [--state PATH] [--port PORT]
   factory issue URL [--state PATH]
   factory issues list|connection|templates|submissions [--state PATH]
@@ -108,6 +111,15 @@ async function command(args) {
   const [name,...rest]=args;
   if(!name||name==='help'||name==='--help'||name==='-h'){process.stdout.write(usage);return;}
   if(name==='--version'||name==='-v'){console.log(version);return;}
+  if(name==='usage') {
+    if(['link','unlink'].includes(rest[0])) {
+      const {flags}=parse(rest.slice(1),{allowed:['--state','--from-state']});
+      if(!flags['--from-state'])throw new Error('Choose --from-state PATH.');
+      print(linkUsage(stateFrom(flags),resolve(flags['--from-state']),rest[0]==='unlink'));return;
+    }
+    const {flags}=parse(rest,{allowed:['--state']});
+    print(await createUsageReader(stateFrom(flags))());return;
+  }
   if(name==='setup') {
     const {flags}=parse(rest,{allowed:['--repo','--state','--codex','--bundle-read','--harness','--claude','--model','--effort','--claude-config']});
     if(!flags['--repo'])throw new Error('Setup needs --repo PATH.');
