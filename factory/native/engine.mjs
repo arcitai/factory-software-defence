@@ -3,6 +3,7 @@ import { associateIssue, canonicalIssue } from '../issue-lifecycle.mjs';
 import { FactoryError } from '../error.mjs';
 import { nativeReadiness } from './app-server.mjs';
 import { verifyNativeConfig } from './setup.mjs';
+import { codexApprovals, confirmedApprovals } from './codex-approvals.mjs';
 import { atomicallyWrite, boundedText, hash, issuePrompt, readReceipts, readWriter as readWriterFile, saveReceipt, validStartInput, withWriterGate, writerPath } from './writer.mjs';
 
 const terminal = new Set(['completed','failed','interrupted']);
@@ -44,6 +45,10 @@ export class NativeEngine {
       if (record?.thread_id && record.turn_id && record.phase==='started')
         client.call('turn/interrupt',{threadId:record.thread_id,turnId:record.turn_id}).catch(()=>{});
     });
+  }
+  job(record,status,turns=[],current=null) {
+    return {...makeJob(record,status,turns,current),native_approvals:{mode:record.approvals||'never',
+      ...this.client.approvals?.snapshot(record.thread_id,record.turn_id,this.client.available,status)}};
   }
   async doctor() { this.readiness=await nativeReadiness(this.client,this.config,this.state);return this.readiness; }
   async threadTurns(threadId,{itemsView='notLoaded',limit=100}={}) {
@@ -126,26 +131,26 @@ export class NativeEngine {
     const receipts=readReceipts(this.state),result=[];
     for (const record of receipts) {
       if (!record.thread_id || !record.turn_id || record.phase!=='started' || !this.client.available) {
-        result.push(makeJob(record,'unknown'));continue;
+        result.push(this.job(record,'unknown'));continue;
       }
       try {
         const observation=await this.observed(record,{itemsView:'notLoaded'});
-        result.push(observation ? makeJob(record,stateOf(observation.current.status),observation.turns,observation.current) : makeJob(record,'unknown'));
-      } catch {result.push(makeJob(record,'unknown'));}
+        result.push(observation ? this.job(record,stateOf(observation.current.status),observation.turns,observation.current) : this.job(record,'unknown'));
+      } catch {result.push(this.job(record,'unknown'));}
     }
     return result;
   }
   async result(id) {
     const record=readReceipts(this.state).find(item=>item.id===id);
     if(!record)throw new FactoryError('Native issue history not found.',404);
-    if(!this.client.available)return makeJob(record,'unknown');
+    if(!this.client.available)return this.job(record,'unknown');
     try {
       const observation=await this.observed(record,{itemsView:'notLoaded'});
-      if(!observation)return makeJob(record,'unknown');
+      if(!observation)return this.job(record,'unknown');
       const latest=await this.threadTurns(record.thread_id,{itemsView:'summary',limit:1});
-      if(!latest || latest[0]?.id!==record.turn_id)return makeJob(record,'unknown');
-      return makeJob(record,stateOf(observation.current.status),observation.turns,latest[0]);
-    } catch {return makeJob(record,'unknown');}
+      if(!latest || latest[0]?.id!==record.turn_id)return this.job(record,'unknown');
+      return this.job(record,stateOf(observation.current.status),observation.turns,latest[0]);
+    } catch {return this.job(record,'unknown');}
   }
   async issue(input) {
     const issue=await this.provider.preview(input.url);
@@ -162,7 +167,7 @@ export class NativeEngine {
     if (!identity) throw new FactoryError('Unsupported issue identity.',400);
     try {verifyNativeConfig(this.state,this.config);} catch {throw new FactoryError('Native permissions configuration changed; admission refused.',503);}
     const record={id:`job_${randomBytes(12).toString('hex')}`,key:identity.key,url:identity.url,title:issue.title,
-      work_type:workType,spec_hash:hash(issue.spec),created_at:new Date().toISOString(),phase:'reserved',thread_id:null,turn_id:null,attempts:[]};
+      work_type:workType,approvals:this.config.approvals||'never',spec_hash:hash(issue.spec),created_at:new Date().toISOString(),phase:'reserved',thread_id:null,turn_id:null,attempts:[]};
     return this.withGate(async()=>{
       if (readReceipts(this.state).some(item=>item.key===identity.key))
         throw new FactoryError('Issue already has native history or unresolved admission. Continue its recorded thread.',409);
@@ -176,16 +181,16 @@ export class NativeEngine {
       verifyNativeConfig(this.state,this.config);
       const finalReadiness=await this.doctor();
       if (!finalReadiness.ready) throw new FactoryError('Native effective permissions changed during admission; reservation remains unresolved.',503);
-      const started=await this.client.call('thread/start',{cwd:this.config.repo,permissions:'factory',approvalPolicy:'never',allowProviderModelFallback:false,ephemeral:false},30000);
+      const started=await this.client.call('thread/start',{cwd:this.config.repo,permissions:'factory',...codexApprovals(this.config),allowProviderModelFallback:false,ephemeral:false},30000);
       if (started?.thread?.id) {record.thread_id=started.thread.id;record.phase='thread_started';saveReceipt(this.state,record);}
-      if (!record.thread_id || started.cwd!==this.config.repo || started.approvalPolicy!=='never'
+      if (this.client.unexpectedApproval || !record.thread_id || started.cwd!==this.config.repo || !confirmedApprovals(started,this.config)
         || started.activePermissionProfile?.id!=='factory') throw new Error('Native thread did not confirm its permissions or identity; admission remains reserved.');
       const prompt=issuePrompt({url:identity.url,specHash:record.spec_hash,spec:issue.spec,brief:input.brief,workType});
-      const turn=await this.client.call('turn/start',{threadId:record.thread_id,input:[{type:'text',text:prompt}],permissions:'factory',approvalPolicy:'never'},30000);
+      const turn=await this.client.call('turn/start',{threadId:record.thread_id,input:[{type:'text',text:prompt}],permissions:'factory',...codexApprovals(this.config)},30000);
       if (!turn?.turn?.id) throw new Error('Native turn response was ambiguous; inspect the thread before any new work.');
       record.turn_id=turn.turn.id;record.phase='started';record.attempts.push({turn_id:record.turn_id,started_at:new Date().toISOString()});record.updated_at=new Date().toISOString();saveReceipt(this.state,record);
       if (this.client.unexpectedApproval) await this.client.call('turn/interrupt',{threadId:record.thread_id,turnId:record.turn_id}).catch(()=>{});
-      return makeJob(record,stateOf(turn.turn.status),[turn.turn],turn.turn);
+      return this.job(record,stateOf(turn.turn.status),[turn.turn],turn.turn);
     });
   }
   async continue(id,expectedTurnId,feedback) {
@@ -207,16 +212,16 @@ export class NativeEngine {
       fresh.phase='continue_reserved';fresh.expected_turn_id=expectedTurnId;fresh.updated_at=new Date().toISOString();
       fresh.attempts=[...(fresh.attempts||[]),{expected_turn_id:expectedTurnId,reserved_at:fresh.updated_at,phase:'reserved'}];
       saveReceipt(this.state,fresh);
-      const resumed=await this.client.call('thread/resume',{threadId:fresh.thread_id,cwd:this.config.repo,permissions:'factory',approvalPolicy:'never',excludeTurns:true});
-      if(resumed?.thread?.id!==fresh.thread_id || resumed.cwd!==this.config.repo || resumed.approvalPolicy!=='never'
+      const resumed=await this.client.call('thread/resume',{threadId:fresh.thread_id,cwd:this.config.repo,permissions:'factory',...codexApprovals(this.config),excludeTurns:true});
+      if(this.client.unexpectedApproval || resumed?.thread?.id!==fresh.thread_id || resumed.cwd!==this.config.repo || !confirmedApprovals(resumed,this.config)
         || resumed.activePermissionProfile?.id!=='factory')throw new FactoryError('Native resume did not confirm its permissions; continuation reservation remains unresolved.',503);
-      const turn=await this.client.call('turn/start',{threadId:fresh.thread_id,input:[{type:'text',text:feedback.trim()}],permissions:'factory',approvalPolicy:'never'},30000);
+      const turn=await this.client.call('turn/start',{threadId:fresh.thread_id,input:[{type:'text',text:feedback.trim()}],permissions:'factory',...codexApprovals(this.config)},30000);
       if (!turn?.turn?.id) throw new Error('Native continuation response was ambiguous; inspect the thread before any new work.');
-      fresh.turn_id=turn.turn.id;fresh.phase='started';delete fresh.expected_turn_id;
+      fresh.turn_id=turn.turn.id;fresh.phase='started';fresh.approvals=this.config.approvals||'never';delete fresh.expected_turn_id;
       fresh.attempts[fresh.attempts.length-1]={turn_id:turn.turn.id,expected_turn_id:expectedTurnId,started_at:new Date().toISOString()};
       fresh.updated_at=new Date().toISOString();saveReceipt(this.state,fresh);
       if(this.client.unexpectedApproval)await this.client.call('turn/interrupt',{threadId:fresh.thread_id,turnId:fresh.turn_id}).catch(()=>{});
-      return makeJob(fresh,stateOf(turn.turn.status),[turn.turn],turn.turn);
+      return this.job(fresh,stateOf(turn.turn.status),[turn.turn],turn.turn);
     });
   }
   async interrupt(id,turnId) {
@@ -240,8 +245,8 @@ export class NativeEngine {
     const observation=await this.observed(record).catch(()=>null);
     if (!observation) throw new FactoryError('Recorded native turn is stale or unavailable; reconnect blocked.',409);
     const ready=await this.doctor();if(!ready.ready)throw new FactoryError(`Native readiness failed: ${ready.gaps.join('; ')}`,503);
-    const resumed=await this.client.call('thread/resume',{threadId:record.thread_id,cwd:this.config.repo,permissions:'factory',approvalPolicy:'never',excludeTurns:true});
-    if(resumed?.thread?.id!==record.thread_id || resumed.cwd!==this.config.repo || resumed.approvalPolicy!=='never'
+    const resumed=await this.client.call('thread/resume',{threadId:record.thread_id,cwd:this.config.repo,permissions:'factory',...codexApprovals(this.config),excludeTurns:true});
+    if(this.client.unexpectedApproval || resumed?.thread?.id!==record.thread_id || resumed.cwd!==this.config.repo || !confirmedApprovals(resumed,this.config)
       || resumed.activePermissionProfile?.id!=='factory')throw new FactoryError('Native resume did not confirm its permissions; no turn was started.',503);
     return {id,thread_id:record.thread_id,resumed:true,turn_started:false};
   }

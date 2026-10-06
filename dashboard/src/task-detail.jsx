@@ -44,6 +44,14 @@ export function TaskDetail({source,identity,links,navigation=[],csrfToken,job,lo
           {response!==null&&response!==undefined?<section aria-label="Native agent response"><h3 className="mb-2 text-sm font-medium">{terminal.has(resultJob.state)?'Final agent response':'Latest agent response'}</h3><pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 font-sans text-sm leading-6">{response}</pre></section>:!resultLoading&&<p className="text-sm text-muted-foreground">{resultJob.state==='unknown'?'Native status or result is unresolved. Inspect the native session before acting.':`${harnessLabel(job.harness)} has not recorded an agent response for this turn.`}</p>}
           {resultJob.state==='unknown'&&<p role="alert" className="text-sm text-danger">Native state is stale, disconnected or ambiguous. Factory will not retry or start another turn automatically.</p>}
           {job.native_state_note&&<p role="status" className="text-sm">{job.native_state_note}</p>}
+          {job.native_approvals?.mode==='auto-review'&&<section aria-label="Native action reviews" className="space-y-2 rounded-md bg-muted/30 p-4 text-sm">
+            <h3 className="font-medium">Codex Auto-review · recorded turn</h3>
+            <p className="text-xs text-muted-foreground">Action approvals observed during this connection. Earlier decisions and full reasons remain in the native session.</p>
+            {job.native_approvals.connection==='disconnected'&&<p role="status">Disconnected · these are last observed decisions.</p>}
+            {job.native_approvals.reviews?.length?<ul className="space-y-2">{job.native_approvals.reviews.map(review=><li key={review.review_id}>
+              <p>{review.summary}</p><p className="break-all text-xs text-muted-foreground">{time(review.observed_at)} · Review {review.review_id}</p>
+            </li>)}</ul>:<p>No action reviews observed here. This does not establish that earlier actions were approved.</p>}
+          </section>}
           {actionError&&<p role="alert" className="text-sm text-danger">{actionError}</p>}{localError&&<p role="alert" className="text-sm text-danger">{localError}</p>}
           {capabilities.interrupt===true&&job.state==='running'&&<Button type="button" variant="outline" disabled={busy||!job.turn_id} onClick={()=>act('interrupt',{turn_id:job.turn_id})}>{busy?'Interrupting…':'Interrupt native turn'}</Button>}
           {capabilities.resume_thread===true&&job.thread_id&&job.state!=='running'&&<Button type="button" variant="outline" disabled={busy||resultJob.state==='unknown'} onClick={()=>act('resume')}>{busy?'Reconnecting…':'Reconnect without starting a turn'}</Button>}

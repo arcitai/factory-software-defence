@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { probeCodex } from '../scripts/probe-harness.mjs';
+import { changeCodexApprovals } from '../factory/native/approval-config.mjs';
 import { setupNative, readNative } from '../factory/native/setup.mjs';
 import { AppServer, nativeReadiness } from '../factory/native/app-server.mjs';
 import { NativeEngine } from '../factory/native/engine.mjs';
@@ -25,8 +26,9 @@ const stateDefault=join(process.env.XDG_STATE_HOME || join(homedir(),'.local','s
 const usage=`Factory ${version} · native Codex or Claude and GitHub Inbox
 
 Usage:
-  factory setup --repo PATH [--state PATH] [--codex PATH] [--bundle-read PATH]
+  factory setup --repo PATH [--state PATH] [--codex PATH] [--bundle-read PATH] [--approvals never|auto-review]
   factory setup --harness claude --repo PATH --model MODEL --effort EFFORT [--state PATH] [--claude PATH] [--claude-config PATH]
+  factory approvals never|auto-review --state PATH
   factory login [--state PATH]
   factory doctor [--state PATH]
   factory usage [--state PATH]
@@ -121,13 +123,18 @@ async function command(args) {
     print(await createUsageReader(stateFrom(flags))());return;
   }
   if(name==='setup') {
-    const {flags}=parse(rest,{allowed:['--repo','--state','--codex','--bundle-read','--harness','--claude','--model','--effort','--claude-config']});
+    const {flags}=parse(rest,{allowed:['--repo','--state','--codex','--bundle-read','--harness','--claude','--model','--effort','--claude-config','--approvals']});
     if(!flags['--repo'])throw new Error('Setup needs --repo PATH.');
     const harness=flags['--harness'] || 'codex';
     if(!['codex','claude'].includes(harness))throw new Error('Choose --harness codex or claude.');
     if(harness==='codex'&&['--claude','--model','--effort','--claude-config'].some(key=>flags[key]))throw new Error('--claude, --model, --effort and --claude-config apply only to --harness claude.');
     const claude=harness==='claude'?{claude:flags['--claude'],model:flags['--model'],effort:flags['--effort'],profile:flags['--claude-config']}:null;
-    print(setupNative(flags['--repo'],flags['--state'] || stateDefault,flags['--codex'],flags['--bundle-read'],claude));return;
+    print(setupNative(flags['--repo'],flags['--state'] || stateDefault,flags['--codex'],flags['--bundle-read'],claude,flags['--approvals']));return;
+  }
+  if(name==='approvals') {
+    const {values,flags}=parse(rest,{positionals:1,allowed:['--state']});
+    if(!flags['--state'])throw new Error('Approval changes require an explicit --state PATH.');
+    print(await changeCodexApprovals(stateFrom(flags),values[0],{onBackup:path=>console.error(`Approval configuration backup: ${path}`)}));return;
   }
   if(name==='login'||name==='doctor') {
     const {flags}=parse(rest,{allowed:['--state']}),state=stateFrom(flags),native=readNative(state);
@@ -208,7 +215,7 @@ async function command(args) {
         print(values.length?getJob(jobs,jobID(values[0])):jobs);
       } else {
         const job=await bridge.request(`/api/v1/jobs/${jobID(values[0])}/result`);
-        print({id:job.id,thread_id:job.thread_id,turn_id:job.turn_id,state:job.state,native_turns:job.native_turns,native_result:job.native_result});
+        print({id:job.id,thread_id:job.thread_id,turn_id:job.turn_id,state:job.state,native_turns:job.native_turns,native_result:job.native_result,native_approvals:job.native_approvals});
       }
     });
   }

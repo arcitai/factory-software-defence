@@ -70,7 +70,7 @@ the selected installation; CLI availability on a remote machine is not proof
 of a mobile-visible lead. Use native handoff/resume and preserve the session;
 do not add a Factory chat relay or claim an untested connection is active.
 
-Native Codex Auto-review is being qualified separately in [#154](https://github.com/arcitai/factory-software-defence/issues/154).
+The explicit [native Codex Auto-review mode](auto-review.md) is tracked in [#154](https://github.com/arcitai/factory-software-defence/issues/154).
 It reviews eligible action approvals, while independent code/result review
 remains part of the lifecycle. Existing Factory profiles retain their selected
 permissions until the changed mode has installed qualification and deliberate

@@ -6,19 +6,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NativeEngine } from '../factory/native/engine.mjs';
 import { nativeEnvironment, nativePolicy } from '../factory/native/setup.mjs';
-import { nativeReadiness } from '../factory/native/app-server.mjs';
+import { AppServer, nativeReadiness } from '../factory/native/app-server.mjs';
+import { codexApprovals } from '../factory/native/codex-approvals.mjs';
 
-function harness(t) {
+function harness(t,approvals) {
   const state=mkdtempSync(join(tmpdir(),'factory-native-guards-'));
   t.after(()=>rmSync(state,{recursive:true,force:true}));
   const repo=join(state,'project');
   mkdirSync(join(state,'receipts'));mkdirSync(join(state,'home','.codex'),{recursive:true});
-  const config={repo,codex:'/usr/bin/codex',node:process.execPath,profile:'factory',runtime_reads:['/usr/bin/codex',process.execPath],writer_root:join(state,'locks')};
+  const config={...(approvals?{approvals}:{}),repo,codex:'/usr/bin/codex',node:process.execPath,profile:'factory',runtime_reads:['/usr/bin/codex',process.execPath],writer_root:join(state,'locks')};
   const profile='pinned profile';
   writeFileSync(join(state,'home','.codex','config.toml'),profile,{mode:0o600});
   config.config_sha256=createHash('sha256').update(profile).digest('hex');
   const env=nativeEnvironment(config,state),policy=nativePolicy(config,state);
-  const effective={approval_policy:'never',default_permissions:'factory',cli_auth_credentials_store:'file',web_search:'disabled',
+  const effective={...(policy.approvals_reviewer?{approvals_reviewer:policy.approvals_reviewer}:{}),approval_policy:policy.approval_policy,default_permissions:'factory',cli_auth_credentials_store:'file',web_search:'disabled',
     apps:{_default:{enabled:false}},tools:{},permissions:policy.permissions,features:policy.features,
     shell_environment_policy:policy.shell_environment_policy};
   const turns=new Map();let starts=0,turnStarts=0;
@@ -31,11 +32,11 @@ function harness(t) {
         case 'app/installed':return {apps:[]};
         case 'mcpServerStatus/list':return {data:[],nextCursor:null};
         case 'thread/list':return {data:[],nextCursor:null};
-        case 'thread/start':starts++;return {thread:{id:`thread-${starts}`},cwd:repo,approvalPolicy:'never',activePermissionProfile:{id:'factory'}};
+        case 'thread/start':starts++;return {thread:{id:`thread-${starts}`},cwd:repo,...codexApprovals(config),activePermissionProfile:{id:'factory'}};
         case 'turn/start':assert.equal(Object.hasOwn(params,'environments'),false,'Omitting environments retains native workspace tools');turnStarts++;turns.set(params.threadId,[{id:`turn-${turnStarts}`,status:'inProgress',items:[]},...(turns.get(params.threadId)||[])]);return {turn:{id:`turn-${turnStarts}`,status:'inProgress',items:[]}};
         case 'thread/read':return {thread:{id:params.threadId,cwd:repo}};
         case 'thread/turns/list':return {data:turns.get(params.threadId)||[]};
-        case 'thread/resume':return {thread:{id:params.threadId},cwd:repo,approvalPolicy:'never',activePermissionProfile:{id:'factory'}};
+        case 'thread/resume':return {thread:{id:params.threadId},cwd:repo,...codexApprovals(config),activePermissionProfile:{id:'factory'}};
         case 'turn/interrupt':return {};
         default:throw Error(`Unexpected method ${method}`);
       }
@@ -46,6 +47,39 @@ function harness(t) {
   return {state,config,env,policy,effective,client,engine,start,turns,get starts(){return starts;},get turnStarts(){return turnStarts;}};
 }
 
+test('auto-review flows through admission, continuation and reconnect without widening the profile',async t=>{
+  const h=harness(t,'auto-review'),calls=[],call=h.client.call;
+  h.client.call=async(method,params)=>{calls.push({method,params});return call(method,params);};
+  const engine=h.engine(),first=await h.start(engine,201);
+  h.turns.get(first.thread_id)[0].status='completed';
+  await engine.resume(first.id);
+  const next=await engine.continue(first.id,first.turn_id,'Bounded follow-up');
+  assert.equal(next.native_approvals.mode,'auto-review');
+  for(const {method,params} of calls.filter(c=>['thread/start','thread/resume','turn/start'].includes(c.method))) {
+    assert.equal(params.approvalPolicy,'on-request',method);assert.equal(params.approvalsReviewer,'auto_review',method);
+    assert.equal(params.permissions,'factory');assert.equal(params.sandbox,undefined);
+  }
+  assert.equal(h.policy.permissions.factory.network.enabled,false);
+  assert.equal(h.policy.permissions.factory.filesystem[':workspace_roots']['.agents'],'read');
+});
+test('unqualified account and downgraded native reviewer cannot start auto-review work',async t=>{
+  const h=harness(t,'auto-review'),call=h.client.call;
+  h.client.call=async(method,params)=>method==='account/read'?{account:{type:'apiKey'}}:call(method,params);
+  await assert.rejects(h.start(h.engine(),202),/native ChatGPT login/);assert.equal(h.starts,0);
+  h.client.call=async(method,params)=>method==='thread/start'?{thread:{id:'native'},cwd:h.config.repo,approvalPolicy:'on-request',approvalsReviewer:'user',activePermissionProfile:{id:'factory'}}:call(method,params);
+  await assert.rejects(h.start(h.engine(),202),/did not confirm/);assert.equal(h.turnStarts,0);
+});
+test('native reviewer downgrade interrupts the current writer and blocks later actions',async t=>{
+  const h=harness(t,'auto-review'),client=new AppServer({config:h.config,env:h.env}),calls=[];
+  client.available=true;client.call=async(method,params)=>{calls.push({method,params});return h.client.call(method,params);};
+  const engine=new NativeEngine(h.state,h.config,client,h.engine().provider),job=await h.start(engine,203);
+  client.receive(JSON.stringify({method:'thread/settings/updated',params:{threadId:job.thread_id,threadSettings:{cwd:h.config.repo,approvalPolicy:'on-request',approvalsReviewer:'user',activePermissionProfile:{id:'factory'}}}}));
+  assert.deepEqual(calls.find(c=>c.method==='turn/interrupt').params,{threadId:job.thread_id,turnId:job.turn_id});
+  h.turns.get(job.thread_id)[0].status='interrupted';
+  await assert.rejects(engine.continue(job.id,job.turn_id,'Continue'),/authority request was refused/);
+  await assert.rejects(engine.resume(job.id),/authority request was refused/);
+  await assert.rejects(h.start(engine,204),/authority request was refused/);
+});
 test('project writer receipt spans engine instances and distinct issues',async t=>{
   const h=harness(t),first=h.engine(),second=h.engine();
   const [a,b]=await Promise.allSettled([h.start(first,7),h.start(second,8)]);

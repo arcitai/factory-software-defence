@@ -47,6 +47,9 @@ the existing issue/task record, not a second project registry.
   private-path denial and the tool/connection inventory. Unattended approval
   does not mean unrestricted host access. Keep provider credentials with the
   component needing them, outside the agent environment unless explicitly needed.
+  Select [native Auto-review](../../../docs/auto-review.md) deliberately when
+  supported, and qualify its actual approval, denial and recovery behavior.
+  Action approval does not replace independent result review or delivery authority.
 - **Operation:** install a pinned package, stable Node and native harness binaries, a
   private state directory and a loopback listener. Use the supported OS service
   manager and authenticated SSH forwarding for remote access. Record boot/login

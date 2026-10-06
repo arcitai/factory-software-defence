@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
 import { readClaude, setupClaude } from './claude-setup.mjs';
 import { nativeExecutable, within } from './executable.mjs';
+import { codexApprovals } from './codex-approvals.mjs';
 
 const quote = value => JSON.stringify(value);
 const CONFIG = 'native.json';
@@ -27,8 +28,11 @@ export function nativeEnvironment(config, state) {
 }
 export function nativePolicy(config, state) {
   const env=nativeEnvironment(config,state);
+  const approvals=codexApprovals(config);
   return {
-    approval_policy:'never', default_permissions:'factory', cli_auth_credentials_store:'file', web_search:'disabled',
+    approval_policy:approvals.approvalPolicy,
+    ...(config.approvals ? {approvals_reviewer:approvals.approvalsReviewer} : {}),
+    default_permissions:'factory', cli_auth_credentials_store:'file', web_search:'disabled',
     features:{apps:false,plugins:false,remote_plugin:false,hooks:false,browser_use:false,browser_use_external:false,
       in_app_browser:false,computer_use:false,image_generation:false,tool_suggest:false,shell_snapshot:false,
       auth_elicitation:false,mcp_2026_07_28:false,codex_apps_mcp_2026_07_28:false,
@@ -42,7 +46,8 @@ export function nativePolicy(config, state) {
       network:{enabled:false}}},
   };
 }
-export function setupNative(repoPath, statePath, selectedCodex, bundleRead, claude=null) {
+export function setupNative(repoPath, statePath, selectedCodex, bundleRead, claude=null, approvals) {
+  codexApprovals({approvals});
   if (process.platform !== 'linux') throw new Error('Native isolation is currently supported only on Linux.');
   const repo = realpathSync(resolve(repoPath));
   if (!lstatSync(repo).isDirectory()) throw new Error('--repo must be a directory.');
@@ -56,7 +61,7 @@ export function setupNative(repoPath, statePath, selectedCodex, bundleRead, clau
     throw new Error('Repository and native state must be separate from the writer lock directory.');
   if (existsSync(state)) throw new Error('Native state path already exists; choose an empty new directory.');
   if (claude) {
-    if (selectedCodex || bundleRead) throw new Error('--codex and --bundle-read apply only to the Codex harness.');
+    if (selectedCodex || bundleRead || approvals) throw new Error('--codex, --bundle-read and --approvals apply only to the Codex harness.');
     return setupClaude({...claude, repo, state});
   }
   const codex = findNativeCodex(repo, selectedCodex);
@@ -74,7 +79,7 @@ export function setupNative(repoPath, statePath, selectedCodex, bundleRead, clau
   }
   if (reads.some(path=>within(path,repo)||within(path,state)||within(repo,path)||within(state,path)))
     throw new Error('Selected toolchain read path overlaps repository or native state.');
-  const config = { version:1, repo, codex, node, profile:'factory', runtime_reads:reads, writer_root:lockRoot };
+  const config = { version:1, repo, codex, node, profile:'factory', runtime_reads:reads, writer_root:lockRoot, ...(approvals?{approvals}:{}) };
   mkdirSync(state, { mode:0o700 });
   mkdirSync(join(state,'home'), { mode:0o700 });
   mkdirSync(join(state,'home','.codex'), { mode:0o700 });
@@ -92,7 +97,8 @@ export function setupNative(repoPath, statePath, selectedCodex, bundleRead, clau
   }
   const policy=nativePolicy(config,state);
   const toml = [
-    'approval_policy = "never"',
+    'approval_policy = '+quote(policy.approval_policy),
+    ...(policy.approvals_reviewer?['approvals_reviewer = '+quote(policy.approvals_reviewer)]:[]),
     'default_permissions = "factory"',
     'cli_auth_credentials_store = "file"',
     'web_search = "disabled"',
@@ -135,6 +141,7 @@ export function readNative(statePath) {
   const config = JSON.parse(readFileSync(join(state,CONFIG),'utf8'));
   if (config.harness === 'claude') return readClaude(state, config);
   if (config.harness !== undefined) throw new Error('Unsupported native harness in state; refuse to start.');
+  codexApprovals(config);
   if (config.version !== 1 || config.profile !== 'factory' || !isAbsolute(config.repo) || !isAbsolute(config.codex)
     || !isAbsolute(config.node) || !lstatSync(state).isDirectory() || (lstatSync(state).mode & 0o077)
     || realpathSync(config.repo) !== config.repo || !Array.isArray(config.runtime_reads)

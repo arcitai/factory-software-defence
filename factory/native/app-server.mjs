@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { nativeEnvironment, nativePolicy, verifyNativeConfig } from './setup.mjs';
+import { ApprovalObservations, codexApprovals, confirmedApprovals } from './codex-approvals.mjs';
 
 const MAX_FRAME = 16 * 1024 * 1024;
 const MAX_PENDING = 32;
@@ -16,6 +17,7 @@ export class AppServer {
   constructor({ config, env }) {
     this.config=config; this.env=env; this.pending=new Map(); this.next=1;
     this.available=false; this.listeners=new Set(); this.unexpectedApproval=false;
+    this.approvals=new ApprovalObservations();
     this.buffer=Buffer.alloc(0);this.discarding=false;
   }
   async connect() {
@@ -108,7 +110,15 @@ export class AppServer {
       return;
     }
     if (typeof value.method !== 'string' || Object.hasOwn(value,'id')) return this.close();
-    // Native history is read on demand; raw notifications may contain commands or private text.
+    this.approvals.observe(value.method,value.params);
+    if(value.method==='thread/settings/updated' && (!confirmedApprovals(value.params?.threadSettings,this.config)
+      || value.params?.threadSettings?.cwd!==this.config.repo
+      || value.params?.threadSettings?.activePermissionProfile?.id!=='factory')) {
+      this.unexpectedApproval=true;
+      for(const listener of this.listeners)listener({method:'native/unexpectedRequest'});
+    }
+    // Raw notifications, including review rationale/actions, can contain private
+    // commands or payloads. Only the allowlisted observation above reaches UI.
   }
   onNotification(listener) {this.listeners.add(listener);return ()=>this.listeners.delete(listener);}
   close() {
@@ -123,7 +133,7 @@ export class AppServer {
   }
 }
 
-export async function nativeReadiness(client, config, state) {
+export async function nativeReadiness(client, config, state, {requireAccount=true}={}) {
   if (!client.available) return {ready:false,gaps:['Native state unavailable'],account:'unknown',permissions:'unknown',connections:'unknown'};
   const gaps=[];
   if (state) {
@@ -134,7 +144,10 @@ export async function nativeReadiness(client, config, state) {
     || Object.keys(client.env||{}).sort().join(',') !== 'CODEX_HOME,HOME,LANG,PATH,TMPDIR')
     gaps.push('Native child environment changed');
   const account=await client.call('account/read',{}).catch(()=>null);
-  if (!account?.account) gaps.push('Native login required or account state unavailable');
+  if (requireAccount&&!account?.account) gaps.push('Native login required or account state unavailable');
+  const selectedApprovals=codexApprovals(config);
+  if(config.approvals==='auto-review'&&account?.account?.type!=='chatgpt')
+    gaps.push('Auto-review requires a native ChatGPT login; this account is unqualified');
   const effective=await client.call('config/read',{cwd:config.repo,includeLayers:true}).catch(()=>null);
   if (!plain(effective?.config) || !Array.isArray(effective.layers)) gaps.push('Effective Codex configuration unavailable');
   else {
@@ -142,7 +155,9 @@ export async function nativeReadiness(client, config, state) {
     const policy=state ? nativePolicy(config,state) : null;
     const selectedFeatures=policy?.features || {};
     const featuresMatch=Object.entries(selectedFeatures).every(([name,enabled])=>cfg.features?.[name]===enabled);
-    if (cfg.approval_policy!=='never' || cfg.web_search!=='disabled' || cfg.cli_auth_credentials_store!=='file'
+    if (cfg.approval_policy!==selectedApprovals.approvalPolicy
+      || (cfg.approvals_reviewer??'user')!==selectedApprovals.approvalsReviewer
+      || cfg.web_search!=='disabled' || cfg.cli_auth_credentials_store!=='file'
       || cfg.apps?._default?.enabled!==false || Object.keys(cfg.apps||{}).some(key=>key!=='_default')
       || Object.keys(cfg.tools||{}).length || Object.keys(cfg.browser_use||{}).length
       || Object.keys(cfg.computer_use||{}).length || cfg.desktop || cfg.browser
@@ -174,6 +189,8 @@ export async function nativeReadiness(client, config, state) {
   if (!Array.isArray(mcp?.data) || mcp.data.length || mcp.nextCursor) gaps.push('MCP server status unavailable or nonempty');
   if (client.unexpectedApproval) gaps.push('Unexpected native authority request was refused');
   return {ready:gaps.length===0,gaps,account:account?.account?'present':'unavailable',
+    approvals:config.approvals||'never',reviewer:selectedApprovals.approvalsReviewer,
+    auto_review_qualification:config.approvals==='auto-review'?'requires installed execution proof':'not selected',
     permissions:profiles?.data?.some(p=>p.id==='factory'&&p.allowed)?'factory allowed':'unavailable',
     connections:apps&&mcp?'checked':'unavailable'};
 }
