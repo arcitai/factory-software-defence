@@ -13,7 +13,8 @@ test('native HTTP requires session for issue reads and writes and exposes no leg
   const config={repo:join(state,'repo')};
   const harness={name:'fixture',available:true,jobs:async()=>[],doctor:async()=>({ready:true,gaps:[]}),assertWorkspaceIdle:async()=>{}};
   const provider={id:'unsupported',label:'Test',repository:null,host:null,supported:false,capabilities:{issues:false,templates:false,create:false}};
-  const {server}=createNativeServer(state,config,{harness,provider,instance:'fixture-instance'});
+  let usageReads=0;
+  const {server}=createNativeServer(state,config,{harness,provider,instance:'fixture-instance',usageReader:async()=>{usageReads++;return {profiles:[{harness:'fixture',status:'unavailable',windows:[]}]};}});
   await new Promise((resolve,reject)=>server.once('error',reject).listen(0,'127.0.0.1',resolve));
   t.after(()=>new Promise(resolve=>server.close(resolve)));
   const root=`http://127.0.0.1:${server.address().port}`;
@@ -30,6 +31,11 @@ test('native HTTP requires session for issue reads and writes and exposes no leg
   assert.equal(data.native_capabilities.interrupt,false);
   assert.equal(data.native_capabilities.issue_create,false);
   assert.equal((await fetch(`${root}/api/v1/issues`)).status,403);
+  assert.equal((await fetch(`${root}/api/v1/usage`)).status,403);
+  assert.equal(usageReads,0,'status and unauthorized requests never probe usage');
+  assert.equal((await fetch(`${root}/api/v1/usage`,{headers:{origin:'https://evil.example','x-factory-session':data.csrf_token}})).status,403);
+  const usage=await fetch(`${root}/api/v1/usage`,{headers:{'x-factory-session':data.csrf_token}});
+  assert.equal(usage.status,200);assert.equal((await usage.json()).profiles[0].status,'unavailable');assert.equal(usageReads,1);
   const options={method:'POST',headers:{'content-type':'application/json'},body:'{}'};
   assert.equal((await fetch(`${root}/api/v1/issues/start`,options)).status,403);
   const authorized={...options,headers:{...options.headers,'x-factory-session':data.csrf_token}};
