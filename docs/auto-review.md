@@ -40,7 +40,8 @@ The selection uses native `on-request` and `auto_review` on start, continuation
 and reconnect. It retains Factory's filesystem/network policy and excludes
 personal apps, MCP and plugins. A native refusal or managed restriction is never
 replaced by full access or a Factory approval. A reviewer mismatch blocks work.
-The currently qualified account path is native ChatGPT sign-in. Doctor checks
+Installed execution was exercised on Linux with Codex 0.159.2 and native ChatGPT
+sign-in. Requalify a changed Codex version before relying on this mode. Doctor checks
 configuration, not entitlement, model execution or successful action review;
 qualify an installed candidate with a disposable task before relying on it.
 
