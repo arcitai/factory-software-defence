@@ -1,5 +1,11 @@
 # Factory
 
+> **Successor:** new method and setup work is maintained in
+> [arcitai/factory](https://github.com/arcitai/factory), using T3 Code, native
+> harnesses and GitHub. This repository and its releases remain available for
+> existing installations and historical evidence. Installation cutover is
+> qualified separately; this notice does not migrate or stop a running service.
+
 **Software & Defence. A method, a project Inbox, and your native coding agent.**
 
 Factory connects a repository's issues to a separately configured native coding agent.
